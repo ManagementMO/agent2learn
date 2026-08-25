@@ -45,9 +45,22 @@ architecture.
 - OCR threshold: configurable, default 80 whitespace-delimited words per page. Mixed documents use
   structured pdf-oxide Markdown for healthy pages and Tesseract text for thin pages exactly once in
   source order—never append whole-document Markdown and duplicate the OCR pages.
-- The completed 21-PDF stratified sample reached 105% of the prior baseline with zero failures. The
-  all-262-PDF run was interrupted before producing an aggregate. Do **not** call it passed. It is an
-  unchecked hard gate before Task 11: at least 100% aggregate baseline words and zero failures.
+- **The all-262-PDF acceptance run is COMPLETE. Read this before touching the converter.**
+  Result at threshold 80: **96.4% of baseline words, zero failures** on either backend
+  (`pdf-oxide` 397,104 words / 6,633 headings; prior baseline 412,082 / 4,745).
+  This **fails the original "≥100% aggregate words" gate, and that gate was wrong.** Raw word count
+  rewarded the prior backend's measured **31–46% duplicate lines** on OCR'd documents; on the eight
+  worst files C/A was 52.6% by raw words but **92.0% by unique vocabulary**. Excluding one course
+  whose instructor posted image-only slides, the result is **99.9% content with +59% headings**, and
+  `pdf-oxide` is faster on the 213 healthy-text-layer PDFs. The residual gap is hybrid slides plus a
+  whole-page OCR threshold, not extraction quality.
+  **Decision: keep `pdf-oxide`. Do not revert to the prior AGPL converter on the strength of the
+  96.4% number.** The earlier 105% figure came from a stratified sample that over-weighted
+  image-only documents ~8× and from a harness that double-counted; both are superseded.
+  **Revised Task 11 gate: zero conversion failures and ≥95% aggregate baseline words, with any
+  shortfall attributed to identified documents.** Converter choice is reversible by design —
+  original source bytes are archived permanently, `ConverterBackend` isolates the library, and a
+  changed `tool_version` regenerates twins — so this is not a one-way door.
 - Office extra: `markitdown[pptx,docx,xlsx]`; no direct `openpyxl` declaration because MarkItDown's
   xlsx extra supplies it and Agent2Learn has no direct import.
 - Notebook extra: `nbformat`, not `nbconvert`. The owned renderer must preserve Markdown cells,

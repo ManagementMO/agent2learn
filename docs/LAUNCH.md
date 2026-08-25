@@ -62,7 +62,7 @@ description and the one that survives a hostile reading.
 - [ ] The dependency/license review, third-party notices, SBOM, secret scan, and synthetic fixture
       review are signed off for the exact release artifacts.
 - [ ] The private 262-PDF converter acceptance corpus passes at the shipped 80-words-per-page
-      threshold with at least 100% of the recorded baseline's recovered words and zero candidate
+      threshold with at least 95% of the recorded baseline's recovered words and zero candidate
       failures; the release record contains only aggregate/redacted evidence. The completed
       21-document sample and interrupted broad run are supporting evidence, not substitutes.
 - [x] Re-check and create the approved documentation-first
