@@ -284,11 +284,15 @@ call `os.chmod`, construct paths by string concatenation, or sanitise a name its
    `content_map.json` on macOS than on Linux, and the vault stops being portable. NFC on every
    platform, always.
 2. Replace the Win32-reserved characters `< > : " / \ | ? *` with `_`.
-3. Replace every Unicode `Cc` control character with `_`, including `U+0000`–`U+001F`, `DEL`, and
-   the C1 controls (the reference only handles `\r \n \t`).
+3. Replace every Unicode `Cc` control character and `Cf` format character with `_`, including
+   `U+0000`–`U+001F`, `DEL`, the C1 controls, zero-width spaces, and joiners (the reference only
+   handles `\r \n \t`). Format characters become visible underscores rather than disappearing, so
+   invisible differences cannot create filenames that look identical.
 4. Collapse runs of whitespace to a single space.
-5. Strip **trailing** dots and spaces. Win32 silently discards these, so a name ending in `.` or
-   ` ` produces a disk path that does not match what was recorded — a manifest/disk divergence.
+5. Strip leading whitespace and **trailing** dots and spaces. Leading whitespace has no useful
+   vault meaning and can hide a reserved device name; Win32 silently discards trailing dots and
+   spaces, so a name ending in `.` or ` ` produces a disk path that does not match what was
+   recorded — a manifest/disk divergence.
 6. If the result is empty, use `untitled`.
 7. Truncate to a positive `maxlen`, defaulting to **60 on every platform** (see C2). Preserve a
    final simple extension matching `.[A-Za-z0-9]{1,15}` when the budget can retain at least one
@@ -437,8 +441,10 @@ def atomic_install_temp(dest: Path, temp: Path, *, retries: int = 5) -> None
 Text and byte helpers write to a unique sibling temporary file; downloads stream to a unique
 `.part` and call `atomic_install_temp`. Each path is flushed and fsynced, permissions are tightened
 on POSIX only, and `os.replace` is **retried on `PermissionError` with short exponential backoff**
-before giving up. Temporary files are cleaned on every failure path. No module may call
-`os.replace` directly.
+before giving up. Generated text/byte temporaries are cleaned on every failure path. A completed
+downloaded `.part` is deliberately retained when only its fsync or atomic installation fails, so
+a later sync can retry installation without re-downloading it. No module may call `os.replace`
+directly.
 
 ### C7. Encoding and line endings
 
@@ -836,9 +842,10 @@ versioned mapping from stable source identity to structured entries:
   Revision metadata records the full canonical key plus old/new hashes. The digest prevents unsafe
   path characters and collisions between entity types or courses whose local IDs overlap. A sync
   never silently destroys a captured revision.
-- `.part` files are never entered into the manifest and are removed after a failed or interrupted
-  download. A later sync resumes at the unfinished item and safely restarts that file from byte
-  zero; v0.1 does not retain unaudited partial bytes for range resumption.
+- `.part` files are never entered into the manifest. An incomplete or interrupted download is
+  removed and safely restarted from byte zero; v0.1 does not retain unaudited partial bytes for
+  range resumption. If the download completed and only fsync or atomic installation failed, the
+  validated `.part` is retained for the next sync to retry without re-downloading it.
 - Every derived markdown twin records its own hash, the exact source hash, converter name/version,
   and creation time. Study, grounding, indexing, and checking treat a twin as trusted course
   evidence only when both hashes match and the source revision is current. A stale or locally

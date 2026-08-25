@@ -31,6 +31,8 @@ from agent2learn import paths
         ("Trailing dots...", "Trailing dots"),
         ("Trailing space   ", "Trailing space"),
         ("  ", "untitled"),
+        (" CON", "CON_"),
+        ("\xa0nbsp", "nbsp"),
         ("Week 1  Intro", "Week 1 Intro"),
         ("CON", "CON_"),
         ("nul.txt", "nul_.txt"),
@@ -79,6 +81,10 @@ def test_safe_name_repairs_reserved_stems_before_multiple_extensions(
 
 def test_safe_name_collapses_unicode_whitespace() -> None:
     assert paths.safe_name("Week\u00a01\u2003Intro") == "Week 1 Intro"
+
+
+def test_safe_name_replaces_invisible_unicode_format_characters() -> None:
+    assert paths.safe_name("\u200bzwsp\u200d") == "_zwsp_"
 
 
 def test_safe_name_normalizes_nfc_before_returning() -> None:
