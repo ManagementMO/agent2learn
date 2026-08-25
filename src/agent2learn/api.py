@@ -1,0 +1,426 @@
+"""Bounded, first-party D2L HTTP transport.
+
+The client is intentionally smaller than a general-purpose HTTP wrapper.  It only performs
+same-origin requests, disables automatic redirects, retries idempotent GETs a bounded number of
+times, and leaves completed downloads in the caller's sibling ``.part`` file for the ingest layer
+to validate and install atomically.
+"""
+
+from __future__ import annotations
+
+import email.utils
+import ipaddress
+import os
+import random
+import re
+import shutil
+import time
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
+import requests
+from requests import Response
+
+from agent2learn import __version__, paths
+from agent2learn.errors import A2LError, SessionExpired
+from agent2learn.schools import School
+from agent2learn.session import Session
+from agent2learn.vault import ManifestEntry
+
+THROTTLE = 0.05
+MAX_RETRIES = 5
+CONNECT_TIMEOUT = 10.0
+READ_TIMEOUT = 90.0
+BACKOFF_BASE = 1.0
+MAX_RETRY_AFTER = 60.0
+JITTER_MAX = 0.5
+FREE_DISK_RESERVE = 1 * 1024 * 1024 * 1024
+DEFAULT_MAX_BYTES = 2_147_483_648
+CHUNK_SIZE = 64 * 1024
+MAX_REDIRECTS = 5
+
+_LOGIN_MARKERS = (
+    re.compile(r"<title[^>]*>\s*(?:sign\s*in|log\s*in|login)", re.IGNORECASE),
+    re.compile(r"<form[^>]+(?:action|id|class)=[^>]*(?:login|signin|d2l)", re.IGNORECASE),
+)
+
+
+class EgressBlocked(A2LError):
+    """A URL or redirect is outside the configured first-party origin."""
+
+
+class DownloadError(A2LError):
+    """A first-party response could not be accepted as a complete source file."""
+
+
+class DiskSpaceExhausted(DownloadError):
+    """Streaming would consume the configured free-space reserve."""
+
+
+@dataclass(frozen=True)
+class DownloadResult:
+    """A validated response staged in ``temp`` or a conditional not-modified result."""
+
+    temp: Path | None
+    sha256: str | None
+    size: int | None
+    etag: str | None
+    last_modified: str | None
+    not_modified: bool
+
+
+class Client:
+    """A same-origin D2L client carrying one already-harvested local session."""
+
+    def __init__(self, school: School, session: Session, *, workers: int = 2) -> None:
+        if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+            raise ValueError("workers must be a positive integer")
+
+        self.school = school
+        self.session = session
+        self.workers = workers
+        self._base_url = _base_url(school.base_url)
+        if _origin(self._base_url) != _origin(session.base_url):
+            raise ValueError("school and session must use the same origin")
+
+        self.lp_version: str | None = None
+        self.le_version: str | None = None
+        self._transport = requests.Session()
+        self._transport.cookies.update(session.requests_cookies())
+
+    def get_json(self, path: str) -> Any:
+        """Perform a JSON GET, translating an HTML login page into ``SessionExpired``."""
+
+        response = self._request("GET", self._resolve_url(path), stream=False)
+        try:
+            if _is_login_response(response):
+                raise SessionExpired("session expired · run: a2l auth")
+            response.raise_for_status()
+            return response.json()
+        finally:
+            response.close()
+
+    def download(
+        self,
+        url: str,
+        temp: Path,
+        *,
+        prior: ManifestEntry | None = None,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+        is_html_topic: bool = False,
+    ) -> DownloadResult:
+        """Stream one first-party source into ``temp`` and validate it before returning.
+
+        ``temp`` is deliberately the caller's unique sibling ``.part`` path.  This layer never
+        installs it into a materialized destination or writes a manifest entry.  Failed or
+        incomplete transfers remove the part; a successful transfer leaves it for the ingest
+        layer to fsync/install through the shared atomic primitive.
+        """
+
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+            raise ValueError("max_bytes must be a positive integer")
+        _validate_part_path(temp)
+        temp.parent.mkdir(parents=True, exist_ok=True)
+
+        request_headers: dict[str, str] = {}
+        if prior is not None:
+            if prior.etag:
+                request_headers["If-None-Match"] = prior.etag
+            if prior.last_modified:
+                request_headers["If-Modified-Since"] = prior.last_modified
+
+        response: Response | None = None
+        try:
+            # Jitter staggers the start of concurrent download workers.  The shared throttle in
+            # _request applies after each successful response as well.
+            time.sleep(random.uniform(0.0, JITTER_MAX))
+            response = self._request(
+                "GET",
+                self._resolve_url(url),
+                headers=request_headers,
+                stream=True,
+            )
+
+            if response.status_code == 304:
+                if prior is None:
+                    raise DownloadError("304 response has no prior manifest entry")
+                _remove_part(temp)
+                return DownloadResult(
+                    temp=None,
+                    sha256=prior.sha256,
+                    size=prior.size,
+                    etag=response.headers.get("ETag") or prior.etag,
+                    last_modified=response.headers.get("Last-Modified") or prior.last_modified,
+                    not_modified=True,
+                )
+
+            if _is_login_response(response):
+                raise SessionExpired("session expired · run: a2l auth")
+            response.raise_for_status()
+
+            content_type = response.headers.get("Content-Type", "").casefold()
+            html_response = "text/html" in content_type
+            if html_response and not is_html_topic:
+                raise SessionExpired("session expired · run: a2l auth")
+
+            advertised_size = _content_length(response)
+            if advertised_size is not None and advertised_size > max_bytes:
+                raise DownloadError("response exceeds the per-file ceiling")
+            if advertised_size is not None:
+                _ensure_disk_space(temp, advertised_size)
+
+            digest = sha256()
+            size = 0
+            html_probe = bytearray()
+            with open(os.fspath(paths.long_path(temp)), "wb") as handle:
+                try:
+                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                        if not chunk:
+                            continue
+                        if size + len(chunk) > max_bytes:
+                            raise DownloadError("response exceeds the per-file ceiling")
+                        _ensure_disk_space(temp, len(chunk))
+                        if html_response and len(html_probe) < 64 * 1024:
+                            html_probe.extend(chunk[: 64 * 1024 - len(html_probe)])
+                        handle.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                except requests.RequestException as exc:
+                    detail = (
+                        "size validation failed" if advertised_size is not None else "stream failed"
+                    )
+                    raise DownloadError(f"download {detail}") from exc
+
+                if html_response and _looks_like_login(html_probe.decode("utf-8", "ignore")):
+                    raise SessionExpired("session expired · run: a2l auth")
+                if size == 0:
+                    raise DownloadError("response body is empty")
+                if advertised_size is not None and size != advertised_size:
+                    raise DownloadError(
+                        f"response size mismatch: advertised {advertised_size}, received {size}"
+                    )
+                handle.flush()
+                os.fsync(handle.fileno())
+
+            return DownloadResult(
+                temp=temp,
+                sha256=digest.hexdigest(),
+                size=size,
+                etag=response.headers.get("ETag"),
+                last_modified=response.headers.get("Last-Modified"),
+                not_modified=False,
+            )
+        except BaseException:
+            _remove_part(temp)
+            raise
+        finally:
+            if response is not None:
+                response.close()
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        stream: bool,
+        mutating: bool = False,
+    ) -> Response:
+        """Issue a request with explicit redirects, retry, timeout, and egress policy."""
+
+        method = method.upper()
+        target = self._resolve_url(url)
+        merged_headers = {
+            "User-Agent": f"agent2learn/{__version__} (+https://github.com/ManagementMO/agent2learn)",
+        }
+        if self.session.xsrf:
+            merged_headers["X-Csrf-Token"] = self.session.xsrf
+        if headers:
+            merged_headers.update(headers)
+
+        retryable = method == "GET" and not mutating
+        attempt = 1
+        redirects = 0
+        backoff = BACKOFF_BASE
+        visited = {target}
+        while True:
+            response = self._transport.request(
+                method=method,
+                url=target,
+                headers=merged_headers,
+                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                allow_redirects=False,
+                stream=stream,
+            )
+
+            if response.status_code == 304:
+                time.sleep(THROTTLE)
+                return response
+
+            if 300 <= response.status_code < 400:
+                location = response.headers.get("Location")
+                response.close()
+                if not location:
+                    raise DownloadError("redirect response has no Location")
+                redirects += 1
+                if redirects > MAX_REDIRECTS:
+                    raise EgressBlocked("redirect limit exceeded")
+                next_target = self._resolve_url(urljoin(target, location))
+                if next_target in visited:
+                    raise EgressBlocked("redirect loop rejected")
+                visited.add(next_target)
+                target = next_target
+                continue
+
+            is_transient = response.status_code == 429 or 500 <= response.status_code <= 599
+            if retryable and is_transient and attempt < MAX_RETRIES:
+                delay = _retry_delay(response, backoff)
+                response.close()
+                time.sleep(delay)
+                backoff = min(backoff * 2.0, MAX_RETRY_AFTER)
+                attempt += 1
+                continue
+
+            if 200 <= response.status_code < 300:
+                time.sleep(THROTTLE)
+            return response
+
+    def _resolve_url(self, value: str) -> str:
+        if not isinstance(value, str) or not value:
+            raise EgressBlocked("request URL must be a non-empty string")
+        candidate = urljoin(self._base_url.rstrip("/") + "/", value)
+        normalized = _request_url(candidate)
+        if _origin(normalized) != _origin(self._base_url):
+            raise EgressBlocked("request target is outside the configured LEARN origin")
+        return normalized
+
+
+def _base_url(value: str) -> str:
+    normalized = _request_url(value)
+    parsed = urlsplit(normalized)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
+
+
+def _request_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme.casefold() not in {"http", "https"}:
+            raise ValueError
+        if parsed.hostname is None or parsed.username is not None or parsed.password is not None:
+            raise ValueError
+        port = parsed.port  # Access validates malformed ports before a request reaches requests.
+        if port is not None and not 1 <= port <= 65535:
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise EgressBlocked("request URL is not a safe HTTP origin") from exc
+    path = parsed.path or "/"
+    return urlunsplit((parsed.scheme.casefold(), parsed.netloc, path, parsed.query, ""))
+
+
+def _origin(value: str) -> tuple[str, str, int]:
+    parsed = urlsplit(value)
+    hostname = parsed.hostname
+    if hostname is None:
+        raise EgressBlocked("request URL has no hostname")
+    try:
+        try:
+            host = ipaddress.ip_address(hostname).compressed.casefold()
+        except ValueError:
+            host = hostname.encode("idna").decode("ascii").casefold().rstrip(".")
+        port = parsed.port or (443 if parsed.scheme.casefold() == "https" else 80)
+    except (UnicodeError, ValueError) as exc:
+        raise EgressBlocked("request URL has an invalid origin") from exc
+    return parsed.scheme.casefold(), host, port
+
+
+def _content_length(response: Response) -> int | None:
+    value = response.headers.get("Content-Length")
+    if value is None:
+        return None
+    try:
+        length = int(value)
+    except (TypeError, ValueError) as exc:
+        raise DownloadError("response Content-Length is invalid") from exc
+    if length < 0:
+        raise DownloadError("response Content-Length is invalid")
+    return length
+
+
+def _ensure_disk_space(path: Path, required: int) -> None:
+    usage = shutil.disk_usage(path.parent)
+    if usage.free < FREE_DISK_RESERVE + required:
+        raise DiskSpaceExhausted("free disk space would cross the configured reserve")
+
+
+def _retry_delay(response: Response, backoff: float) -> float:
+    value = response.headers.get("Retry-After") if response.status_code == 429 else None
+    delay: float
+    if value is not None:
+        try:
+            delay = max(0.0, float(value))
+        except ValueError:
+            try:
+                retry_at = email.utils.parsedate_to_datetime(value)
+            except (TypeError, ValueError, OverflowError):
+                delay = backoff
+            else:
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=UTC)
+                delay = max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+    else:
+        delay = backoff
+    return min(delay, MAX_RETRY_AFTER)
+
+
+def _is_login_response(response: Response) -> bool:
+    content_type = response.headers.get("Content-Type", "").casefold()
+    if "text/html" not in content_type:
+        return False
+    if response.status_code in {401, 403}:
+        return True
+    return _looks_like_login(response.text)
+
+
+def _looks_like_login(text: str) -> bool:
+    return any(marker.search(text) for marker in _LOGIN_MARKERS)
+
+
+def _validate_part_path(temp: Path) -> None:
+    if not isinstance(temp, Path):
+        raise TypeError("temp must be a pathlib.Path")
+    if not temp.name.endswith(".part"):
+        raise ValueError("download temp must be a sibling .part path")
+    if temp.exists() and temp.is_dir():
+        raise ValueError("download temp must be a file path")
+
+
+def _remove_part(temp: Path) -> None:
+    try:
+        os.unlink(os.fspath(paths.long_path(temp)))
+    except FileNotFoundError:
+        return
+
+
+__all__ = [
+    "BACKOFF_BASE",
+    "CHUNK_SIZE",
+    "Client",
+    "CONNECT_TIMEOUT",
+    "DEFAULT_MAX_BYTES",
+    "DiskSpaceExhausted",
+    "DownloadError",
+    "DownloadResult",
+    "EgressBlocked",
+    "FREE_DISK_RESERVE",
+    "JITTER_MAX",
+    "MAX_REDIRECTS",
+    "MAX_RETRIES",
+    "MAX_RETRY_AFTER",
+    "READ_TIMEOUT",
+    "THROTTLE",
+]

@@ -180,7 +180,9 @@ A topic counts as legitimately HTML when its URL ends `.html`/`.htm` **or** its 
 | Workers | `2` | Reduced from the prototype's 4, per the politeness requirement. |
 
 429 handling: honour `Retry-After` when present, otherwise sleep the current backoff, then double
-it. The prototype **does not cap** `Retry-After`; the public build must, per the spec.
+it. The prototype **does not cap** `Retry-After`; the public build must, per the spec. The public
+build caps a numeric or date-derived delay at **60 seconds** (`MAX_RETRY_AFTER`) so a server header
+cannot suspend a resumable sync indefinitely.
 
 **Jitter is specified nowhere in the prototype — it did not have any.** It is a public-build
 addition, so choose and document it: stagger worker starts by `random.uniform(0, 0.5)` seconds so
@@ -194,7 +196,7 @@ only, never output bytes.
 | Constant | Value | Where |
 | --- | --- | --- |
 | `MIN_PDF_CHARS` | `200` | Below this the PDF text layer is treated as empty and OCR runs. Distinct from the converter's per-page threshold of **80 words/page** — one is a whole-document trigger, the other a per-page decision. Do not conflate them. |
-| Free-disk reserve | not in the prototype | Public addition. Suggest **1 GiB**, configurable. |
+| Free-disk reserve | not in the prototype | Public addition. **1 GiB** by default, configurable. |
 | Per-file ceiling | not in the prototype | Public addition. **2 GiB**, per the spec. |
 | Page markers | not in the prototype | Public addition. Emit a stable, greppable marker; `<!-- a2l:page N -->` keeps it invisible in rendered markdown while remaining line-addressable for citations. |
 
