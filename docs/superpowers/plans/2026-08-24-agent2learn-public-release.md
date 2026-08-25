@@ -381,7 +381,39 @@ Steps:
 - `ruff check`, `ruff format --check`, `mypy --strict`, and `pytest` are all green;
   `a2l --version` prints `agent2learn 0.1.0`.
 
+**Three defects found by re-reviewing this task and fixed here** — recorded because each would
+have surfaced later as a confusing CI failure:
+
+1. **`pytest>=8,<9` capped the project below a security fix.** `pytest 8.4.2` carries
+   PYSEC-2026-1845, fixed in 9.0.3, so the upper cap made the vulnerability unfixable. Task 2's CI
+   runs `pip-audit` and would have failed the whole matrix. Floor raised to `>=9.0.3,<10`;
+   `pip-audit` now reports no known vulnerabilities. **Lesson for every later task: an upper cap on
+   a dev dependency can pin you below a fix — re-run `pip-audit` after any bound change.**
+2. **`pre-commit` was configured but never locked.** Step 4c was verified against an ad-hoc install
+   that `uv sync --frozen` then removed, leaving the secret-scanning hooks unrunnable from a clean
+   checkout. It is now in the `dev` group.
+3. **`THIRD_PARTY_NOTICES.md` hard-coded a package count** that went stale the moment a dependency
+   was added. Corrected, and the refresh procedure in that file is the guard.
+
+**Deliberate deviation from the written step:** `dev` is a PEP 735 `[dependency-groups]` entry
+rather than a `[project.optional-dependencies]` extra. Verified consequences: Task 2's exact command
+`uv sync --frozen --all-extras --dev` works unchanged, and the shipped wheel advertises only
+`Provides-Extra: notebook, office` — development tooling is correctly absent from published
+metadata, which an extra would not have achieved.
+
+**Cross-platform risk checked early rather than discovered in Task 2:** `pdf-oxide==0.3.77` ships
+`cp38`/**abi3** wheels for `win_amd64`, `win_arm64`, `manylinux_2_28` (x86_64/aarch64),
+`musllinux_1_2`, and both macOS architectures. The stable ABI means Python 3.14 is covered, which
+was confirmed by installing and importing the converter stack under 3.14. The universal lock
+references `win_amd64` and `manylinux` throughout, so the Task 2 matrix has no known wheel gap.
+
+`requires-python` is intentionally left unbounded at `>=3.11` rather than capped at `<3.15`. An
+upper bound on the interpreter blocks installation outright on a new Python, which is worse than an
+untested-but-probably-fine install; the tested range is expressed by the CI matrix instead.
+
 Not done here, by design: the three-OS CI matrix is Task 2, and this was verified on macOS only.
+`pip-audit` and the CycloneDX SBOM are wired as Task 2 CI jobs; `pip-audit` was nevertheless run
+here as a spot check, which is how defect 1 was caught.
 
 
 ### Task 1: Build the fully synthetic API fixture corpus

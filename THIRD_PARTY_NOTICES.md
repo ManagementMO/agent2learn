@@ -39,7 +39,7 @@ under their own licences.
 | `office` | `markitdown[pptx,docx,xlsx]` | 0.1.7 | MIT |
 | `notebook` | `nbformat` | 5.11.1 | BSD-3-Clause |
 
-Each extra pulls its own transitive dependencies. The complete resolved set — 115 packages at this
+Each extra pulls its own transitive dependencies. The complete resolved set — 122 packages at this
 baseline — is recorded in [`uv.lock`](uv.lock), and a CycloneDX SBOM is produced during release.
 
 ## Notices requiring specific attention

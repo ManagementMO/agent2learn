@@ -33,13 +33,18 @@ notebook = ["nbformat>=5.10,<6"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8,<9",
+    # >=9.0.3: 8.4.2 carries PYSEC-2026-1845, and a <9 cap would pin us below the fix.
+    "pytest>=9.0.3,<10",
     "pytest-httpserver>=1.1,<2",
     "ruff>=0.8,<1",
     "mypy>=1.13,<2",
     "pip-audit>=2.7,<3",
     "cyclonedx-bom>=5,<8",
     "detect-secrets>=1.5,<2",
+    # Runs the hooks in .pre-commit-config.yaml. Locked so the safety baseline is
+    # reproducible: without it, `uv sync --frozen` removes an ad-hoc install and the
+    # secret-scanning hooks silently become unrunnable.
+    "pre-commit>=4,<5",
 ]
 
 [project.scripts]
