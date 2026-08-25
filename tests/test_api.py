@@ -249,7 +249,7 @@ def test_retry_budget_is_five_attempts_and_retry_after_is_capped(
     def respond(request: Any) -> Any:
         nonlocal attempts
         attempts += 1
-        headers = {"Retry-After": "9999"} if status == 429 else {}
+        headers = {"Retry-After": "9999"} if status in {429, 503} else {}
         return request.make_response("failure", status=status, headers=headers)
 
     synthetic_api.server.expect_request(f"/retry-{status}").respond_with_handler(respond)
@@ -261,6 +261,26 @@ def test_retry_budget_is_five_attempts_and_retry_after_is_capped(
     assert attempts == api.MAX_RETRIES
     assert waits
     assert max(waits) <= api.MAX_RETRY_AFTER
+
+
+def test_503_retry_after_is_honoured(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attempts = 0
+    waits: list[float] = []
+
+    def respond(request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return WerkzeugResponse("maintenance", status=503, headers={"Retry-After": "3"})
+        return WerkzeugResponse('{"ok": true}', status=200, content_type="application/json")
+
+    synthetic_api.server.expect_request("/maintenance").respond_with_handler(respond)
+    monkeypatch.setattr(api.time, "sleep", waits.append)
+
+    assert _client(synthetic_api).get_json("/maintenance") == {"ok": True}
+    assert waits == [3.0, api.THROTTLE]
 
 
 def test_body_ceiling_is_enforced_before_install(
@@ -299,6 +319,75 @@ def test_free_disk_reserve_is_enforced_before_stream(
     assert not part.exists()
 
 
+class _StreamingResponse:
+    def __init__(self, chunks: list[bytes], content_type: str) -> None:
+        self.status_code = 200
+        self.headers = {"Content-Type": content_type}
+        self.url = "https://synthetic.example/stream"
+        self._chunks = chunks
+        self.closed = False
+
+    @property
+    def text(self) -> str:
+        raise AssertionError("streamed HTML topic should use the bounded probe")
+
+    def iter_content(self, *, chunk_size: int) -> list[bytes]:
+        del chunk_size
+        return self._chunks
+
+    def raise_for_status(self) -> None:
+        return
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_disk_space_check_is_amortized_over_stream_chunks(
+    synthetic_api: SyntheticAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    chunks = [b"x"] * (api.DISK_CHECK_EVERY_CHUNKS * 2 + 1)
+    response = _StreamingResponse(chunks, "application/octet-stream")
+    calls: list[int] = []
+    client = _client(synthetic_api)
+
+    monkeypatch.setattr(client._transport, "request", lambda **_kwargs: response)
+    monkeypatch.setattr(api, "_ensure_disk_space", lambda _path, required: calls.append(required))
+
+    result = client.download(
+        synthetic_api.base_url + "/stream",
+        tmp_path / "stream.bin.part",
+    )
+
+    assert result.size == len(chunks)
+    assert len(calls) == 3
+    assert response.closed is True
+
+
+def test_html_topic_login_probe_does_not_buffer_response_text(
+    synthetic_api: SyntheticAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    response = _StreamingResponse(
+        [b"<html><body>course outline</body></html>"],
+        "text/html; charset=utf-8",
+    )
+    client = _client(synthetic_api)
+    monkeypatch.setattr(client._transport, "request", lambda **_kwargs: response)
+    monkeypatch.setattr(api.time, "sleep", lambda _seconds: None)
+
+    result = client.download(
+        synthetic_api.base_url + "/outline",
+        tmp_path / "outline.html.part",
+        is_html_topic=True,
+    )
+
+    assert result.size is not None
+    assert response.closed is True
+
+
 def test_mutating_request_does_not_enter_get_retry_loop(
     synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -323,6 +412,32 @@ def test_mutating_request_does_not_enter_get_retry_loop(
         response.close()
     assert attempts == 1
     assert waits == []
+
+
+def test_mutating_redirect_is_not_followed_or_reposted(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+    client = _client(synthetic_api)
+
+    def request(**kwargs: Any) -> requests.Response:
+        calls.append(kwargs)
+        response = requests.Response()
+        response.status_code = 302
+        response.url = kwargs["url"]
+        response.headers["Location"] = "/submission-target"
+        response._content = b""
+        response._content_consumed = True
+        return response
+
+    monkeypatch.setattr(client._transport, "request", request)
+
+    with pytest.raises(api.EgressBlocked, match="mutating request redirect"):
+        client._request("POST", synthetic_api.base_url + "/submission", mutating=True, stream=False)
+
+    assert len(calls) == 1
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["url"].endswith("/submission")
 
 
 def test_external_url_is_rejected_before_any_request(

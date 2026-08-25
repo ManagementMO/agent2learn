@@ -42,6 +42,7 @@ JITTER_MAX = 0.5
 FREE_DISK_RESERVE = 1 * 1024 * 1024 * 1024
 DEFAULT_MAX_BYTES = 2_147_483_648
 CHUNK_SIZE = 64 * 1024
+DISK_CHECK_EVERY_CHUNKS = 16
 MAX_REDIRECTS = 5
 
 _LOGIN_MARKERS = (
@@ -159,12 +160,17 @@ class Client:
                     not_modified=True,
                 )
 
-            if _is_login_response(response):
+            content_type = response.headers.get("Content-Type", "").casefold()
+            html_response = "text/html" in content_type
+            # _is_login_response inspects response.text, which buffers a streamed response.  A
+            # legitimate HTML topic is allowed through here and checked from the bounded probe
+            # below instead, so a large HTML topic is not read into memory twice.
+            if not (
+                is_html_topic and html_response and response.status_code not in {401, 403}
+            ) and _is_login_response(response):
                 raise SessionExpired("session expired · run: a2l auth")
             response.raise_for_status()
 
-            content_type = response.headers.get("Content-Type", "").casefold()
-            html_response = "text/html" in content_type
             if html_response and not is_html_topic:
                 raise SessionExpired("session expired · run: a2l auth")
 
@@ -176,6 +182,7 @@ class Client:
 
             digest = sha256()
             size = 0
+            chunks_since_disk_check = 0
             html_probe = bytearray()
             with open(os.fspath(paths.long_path(temp)), "wb") as handle:
                 try:
@@ -184,12 +191,16 @@ class Client:
                             continue
                         if size + len(chunk) > max_bytes:
                             raise DownloadError("response exceeds the per-file ceiling")
-                        _ensure_disk_space(temp, len(chunk))
+                        if chunks_since_disk_check == 0:
+                            _ensure_disk_space(temp, len(chunk))
                         if html_response and len(html_probe) < 64 * 1024:
                             html_probe.extend(chunk[: 64 * 1024 - len(html_probe)])
                         handle.write(chunk)
                         digest.update(chunk)
                         size += len(chunk)
+                        chunks_since_disk_check += 1
+                        if chunks_since_disk_check == DISK_CHECK_EVERY_CHUNKS:
+                            chunks_since_disk_check = 0
                 except requests.RequestException as exc:
                     detail = (
                         "size validation failed" if advertised_size is not None else "stream failed"
@@ -267,6 +278,10 @@ class Client:
                 response.close()
                 if not location:
                     raise DownloadError("redirect response has no Location")
+                if mutating:
+                    # Never replay a submission body automatically.  The caller must inspect the
+                    # redirect and decide explicitly; this avoids a silent second POST to D2L.
+                    raise EgressBlocked("mutating request redirect requires caller decision")
                 redirects += 1
                 if redirects > MAX_REDIRECTS:
                     raise EgressBlocked("redirect limit exceeded")
@@ -358,7 +373,7 @@ def _ensure_disk_space(path: Path, required: int) -> None:
 
 
 def _retry_delay(response: Response, backoff: float) -> float:
-    value = response.headers.get("Retry-After") if response.status_code == 429 else None
+    value = response.headers.get("Retry-After") if response.status_code in {429, 503} else None
     delay: float
     if value is not None:
         try:
