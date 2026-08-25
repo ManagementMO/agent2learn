@@ -1,0 +1,10 @@
+title = "Agent2Learn gitleaks policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "detect-secrets SHA-1 fingerprints are not credentials"
+paths = ['''(^|/)\.secrets\.baseline$''']
+regexTarget = "line"
+regexes = ['''"hashed_secret": "[0-9a-f]{40}"''']
