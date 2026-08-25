@@ -66,6 +66,7 @@ def test_default_config_is_private_by_default(isolated_dirs: SimpleNamespace) ->
     assert cfg.include_grades is False
     assert cfg.include_discussions is False
     assert cfg.submit_enabled is False
+    assert cfg.ocr_words_per_page == 80
     assert cfg.extras == {}
 
 
@@ -78,6 +79,7 @@ def test_config_round_trips_paths_and_opt_in_categories(
         submit_enabled=True,
         include_discussions=True,
         include_grades=True,
+        ocr_words_per_page=120,
     )
 
     config.save(expected)
@@ -121,6 +123,7 @@ def test_config_preserves_unknown_future_keys(isolated_dirs: SimpleNamespace) ->
         ("submit_enabled", "yes"),
         ("include_discussions", 1),
         ("include_grades", None),
+        ("ocr_words_per_page", 0),
     ],
 )
 def test_config_rejects_wrong_known_types(

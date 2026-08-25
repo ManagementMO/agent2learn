@@ -1549,7 +1549,7 @@ same-device auth step remains intentionally open and is not folded into this aut
 
 Steps:
 
-- [ ] **Step 1:** Write tests: idempotence (a second run converts nothing); a PDF produces stable
+- [x] **Step 1:** Write tests: idempotence (a second run converts nothing); a PDF produces stable
       markdown with page/source markers; a `.html.zip` picks the main inner HTML; and a missing
       **optional format-specific** dependency produces a warning and a conversion gap, never a sync
       crash. Add a named `test_executed_notebook_output_reaches_twin`: its `.ipynb` fixture contains
@@ -1559,7 +1559,8 @@ Steps:
       body containing backticks, and an unsupported MIME bundle that emits an explicit marker
       rather than disappearing. Assert notebooks are parsed but never executed, Office
       macros/scripts are never invoked, and conversion has no session object or network client.
-- [ ] **Step 2:** Run, verify failure.
+- [x] **Step 2:** Run, verify failure. The focused suite was first run against the absent
+      `agent2learn.convert` module and failed at collection before implementation.
 - [x] **Step 2b — empirical gate before converter implementation: COMPLETE. Read before coding.**
       The private acceptance harness ran across **all 262 vault PDFs** at threshold **80 words per
       page**. Aggregate result:
@@ -1600,13 +1601,13 @@ Steps:
       then merges and deduplicates, should close most of the gap. Neither backend is a superset of
       the other — the candidate found 16,192 words across 109 files that the baseline missed — so a
       union backend has a materially higher ceiling than either alone.
-- [ ] **Step 3:** Define the conversion boundary before either implementation:
+- [x] **Step 3:** Define the conversion boundary before either implementation:
       `ConverterBackend` is a `typing.Protocol` with stable `name`/`version` fields and one
       `convert_pdf(source: Path, *, ocr_words_per_page: int) -> ConversionResult` method.
       `ConversionResult` contains deterministic page-ordered Markdown plus structured page coverage
       and warnings. Implement `PdfOxideBackend` as the default and `PdfiumBackend` as the named
       degraded fallback. No ingest/index/grounding code imports either native library directly.
-- [ ] **Step 3b:** Implement `PdfOxideBackend` against the exact `pdf-oxide==0.3.77` API. Open with
+- [x] **Step 3b:** Implement `PdfOxideBackend` against the exact `pdf-oxide==0.3.77` API. Open with
       `pdf_oxide.PdfDocument(path)` and probe every page with `extract_text_auto(page_index)`. Make
       the OCR threshold configurable in persisted config and default it to **80
       whitespace-delimited words per page**, matching the benchmark's `len(text.split())` rule.
@@ -1619,7 +1620,7 @@ Steps:
       call pdf-oxide's built-in OCR, model prefetch, ONNX path, or anything that downloads models to
       a user cache. Serialize actual Tesseract calls until a concurrency test proves the resolved
       stack safe.
-- [ ] **Step 4:** Implement `PdfiumBackend` with `pypdfium2` extraction/rendering as a fallback only
+- [x] **Step 4:** Implement `PdfiumBackend` with `pypdfium2` extraction/rendering as a fallback only
       when the default backend cannot open or convert the document; it is not the default renderer
       for OCR, and a lower word count alone never triggers an invisible backend switch. Record the
       actual backend/version, source hash, derived hash, threshold, and page-coverage mode in the
@@ -1627,7 +1628,7 @@ Steps:
       malformed PDF is unsupported, leave the original source usable and record a per-file
       conversion gap. An import failure for either standard-installed backend is a damaged-install
       doctor error with a reinstall command. Office and notebook converters remain optional.
-- [ ] **Step 4b:** Handle external Tesseract explicitly, especially on Windows. Resolve the
+- [x] **Step 4b:** Handle external Tesseract explicitly, especially on Windows. Resolve the
       executable with `shutil.which("tesseract")` first; on Windows also probe documented per-user
       and `%PROGRAMFILES%\Tesseract-OCR\tesseract.exe` locations. Set only
       `pytesseract.pytesseract.tesseract_cmd` for the Agent2Learn process, then verify the requested
@@ -1637,7 +1638,7 @@ Steps:
       the exact platform install command and sanitized probed locations (`winget …` /
       `brew install tesseract` / `apt install tesseract-ocr`). Never modify the user's global
       environment, download OCR models, or crash the overall sync.
-- [ ] **Step 4c:** Implement notebook conversion directly on `nbformat.read(..., as_version=4)`;
+- [x] **Step 4c:** Implement notebook conversion directly on `nbformat.read(..., as_version=4)`;
       do not recreate nbconvert's exporter/template stack. Keep the renderer small and auditable
       (the validated spike was 64 implementation lines). Preserve markdown cells; fence code with
       the notebook's declared language and a delimiter longer than any backtick run in the source;
@@ -1647,7 +1648,7 @@ Steps:
       Never execute a kernel, import notebook code, fetch remote output, or silently discard an
       executed cell's textual evidence. `nbformat` still brings `jupyter-core`; this change removes
       nbconvert's Jinja/Mistune/Bleach/Pygments/exporter surface, not that shared dependency.
-- [ ] **Step 5:** Add regression tests for: the backend protocol; default success; forced default
+- [x] **Step 5:** Add regression tests for: the backend protocol; default success; forced default
       failure followed by named fallback; both backends failing; the `<80` versus `>=80` threshold
       boundary; pdf-oxide's renderer being used for default OCR; no built-in OCR/model-download
       call; fused-token lexical regression (`hypothesis testing`, never `hypothesistesting`);
@@ -1672,6 +1673,15 @@ Steps:
       ```
       git commit -m "feat: backend-isolated pdf conversion with format-level graceful gaps"
       ```
+
+      Implementation evidence: `convert.py` keeps PDF backends behind the protocol, persists the
+      configured OCR threshold and page coverage in derived manifest records, renders notebooks
+      without execution, and rejects active HTML/archive hazards before extraction. The focused
+      suite includes the required red-first run, deterministic fixture conversion, fallback/gap
+      cases, threshold and source invalidation, local-twin history preservation, and offline
+      adversarial HTML/archive checks. The full local gate passed on 2026-08-25; the private
+      262-PDF empirical gate remains the recorded prerequisite above and was not rerun from this
+      public synthetic-only workspace.
 
 ---
 

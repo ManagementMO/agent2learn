@@ -28,6 +28,7 @@ _KNOWN_KEYS = frozenset(
         "submit_enabled",
         "include_discussions",
         "include_grades",
+        "ocr_words_per_page",
     }
 )
 
@@ -45,6 +46,7 @@ class Config:
     submit_enabled: bool = False
     include_discussions: bool = False
     include_grades: bool = False
+    ocr_words_per_page: int = 80
     extras: dict[str, JSONValue] = field(default_factory=dict)
 
 
@@ -100,6 +102,7 @@ def load() -> Config:
     submit_enabled = _read_bool(data, "submit_enabled", False)
     include_discussions = _read_bool(data, "include_discussions", False)
     include_grades = _read_bool(data, "include_grades", False)
+    ocr_words_per_page = _read_positive_int(data, "ocr_words_per_page", 80)
     extras = {key: value for key, value in data.items() if key not in _KNOWN_KEYS}
     return Config(
         vault=vault,
@@ -107,6 +110,7 @@ def load() -> Config:
         submit_enabled=submit_enabled,
         include_discussions=include_discussions,
         include_grades=include_grades,
+        ocr_words_per_page=ocr_words_per_page,
         extras=extras,
     )
 
@@ -122,6 +126,7 @@ def save(cfg: Config) -> None:
     payload: dict[str, JSONValue] = {
         "include_discussions": cfg.include_discussions,
         "include_grades": cfg.include_grades,
+        "ocr_words_per_page": cfg.ocr_words_per_page,
         "school": cfg.school,
         "submit_enabled": cfg.submit_enabled,
         "vault": os.fspath(cfg.vault),
@@ -165,6 +170,13 @@ def _read_bool(data: dict[str, JSONValue], key: str, default: bool) -> bool:
     value = data.get(key, default)
     if not isinstance(value, bool):
         raise ValueError(f"{key} must be a boolean")
+    return value
+
+
+def _read_positive_int(data: dict[str, JSONValue], key: str, default: int) -> int:
+    value = data.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{key} must be a positive integer")
     return value
 
 

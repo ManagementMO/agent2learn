@@ -39,7 +39,11 @@ _KEY_PART = re.compile(r"^[^:\\/:\s]+$")
 _MANIFEST_KEYS = frozenset(
     {"path", "sha256", "source_id", "etag", "last_modified", "size", "fetched_at", "derived"}
 )
-_DERIVED_KEYS = frozenset({"path", "sha256", "source_sha256", "tool", "tool_version", "created_at"})
+_DERIVED_REQUIRED_KEYS = frozenset(
+    {"path", "sha256", "source_sha256", "tool", "tool_version", "created_at"}
+)
+_DERIVED_OPTIONAL_KEYS = frozenset({"ocr_words_per_page", "page_coverage"})
+_DERIVED_KEYS = _DERIVED_REQUIRED_KEYS | _DERIVED_OPTIONAL_KEYS
 _GIT_CONFIRMATION = "I UNDERSTAND THIS VAULT IS IN A GIT WORKTREE"
 _COPY_CHUNK_SIZE = 1024 * 1024
 
@@ -54,6 +58,8 @@ class DerivedArtifact:
     tool: str
     tool_version: str
     created_at: str
+    ocr_words_per_page: int | None = None
+    page_coverage: tuple[Mapping[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -213,6 +219,8 @@ class Vault:
                         "tool": artifact.tool,
                         "tool_version": artifact.tool_version,
                         "created_at": artifact.created_at,
+                        "ocr_words_per_page": artifact.ocr_words_per_page,
+                        "page_coverage": [dict(page) for page in artifact.page_coverage],
                         "status": "missing",
                     }
                     continue
@@ -225,6 +233,8 @@ class Vault:
                     "tool": artifact.tool,
                     "tool_version": artifact.tool_version,
                     "created_at": artifact.created_at,
+                    "ocr_words_per_page": artifact.ocr_words_per_page,
+                    "page_coverage": [dict(page) for page in artifact.page_coverage],
                     "actual_sha256": actual_sha256,
                     "size": actual_size,
                     "status": (
@@ -418,7 +428,7 @@ def _artifact_from_json(name: str, raw: object, source_sha256: object) -> Derive
     unknown = set(raw) - _DERIVED_KEYS
     if unknown:
         raise A2LError(f"derived artifact {name!r} has unknown fields: {sorted(unknown)!r}")
-    required = _required_fields(raw, _DERIVED_KEYS, f"derived artifact {name!r}")
+    required = _required_fields(raw, _DERIVED_REQUIRED_KEYS, f"derived artifact {name!r}")
     if required["source_sha256"] != source_sha256:
         raise A2LError(f"derived artifact {name!r} source_sha256 does not match parent")
     return _validate_artifact(
@@ -429,6 +439,10 @@ def _artifact_from_json(name: str, raw: object, source_sha256: object) -> Derive
             tool=_as_str(required["tool"], "tool"),
             tool_version=_as_str(required["tool_version"], "tool_version"),
             created_at=_as_str(required["created_at"], "created_at"),
+            ocr_words_per_page=_as_optional_positive_int(
+                raw.get("ocr_words_per_page"), "ocr_words_per_page"
+            ),
+            page_coverage=_as_page_coverage(raw.get("page_coverage", ())),
         )
     )
 
@@ -497,6 +511,10 @@ def _validate_artifact(artifact: DerivedArtifact) -> DerivedArtifact:
         value = getattr(artifact, field_name)
         if not isinstance(value, str) or not value:
             raise A2LError(f"{field_name} must be a non-empty string")
+    ocr_words_per_page = _as_optional_positive_int(
+        artifact.ocr_words_per_page, "ocr_words_per_page"
+    )
+    page_coverage = _as_page_coverage(artifact.page_coverage)
     return DerivedArtifact(
         path=artifact.path,
         sha256=artifact.sha256,
@@ -504,6 +522,8 @@ def _validate_artifact(artifact: DerivedArtifact) -> DerivedArtifact:
         tool=artifact.tool,
         tool_version=artifact.tool_version,
         created_at=_manifest_timestamp(artifact.created_at, "created_at"),
+        ocr_words_per_page=ocr_words_per_page,
+        page_coverage=page_coverage,
     )
 
 
@@ -518,6 +538,16 @@ def _entry_to_json(entry: ManifestEntry) -> dict[str, object]:
                 "source_sha256": artifact.source_sha256,
                 "tool": artifact.tool,
                 "tool_version": artifact.tool_version,
+                **(
+                    {"ocr_words_per_page": artifact.ocr_words_per_page}
+                    if artifact.ocr_words_per_page is not None
+                    else {}
+                ),
+                **(
+                    {"page_coverage": [dict(page) for page in artifact.page_coverage]}
+                    if artifact.page_coverage
+                    else {}
+                ),
             }
             for name, artifact in sorted(checked.derived.items(), key=lambda item: item[0])
         },
@@ -608,6 +638,39 @@ def _as_nonnegative_int(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise A2LError(f"{field} must be a non-negative integer")
     return value
+
+
+def _as_optional_positive_int(value: object, field: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise A2LError(f"{field} must be a positive integer or null")
+    return value
+
+
+def _as_page_coverage(value: object) -> tuple[Mapping[str, object], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise A2LError("page_coverage must be an array")
+    normalized: list[Mapping[str, object]] = []
+    for index, raw_page in enumerate(value, start=1):
+        if not isinstance(raw_page, Mapping):
+            raise A2LError(f"page_coverage item {index} must be an object")
+        page = raw_page.get("page")
+        mode = raw_page.get("mode")
+        words = raw_page.get("words")
+        warning = raw_page.get("warning")
+        if isinstance(page, bool) or not isinstance(page, int) or page <= 0:
+            raise A2LError(f"page_coverage item {index} page must be a positive integer")
+        if not isinstance(mode, str) or not mode:
+            raise A2LError(f"page_coverage item {index} mode must be a non-empty string")
+        if isinstance(words, bool) or not isinstance(words, int) or words < 0:
+            raise A2LError(f"page_coverage item {index} words must be a non-negative integer")
+        if warning is not None and not isinstance(warning, str):
+            raise A2LError(f"page_coverage item {index} warning must be a string or null")
+        normalized.append({"page": page, "mode": mode, "words": words, "warning": warning})
+    return tuple(normalized)
 
 
 def _read_json_object(destination: Path, label: str) -> dict[str, object]:

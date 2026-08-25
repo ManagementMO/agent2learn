@@ -847,7 +847,8 @@ versioned mapping from stable source identity to structured entries:
   range resumption. If the download completed and only fsync or atomic installation failed, the
   validated `.part` is retained for the next sync to retry without re-downloading it.
 - Every derived markdown twin records its own hash, the exact source hash, converter name/version,
-  and creation time. Study, grounding, indexing, and checking treat a twin as trusted course
+  creation time, the configured PDF OCR word threshold when applicable, and ordered page-coverage
+  modes/word counts. Study, grounding, indexing, and checking treat a twin as trusted course
   evidence only when both hashes match and the source revision is current. A stale or locally
   modified twin is a coverage/integrity gap, never silently accepted.
 - Before regenerating a locally modified twin, preserve its bytes and prior metadata in the same

@@ -28,10 +28,10 @@ architecture.
 ## Current state — 2026-08-25
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 10 are complete as automated implementations.** Task 9's real-browser
-  same-device validation remains a release gate. Resume implementation at **Task 11
-  (`convert.py`)**, after the calibrated API, authentication, metadata-first ingest, and outline
-  boundaries established in Tasks 8–10.
+- **Tasks 0 through 11 are complete as automated implementations.** Task 9's real-browser
+  same-device validation remains a release gate. Resume implementation at **Task 12
+  (`index.py`, `aipolicy.py`, `snapshot.py`)**, after the calibrated API, authentication,
+  metadata-first ingest, outline, and conversion boundaries established in Tasks 8–11.
   - **Task 0** — packaging, licence, safety baseline. `pyproject.toml` declares the full runtime
     stack; `uv.lock` is committed; `a2l --version` works; Apache-2.0 is proven present in the built
     wheel and sdist as a PEP 639 `License-Expression`.
@@ -65,6 +65,9 @@ architecture.
     downloads; excluded-host link stubs; sanitized Dropbox RichText and first-party attachments;
     opt-in pseudonymized discussions; explicit path-null fetch repair; and bounded outline
     rendering through the existing dedicated CDP connection.
+  - **Task 11** — backend-isolated PDF conversion with pinned pdf-oxide, explicit external-Tesseract
+    OCR gaps, named PDFium fallback, deterministic notebook/HTML/archive renderers, hash-linked
+    derived metadata with threshold/page coverage, and local-twin history preservation.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.
