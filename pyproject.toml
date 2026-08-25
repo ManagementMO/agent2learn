@@ -6,7 +6,44 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-dependencies = []
+
+# PDF-to-Markdown is core, not an extra: the markdown twins are the substrate for
+# navigation, citations, and the evidence scan. There is deliberately no `convert` extra.
+#
+# pdf-oxide is exact-pinned. Its output is part of the citation contract and it has
+# changed extraction/Markdown artifact handling in a patch release (0.3.77). A converter
+# bump requires a release that reruns the 262-PDF acceptance corpus, explains the output
+# diff, regenerates the golden vault, and verifies bytes on all three operating systems.
+dependencies = [
+    "typer>=0.15,<1",
+    "rich>=13,<15",
+    "requests>=2.32,<3",
+    "platformdirs>=4.2,<5",
+    "keyring>=25,<27",
+    "websocket-client>=1.8,<2",
+    "pdf-oxide==0.3.77",
+    "pytesseract>=0.3.13,<0.4",
+    "pillow>=10,<13",
+    "pypdfium2>=5.13,<6",
+]
+
+[project.optional-dependencies]
+office = ["markitdown[pptx,docx,xlsx]>=0.1,<1"]
+notebook = ["nbformat>=5.10,<6"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "pytest-httpserver>=1.1,<2",
+    "ruff>=0.8,<1",
+    "mypy>=1.13,<2",
+    "pip-audit>=2.7,<3",
+    "cyclonedx-bom>=5,<8",
+    "detect-secrets>=1.5,<2",
+]
+
+[project.scripts]
+a2l = "agent2learn.cli:app"
 
 [project.urls]
 Repository = "https://github.com/ManagementMO/agent2learn"
@@ -15,3 +52,19 @@ Issues = "https://github.com/ManagementMO/agent2learn/issues"
 [build-system]
 requires = ["uv_build>=0.11.32,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

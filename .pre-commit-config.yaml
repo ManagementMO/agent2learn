@@ -1,0 +1,22 @@
+# Secret scanning is defence in depth. It supplements fixture allowlisting and human
+# review; it does not replace either. A clean run here is not evidence that a fixture is
+# safe to publish - only that no known secret *pattern* was matched.
+#
+# CI additionally runs a gitleaks scan over full reachable history (Task 2).
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
