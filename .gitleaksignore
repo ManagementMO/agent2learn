@@ -1,0 +1,5 @@
+# These are the two detector-fingerprint findings from the already-pushed a36cf2f commit.
+# The generated hashes are not credentials; keep this exact and commit-scoped so new findings
+# remain visible to the default gitleaks rules.
+a36cf2f6996ea8deeee95e677e8690a6006d7ebd:.secrets.baseline:generic-api-key:140
+a36cf2f6996ea8deeee95e677e8690a6006d7ebd:.secrets.baseline:generic-api-key:147
