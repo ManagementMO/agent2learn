@@ -166,7 +166,7 @@ def test_session_rejects_an_unconfigured_or_unsafe_base_url() -> None:
         )
     with pytest.raises(ValueError, match="host"):
         session.Session(
-            base_url="https://user:secret@learn.example.invalid",
+            base_url="https://user:secret@learn.example.invalid",  # pragma: allowlist secret
             cookies=(),
             xsrf=None,
             harvested_at=datetime.now(UTC),
@@ -193,7 +193,8 @@ def test_stored_schema_rejects_unknown_fields(
     _keyring_always_fails(monkeypatch)
     isolated_state.mkdir(parents=True, exist_ok=True)
     (isolated_state / "session.json").write_text(
-        json.dumps({"base_url": BASE_URL, "password": "nope"}), encoding="utf-8"
+        json.dumps({"base_url": BASE_URL, "password": "nope"}),  # pragma: allowlist secret
+        encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match="schema"):
