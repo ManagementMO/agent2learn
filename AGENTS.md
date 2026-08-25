@@ -28,8 +28,8 @@ architecture.
 ## Current state — 2026-08-25
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0, 1, and 2 are complete.** Resume at **Task 3 (`paths.py`)**, which is where the
-  documented filename defects live and where Windows first pushes back.
+- **Tasks 0 through 6 are complete.** Resume at **Task 7 (`session.py`)**, after the school
+  adapter, timestamp, and exclusion-policy contracts established in Task 6.
   - **Task 0** — packaging, licence, safety baseline. `pyproject.toml` declares the full runtime
     stack; `uv.lock` is committed; `a2l --version` works; Apache-2.0 is proven present in the built
     wheel and sdist as a PEP 639 `License-Expression`.
@@ -38,6 +38,15 @@ architecture.
     byte-exact reproducibility.
   - **Task 2** — CI across Windows/macOS/Linux × Python 3.11–3.14, 14 jobs, all green. `main` is
     branch-protected with all 14 as required checks.
+  - **Task 3** — cross-platform path naming and atomic filesystem primitives, including the
+    completed-download preservation rule for failed `.part` installs and the safe-name edge cases.
+  - **Task 4** — platform-correct config paths, console output, expected error taxonomy, and
+    privacy-bounded logging.
+  - **Task 5** — structured portable manifests, revision preservation, and transactional schema
+    migrations that stage `.a2l/` state and leave the original vault untouched on callback failure.
+  - **Task 6** — `School` protocol, Waterloo adapter, explicit timezone rendering, conservative
+    licensed-topic policy, boundary-aware matching, and a warned generic adapter. Waterloo host
+    allowlists remain empty until redacted same-device host evidence is reviewed.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.

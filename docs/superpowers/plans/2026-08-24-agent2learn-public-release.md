@@ -1051,7 +1051,7 @@ class School(Protocol):
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_schools.py`:
+- [x] **Step 1:** Write `tests/test_schools.py`:
       ```python
       def test_term_parsing():
           uw = UWaterloo()
@@ -1075,23 +1075,31 @@ Steps:
           assert "quicklink.d2l" in policy.url_markers
           assert any("vitalsource" in host for host in policy.host_suffixes)
       ```
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement. `term_label`: `year = 1900 + int(tc)//10`, season from `int(tc)%10` ∈
+- [x] **Step 2:** Run, verify failure. The initial focused run failed during collection because
+      `agent2learn.schools` did not yet exist.
+- [x] **Step 3:** Implement. `term_label`: `year = 1900 + int(tc)//10`, season from `int(tc)%10` ∈
       `{1: Winter, 5: Spring, 9: Fall}`. `term_from_offering`: last 4-digit run in the code,
       **constrained to 1000–1999** so a stray year is not mistaken for a term.
       Parse every API timestamp to an aware UTC instant and render through `zoneinfo.ZoneInfo` using
       `school.timezone`; never use the machine locale or implicit local timezone. Add DST-boundary
       and different-`TZ` environment tests that produce identical vault bytes.
-- [ ] **Step 4:** `generic.py` requires an explicit `--host`, returns `[]` for both auth and outline
+- [x] **Step 4:** `generic.py` requires an explicit `--host`, returns `[]` for both auth and outline
       hosts, keeps the conservative default exclusion policy, and
       emits a prominent "untested school" warning on every use. Implement boundary-aware hostname
       suffix matching and normalized topic-kind matching in shared code; add lookalike-host tests.
       Populate Waterloo's `auth_hosts()` only from the redacted same-device validation in P1; do not
       auto-approve a host merely because a browser redirect reached it.
-- [ ] **Step 5:** Tests pass; commit.
+- [x] **Step 5:** Tests pass; commit.
       ```
       git commit -m "feat: school adapter protocol with tested waterloo implementation"
       ```
+
+**Task 6 completed 2026-08-25.** The adapter protocol, Waterloo term rules, explicit IANA-timezone
+timestamp helpers, conservative exclusion policy, boundary-aware host matching, and warned generic
+adapter are covered by 15 focused tests. P1 proved same-device LEARN API replay but did not produce
+the redacted identity-provider host list required for an auth allowlist; `UWaterloo.auth_hosts()`
+and `outline_hosts()` therefore remain empty until that evidence is reviewed. No redirect host is
+implicitly approved.
 
 ---
 
