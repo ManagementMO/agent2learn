@@ -1,0 +1,200 @@
+"""Session persistence and cookie-scope contracts."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+import requests
+
+from agent2learn import session
+
+BASE_URL = "https://learn.example.invalid"
+
+
+def _sample_session(*, unrelated: bool = False) -> session.Session:
+    cookies = (
+        session.SessionCookie(
+            name="d2lSessionVal",
+            value="synthetic-session",
+            domain=".learn.example.invalid",
+            path="/d2l",
+            secure=True,
+        ),
+        session.SessionCookie(
+            name="XSRF-TOKEN",
+            value="synthetic-xsrf",
+            domain="learn.example.invalid",
+            path="/",
+            secure=True,
+        ),
+    )
+    if unrelated:
+        cookies += (
+            session.SessionCookie(
+                name="unrelated",
+                value="must-not-travel",
+                domain="identity.example.invalid",
+                path="/",
+                secure=True,
+            ),
+            session.SessionCookie(
+                name="child-domain",
+                value="must-not-travel",
+                domain="child.learn.example.invalid",
+                path="/",
+                secure=True,
+            ),
+        )
+    return session.Session(
+        base_url=BASE_URL,
+        cookies=cookies,
+        xsrf="synthetic-xsrf",
+        harvested_at=datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
+        user_id="synthetic-user",
+    )
+
+
+@pytest.fixture
+def isolated_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setattr(session.config, "state_dir", lambda: state)
+    return state
+
+
+def _keyring_always_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("synthetic keyring unavailable")
+
+    monkeypatch.setattr(session.keyring, "set_password", fail)
+    monkeypatch.setattr(session.keyring, "get_password", fail)
+    monkeypatch.setattr(session.keyring, "delete_password", fail)
+
+
+def test_file_backend_round_trips_cookie_scope_and_metadata(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    original = _sample_session()
+
+    assert session.store(original) == "file"
+    loaded = session.load()
+
+    assert loaded == original
+    assert loaded is not None
+    assert loaded.cookies[0].domain == ".learn.example.invalid"
+    assert loaded.cookies[0].path == "/d2l"
+    assert loaded.cookies[0].secure is True
+    assert loaded.xsrf == "synthetic-xsrf"
+    assert loaded.user_id == "synthetic-user"
+    assert session.backend_name() == "file"
+
+
+def test_keyring_failure_falls_back_silently_to_a_working_file_session(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    original = _sample_session()
+
+    assert session.store(original) == "file"
+    assert session.load() == original
+    assert capsys.readouterr() == ("", "")
+
+
+def test_stored_blob_has_no_password_key(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    session.store(_sample_session())
+
+    raw = json.loads((isolated_state / "session.json").read_text(encoding="utf-8"))
+    assert "password" not in raw
+    assert "password" not in (isolated_state / "session.json").read_text(encoding="utf-8")
+
+
+def test_clear_removes_the_file_and_attempts_to_clear_keyring(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    session.store(_sample_session())
+    deleted: list[tuple[str, str]] = []
+
+    def record_delete(service: str, username: str) -> None:
+        deleted.append((service, username))
+
+    monkeypatch.setattr(session.keyring, "delete_password", record_delete)
+    session.clear()
+
+    assert not (isolated_state / "session.json").is_file()
+    assert deleted == [("agent2learn", "session")]
+    assert session.load() is None
+
+
+def test_unrelated_domain_cookie_is_never_loaded_or_attached(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    session.store(_sample_session(unrelated=True))
+    loaded = session.load()
+
+    assert loaded is not None
+    assert [cookie.name for cookie in loaded.cookies] == ["d2lSessionVal", "XSRF-TOKEN"]
+    jar = loaded.requests_cookies()
+    assert jar.get_dict() == {
+        "d2lSessionVal": "synthetic-session",
+        "XSRF-TOKEN": "synthetic-xsrf",
+    }
+
+    prepared = requests.Request(
+        "GET", f"{BASE_URL}/d2l/api/lp/1.62/users/whoami", cookies=jar
+    ).prepare()
+    assert "d2lSessionVal=synthetic-session" in (prepared.headers.get("Cookie") or "")
+    assert "unrelated" not in (prepared.headers.get("Cookie") or "")
+
+
+def test_session_rejects_an_unconfigured_or_unsafe_base_url() -> None:
+    with pytest.raises(ValueError, match="HTTPS"):
+        session.Session(
+            base_url="http://learn.example.invalid",
+            cookies=(),
+            xsrf=None,
+            harvested_at=datetime.now(UTC),
+            user_id=None,
+        )
+    with pytest.raises(ValueError, match="host"):
+        session.Session(
+            base_url="https://user:secret@learn.example.invalid",
+            cookies=(),
+            xsrf=None,
+            harvested_at=datetime.now(UTC),
+            user_id=None,
+        )
+
+
+def test_session_age_is_computed_from_an_aware_utc_instant() -> None:
+    harvested_at = datetime.now(UTC) - timedelta(minutes=3)
+    current = session.Session(
+        base_url=BASE_URL,
+        cookies=(),
+        xsrf=None,
+        harvested_at=harvested_at,
+        user_id=None,
+    )
+
+    assert current.age() >= timedelta(minutes=3)
+
+
+def test_stored_schema_rejects_unknown_fields(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    isolated_state.mkdir(parents=True, exist_ok=True)
+    (isolated_state / "session.json").write_text(
+        json.dumps({"base_url": BASE_URL, "password": "nope"}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="schema"):
+        session.load()

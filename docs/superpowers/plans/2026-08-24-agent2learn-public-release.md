@@ -1130,22 +1130,28 @@ def backend_name() -> str
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_session.py`: round-trip through the file backend while retaining
+- [x] **Step 1:** Write `tests/test_session.py`: round-trip through the file backend while retaining
       domain/path/secure scope; a keyring failure (simulated by raising from
       `keyring.set_password`) **falls back silently** and still returns a working session;
       `clear()` removes both backends; the stored blob never contains a key named `password`; an
       unrelated-domain cookie cannot be loaded or attached to a request.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement. Validate the session schema and configured host before use. Try
+- [x] **Step 2:** Run, verify failure. The initial focused run failed during collection because
+      `agent2learn.session` did not yet exist.
+- [x] **Step 3:** Implement. Validate the session schema and configured host before use. Try
       `import keyring` and use it; on **any** exception — `ImportError`,
       `NoKeyringError`, D-Bus failure — fall back to `config.state_dir() / "session.json"`, written
       atomically, `0600` on POSIX only. **Never surface a keyring traceback to the user**; on Linux
       and WSL the backend genuinely is often unavailable and that must be a non-event. Expose only
       the backend name and session age to `doctor`; never expose cookie names or values.
-- [ ] **Step 4:** Tests pass on three OSes; commit.
+- [x] **Step 4:** Tests pass on three OSes; commit.
       ```
       git commit -m "feat: session storage that saves and resumes without ever blocking"
       ```
+
+**Task 7 completed 2026-08-25.** Session state is a strict JSON projection containing only the
+configured HTTPS LEARN origin, scoped cookies, XSRF token, harvest time, and stable user ID. Keyring
+errors fall back silently to the atomic `0600` POSIX file, `clear()` attempts both backends, and
+unrelated or child-domain cookies are discarded before persistence and request construction.
 
 ---
 
