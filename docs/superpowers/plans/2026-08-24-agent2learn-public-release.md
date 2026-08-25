@@ -572,8 +572,12 @@ Steps:
 **Task 2 completed 2026-08-25 — all 14 jobs green at `c133f42`** (12 matrix + dependency/audit/SBOM
 + secret scan). Run SHA verified equal to the pushed commit.
 
-**Step 0 was already satisfied:** the public remote was created during Task 0 under explicit
-authorization after a clean tracked-file review, so this step required no action.
+**Step 0, corrected on review:** the public remote was created during Task 0 under explicit
+authorization after a clean tracked-file review — but **branch protection was not enabled**, and the
+step was wrongly ticked on the strength of the remote merely existing. Now enabled on `main`: all
+**14 CI jobs are required status checks**, force pushes and deletions are blocked. `enforce_admins`
+is deliberately off so a solo maintainer is not locked out of an emergency fix; revisit if the
+project gains contributors. **Lesson: a step with two clauses is not done when only one is.**
 
 **Action SHAs were verified, not copied.** Each tag ref was resolved through the GitHub API and
 compared to the value written here. All three matched — but `actions/checkout` **v6.1.0 was already
