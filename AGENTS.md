@@ -28,8 +28,10 @@ architecture.
 ## Current state — 2026-08-25
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 8 are complete.** Resume at **Task 9 (`auth/`)**, after the calibrated,
-  retry-safe API and course-discovery boundary established in Task 8.
+- **Tasks 0 through 8 are complete.** Task 9's automated implementation and cross-platform CI
+  verification are complete; its real-browser same-device validation remains a release gate.
+  Resume implementation at **Task 10 (`ingest.py`)**, after the calibrated, retry-safe API and
+  authentication boundaries established in Tasks 8–9.
   - **Task 0** — packaging, licence, safety baseline. `pyproject.toml` declares the full runtime
     stack; `uv.lock` is committed; `a2l --version` works; Apache-2.0 is proven present in the built
     wheel and sdist as a PEP 639 `License-Expression`.
@@ -53,6 +55,11 @@ architecture.
     bounded idempotent retries, conditional streaming downloads, disk/size validation, and
     session-expiry detection; calibration persists only discovered versions and enrolment
     metadata, and `a2l courses` is a deterministic offline view over that state.
+  - **Task 9 implementation** — persistent dedicated Chrome/Edge CDP authentication, explicit
+    interactive egress interception, `Storage.getCookies` filtering, authoritative `whoami`
+    verification, hidden cross-platform cookie paste, and TTY-confirmed profile clearing. Live
+    same-device auth on Windows, macOS, and Linux is intentionally not represented as complete
+    until manually run and recorded without retaining session material.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.

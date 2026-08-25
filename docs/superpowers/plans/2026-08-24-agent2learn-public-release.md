@@ -1255,7 +1255,7 @@ def verify(session: Session, school: School) -> str | None    # stable user ID, 
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_auth_paste.py` — parsing a pasted cookie blob in three shapes
+- [x] **Step 1:** Write `tests/test_auth_paste.py` — parsing a pasted cookie blob in three shapes
       (`name=value` lines, DevTools table paste, JSON export) produces the same `Session`; a blob
       missing the minimum verified LEARN cookie set raises a message naming what is missing without
       echoing the pasted text. Include Learn, Duo, Google, and unrelated cookies in a fixture and
@@ -1264,12 +1264,12 @@ Steps:
       POSIX and Windows; command arguments, environment variables, piped stdin, logs, tracebacks,
       and shell history never carry the blob. The success message tells the user to clear their
       clipboard without reading or changing it.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement `paste.py` first — it is the universal fallback and must never be the
+- [x] **Step 2:** Run, verify failure.
+- [x] **Step 3:** Implement `paste.py` first — it is the universal fallback and must never be the
       thing that is broken. Keep parsing pure and separate from a small tested hidden multi-line TTY
       reader (`termios` on POSIX, `msvcrt` on Windows); always restore terminal echo in `finally`,
       including Ctrl-C and malformed input.
-- [ ] **Step 4:** Implement `cdp.py`. Locate an installed Chrome or Edge per platform (Windows:
+- [x] **Step 4:** Implement `cdp.py`. Locate an installed Chrome or Edge per platform (Windows:
       registry `App Paths` then Program Files; macOS: `/Applications/...`; Linux: `which
       google-chrome chromium microsoft-edge`). Launch:
       ```
@@ -1305,7 +1305,7 @@ Steps:
       >    Protocol and Chromium already blocks extensions from calling it.
       > 4. **Never hard-code port 9222 and never bind beyond `127.0.0.1`.** The debugging port is a
       >    full control channel over a logged-in university account.
-- [ ] **Step 5:** Reimplement the **authoritative** login check from its observable contract: an
+- [x] **Step 5:** Reimplement the **authoritative** login check from its observable contract: an
       in-page authenticated `fetch` of
       `/d2l/api/lp/{v}/users/whoami` looped over several API versions. Gate `logged_in` on the
       result, not on cookie presence — an expired `d2lSessionVal` is still present. If `whoami`
@@ -1314,20 +1314,36 @@ Steps:
       host. Persist only the stable user ID needed for submission read-back; do not persist or print
       the display name. Duo trust remains in Chromium's profile and is never copied into
       `session.json`.
-- [ ] **Step 6:** `authenticate(backend="auto")` tries direct CDP, then prints a clear pointer to
+- [x] **Step 6:** `authenticate(backend="auto")` tries direct CDP, then prints a clear pointer to
       `a2l auth --paste`. Do not add opportunistic Playwright/Selenium/agent-browser backends in
       v0.1; a backend that exists only on some machines creates a second unvalidated profile model.
-- [ ] **Step 7:** Implement `a2l auth --clear-profile`. It first clears the exported API session,
+- [x] **Step 7:** Implement `a2l auth --clear-profile`. It first clears the exported API session,
       then shows the exact dedicated profile path and warns that Waterloo/Duo remembered state will
       be lost; deletion requires an interactive human confirmation. It never targets a default
       browser profile or follows an unexpected symlink, and it refuses while the dedicated profile
       is locked/in use rather than killing a process or removing lock files.
 - [ ] **Step 8:** Manually verify same-device auth on Windows, macOS, and Linux. Record browser and
       OS versions plus pass/fail only—never credentials, cookies, response bodies, or identities.
-- [ ] **Step 9:** Commit.
+- [x] **Step 9:** Commit.
       ```
       git commit -m "feat: persistent browser auth with an always-available manual fallback"
       ```
+
+**Task 9 automated implementation completed 2026-08-25.** The first focused collection was
+observed red before the auth package existed. The final implementation provides pure parsing for
+name/value, DevTools-table, and JSON cookie exports; hidden POSIX/Windows multiline readers;
+dedicated persistent Chromium CDP with loopback-only ephemeral debugging; explicit auth-host
+interception; `Storage.getCookies` filtering; in-page version-discovered `whoami` verification;
+stable-ID-only persistence; and TTY-confirmed profile clearing. The implementation is in
+`d6ad416`, and the Windows portability correction is `d00fb26` after the first CI run exposed
+platform-specific `termios` typing that macOS could not detect.
+
+Local gates passed after the correction, including the full test suite, fixtures, notices, lock,
+build, pre-commit, ruff, format, and mypy checks. CI run `32896176453` completed with exactly 14
+successful jobs, including Windows 3.11–3.14, macOS/Linux, dependency/SBOM/notices, and the
+full-history secret scan. Step 8 remains intentionally unchecked: live same-device browser auth
+must still be manually run on Windows, macOS, and Linux and recorded as pass/fail only, without
+capturing credentials, cookies, identities, or response bodies.
 
 ---
 
