@@ -17,9 +17,11 @@ from agent2learn.errors import AuthenticationError
 from agent2learn.session import Session, SessionCookie
 
 try:
-    import termios
+    import termios as _termios
 except ImportError:  # pragma: no cover - only Windows lacks termios
-    termios = None  # type: ignore[assignment]
+    termios: Any = None
+else:
+    termios = _termios
 
 try:
     import msvcrt as _msvcrt

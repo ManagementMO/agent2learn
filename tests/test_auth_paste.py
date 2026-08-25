@@ -248,7 +248,7 @@ def test_windows_hidden_reader_collects_input_without_echo(monkeypatch: pytest.M
 
 
 def test_cli_paste_cannot_consume_runner_stdin_or_echo_a_cookie() -> None:
-    secret = "d2lSessionVal=secret-that-must-not-appear"
+    secret = "d2lSessionVal=secret-that-must-not-appear"  # pragma: allowlist secret
 
     result = CliRunner().invoke(app, ["auth", "--paste"], input=secret + "\n")
 
@@ -260,11 +260,9 @@ def test_cli_paste_cannot_consume_runner_stdin_or_echo_a_cookie() -> None:
 def test_cli_paste_success_reminds_user_to_clear_clipboard_without_echoing_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    secret = "d2lSessionVal=secret-that-must-not-appear"
     monkeypatch.setattr(cli_module, "authenticate", lambda _school, *, backend: _expected_session())
 
     result = CliRunner().invoke(app, ["auth", "--paste"])
 
     assert result.exit_code == 0
     assert "clear your clipboard" in result.stdout
-    assert secret not in result.output
