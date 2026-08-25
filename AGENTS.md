@@ -23,14 +23,28 @@ architecture.
 
 ## Current state — 2026-08-25
 
-- This is a documentation-first public Git repository on `main`. It is not a package release.
-- Task 0 Step 1 is complete: both intended PyPI/GitHub names returned 404 immediately before local
-  creation, and `uv init` created a Python 3.11 package with the current `uv_build` backend.
-- The repository metadata and package namespace are intentionally minimal. There are no runtime
-  dependencies and no console entry yet. Resume at **Task 0 Step 2** and add
-  `a2l = "agent2learn.cli:app"` only with the specified implementation and smoke test.
-- Do not publish a package, create a GitHub release, register a production domain, or reserve PyPI
-  with a placeholder release until the Task 0 safety baseline and synthetic-fixture review pass.
+- Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
+- **Tasks 0, 1, and 2 are complete.** Resume at **Task 3 (`paths.py`)**, which is where the
+  documented filename defects live and where Windows first pushes back.
+  - **Task 0** — packaging, licence, safety baseline. `pyproject.toml` declares the full runtime
+    stack; `uv.lock` is committed; `a2l --version` works; Apache-2.0 is proven present in the built
+    wheel and sdist as a PEP 639 `License-Expression`.
+  - **Task 1** — 20 synthetic fixtures (13 JSON, 3 non-JSON, 4 binary) plus an offline
+    `synthetic_api` harness over `pytest-httpserver`. `tools/generate_fixtures.py --check` enforces
+    byte-exact reproducibility.
+  - **Task 2** — CI across Windows/macOS/Linux × Python 3.11–3.14, 14 jobs, all green. `main` is
+    branch-protected with all 14 as required checks.
+- **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
+  `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
+  `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.
+- **Verify a new gate by making it fail.** Every safety check added so far was confirmed by
+  perturbation — seven fixture mutations, a notices-drift injection, a deliberately-broken offline
+  guard. Three defects in these tasks were hidden *behind a passing job*, so a green badge is not
+  evidence on its own.
+- Known open items, none blocking: `mypy` covers `src/` only (`tests/` and `tools/` have unresolved
+  annotations); there is no coverage measurement yet; three Dependabot PRs are blocked because they
+  propose versions past the declared caps and each needs a human decision.
+- Do not publish a package, create a GitHub release, or register a production domain yet.
 - **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
   - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same
     device (`whoami` 200/JSON). **Build `api.py` on `requests`.** Windows and Linux still need the
