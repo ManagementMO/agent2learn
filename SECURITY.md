@@ -66,5 +66,8 @@ minor series explicitly.
   not in `doctor --report`, which uses an allowlist after redaction.
 - **Mutating requests are never retried automatically**, and there is no `--yes`, `--force`,
   environment-variable, or piped-stdin bypass of a submission confirmation.
+- **Mutating redirects are never followed automatically.** A 301/302/303/307/308 response after a
+  POST is surfaced for the caller to decide, so a submission body cannot be silently replayed at a
+  second location.
 - Secret scanning (`detect-secrets` pre-commit, gitleaks in CI) supplements — and does not replace —
   fixture allowlisting and human review.
