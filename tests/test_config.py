@@ -331,7 +331,7 @@ def test_verbose_logging_does_not_relax_the_data_allowlist(
     isolated_logs: Path, verbose: bool
 ) -> None:
     logger = console.configure_logging(verbose=verbose)
-    secret = "https://learn.example.invalid/secret?token=COURSE101"
+    secret = "https://learn.example.invalid/secret?token=COURSE101"  # pragma: allowlist secret
     console.log_event("sync", url=secret, body=secret, filename=secret)
     for handler in logger.handlers:
         handler.flush()
