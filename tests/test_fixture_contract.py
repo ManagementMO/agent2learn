@@ -432,3 +432,17 @@ def test_binary_fixtures_are_marked_binary_in_gitattributes() -> None:
         "this guard exists because the PDF has no NUL bytes; if that changed, "
         "re-evaluate whether the -text attribute is still required"
     )
+
+
+def test_archive_fixture_is_uncompressed_for_cross_platform_reproducibility() -> None:
+    """Deflate output depends on the zlib build linked into the interpreter, so a
+    compressed archive is not byte-reproducible across platforms. CI caught this as a
+    Windows/Python 3.14 determinism failure while every other matrix entry passed."""
+    import zipfile
+
+    with zipfile.ZipFile(FILES / "site.html.zip") as zf:
+        for info in zf.infolist():
+            assert info.compress_type == zipfile.ZIP_STORED, (
+                f"{info.filename} is compressed; deflate bytes vary by zlib build and "
+                "break cross-platform fixture reproducibility"
+            )

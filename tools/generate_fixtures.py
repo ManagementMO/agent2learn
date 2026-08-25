@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import unicodedata
 import zipfile
 from pathlib import Path
@@ -573,14 +574,21 @@ HTML_STYLE = "body { font-family: sans-serif; }\n"
 
 
 def build_html_zip(path: Path) -> None:
-    """Zip with fixed member timestamps and no extra metadata, so bytes are stable."""
+    """Zip with fixed member timestamps, fixed attributes, and NO compression.
+
+    ZIP_STORED is deliberate. Deflate output depends on the zlib build linked into the
+    interpreter, so a DEFLATED archive is *not* byte-reproducible across platforms - CI
+    caught exactly that as a Windows/Python 3.14 determinism failure while every other
+    matrix entry passed. These members are a few hundred bytes; compression buys nothing
+    and costs cross-platform reproducibility.
+    """
     fixed = (2026, 1, 5, 14, 0, 0)
     if path.exists():
         path.unlink()
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as zf:
         for name, text in (("index.html", HTML_INDEX), ("style.css", HTML_STYLE)):
             info = zipfile.ZipInfo(name, date_time=fixed)
-            info.compress_type = zipfile.ZIP_DEFLATED
+            info.compress_type = zipfile.ZIP_STORED
             info.external_attr = 0o644 << 16
             info.create_system = 0  # always report DOS, never the build host
             zf.writestr(info, text)
@@ -643,7 +651,25 @@ def main() -> int:
 
     if args.check:
         if body != before:
-            print("FAIL  fixture output is not reproducible; regenerate and inspect the diff")
+            # Say exactly what moved. A boolean failure on a remote runner is a guessing
+            # game; this is the difference between a five-minute fix and an afternoon.
+            print("FAIL  fixture output is not reproducible")
+            recorded = {
+                line.split("  ", 1)[1]: line.split("  ", 1)[0]
+                for line in before.splitlines()
+                if "  " in line
+            }
+            for rel, digest in sums.items():
+                was = recorded.get(rel)
+                if was is None:
+                    print(f"  NEW      {rel}")
+                elif was != digest:
+                    path = ROOT / "tests" / "fixtures" / rel
+                    size = path.stat().st_size if path.exists() else -1
+                    print(f"  CHANGED  {rel}  recorded={was[:12]} now={digest[:12]} bytes={size}")
+            for rel in recorded.keys() - sums.keys():
+                print(f"  MISSING  {rel}")
+            print(f"  platform: {sys.platform}  python: {sys.version.split()[0]}")
             return 1
         print(f"ok    {len(sums)} fixtures reproduce byte-for-byte")
         return 0
