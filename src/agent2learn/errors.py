@@ -23,4 +23,10 @@ class NotConfigured(A2LError):
     exit_code: ClassVar[int] = 3
 
 
-__all__ = ["A2LError", "NotConfigured", "SessionExpired"]
+class AuthenticationError(A2LError):
+    """An interactive authentication path could not establish a verified session."""
+
+    exit_code: ClassVar[int] = 1
+
+
+__all__ = ["A2LError", "AuthenticationError", "NotConfigured", "SessionExpired"]

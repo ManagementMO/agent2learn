@@ -12,8 +12,12 @@ import json
 import typer
 
 from agent2learn import __version__
+from agent2learn import session as session_store
+from agent2learn.auth import authenticate
+from agent2learn.auth import clear_profile as remove_profile
+from agent2learn.auth import verify as verify_session
 from agent2learn.calibrate import CourseRef, display_courses, load_calibration
-from agent2learn.errors import NotConfigured
+from agent2learn.errors import A2LError, NotConfigured, SessionExpired
 from agent2learn.schools import UWaterloo
 
 app = typer.Typer(
@@ -70,6 +74,64 @@ def courses(
         typer.echo(_courses_json(selected, all_terms=all_terms))
         return
     _print_courses(selected, all_terms=all_terms)
+
+
+@app.command()
+def auth(
+    paste: bool = typer.Option(
+        False,
+        "--paste",
+        help="Read a manually exported cookie blob from a controlling hidden-input TTY.",
+    ),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Verify the saved session without opening a browser or asking for cookies.",
+    ),
+    clear_profile: bool = typer.Option(
+        False,
+        "--clear-profile",
+        help=(
+            "Clear the saved API session and remove the dedicated browser profile "
+            "after confirmation."
+        ),
+    ),
+) -> None:
+    """Establish, verify, or deliberately clear the same-device LEARN session."""
+
+    selected = sum((paste, check, clear_profile))
+    if selected > 1:
+        raise typer.BadParameter("--paste, --check, and --clear-profile are mutually exclusive")
+
+    school = UWaterloo()
+    try:
+        if clear_profile:
+            remove_profile()
+            typer.echo("dedicated browser profile removed; saved API session cleared")
+            return
+
+        if check:
+            saved = session_store.load()
+            if saved is None:
+                typer.echo("no saved session · run: a2l auth", err=True)
+                raise typer.Exit(code=3)
+            if verify_session(saved, school) is None:
+                typer.echo("session expired · run: a2l auth", err=True)
+                raise typer.Exit(code=SessionExpired.exit_code)
+            typer.echo("authentication verified")
+            return
+
+        authenticate(school, backend="paste" if paste else "auto")
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+
+    if paste:
+        typer.echo(
+            "authentication verified; clear your clipboard if it still contains session cookies"
+        )
+    else:
+        typer.echo("authentication verified")
 
 
 def _courses_json(courses: list[CourseRef], *, all_terms: bool) -> str:
