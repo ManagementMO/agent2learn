@@ -885,7 +885,10 @@ The vault outlives the tool that wrote it. `.a2l/VERSION` holds an integer schem
 at `init` and checked on every command.
 
 - Same version → proceed.
-- Vault older → run the registered migrations in order, after writing a backup of `.a2l/`.
+- Vault older → write a backup of `.a2l/`, run the registered migrations in an isolated staged
+  `.a2l/` state, and publish the result with atomic file installs and `VERSION` last. A migration
+  callback that raises leaves the original VERSION and manifest untouched; if publishing fails,
+  the backup is used to restore the original state.
 - Vault **newer** than the installed tool → refuse to write, explain, and suggest `a2l upgrade`.
   Never let an older binary silently mangle a newer vault.
 

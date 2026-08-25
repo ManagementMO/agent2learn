@@ -76,15 +76,21 @@ class Vault:
     root: Path
     _entries: dict[str, ManifestEntry]
     _loaded: bool
+    _state_override: Path | None
+    _schema_migration_active: bool
 
     def __init__(self, root: Path) -> None:
         self.root = Path(root).expanduser().resolve()
         self._entries = {}
         self._loaded = False
+        self._state_override = None
+        self._schema_migration_active = False
 
     def state(self) -> Path:
         """Return the vault-scoped state directory."""
 
+        if self._state_override is not None:
+            return self._state_override
         return self.root / ".a2l"
 
     def history_bucket(self, source_key: str) -> Path:
@@ -320,6 +326,9 @@ class Vault:
 def check_schema(v: Vault) -> None:
     """Check or migrate a vault schema, refusing to write newer vaults."""
 
+    if v._schema_migration_active:
+        return
+
     state = v.state()
     state.mkdir(parents=True, exist_ok=True)
     version_path = state / "VERSION"
@@ -343,18 +352,29 @@ def check_schema(v: Vault) -> None:
         )
 
     backup = _backup_state(state, version)
-    del backup  # The path is useful in a debugger; migration errors retain the backup.
-    current = version
-    while current < SCHEMA_VERSION:
-        migration = MIGRATIONS.get(current)
-        if migration is None:
-            raise A2LError(
-                f"vault schema {version} is older than {SCHEMA_VERSION} and has no "
-                f"registered migration from {current}"
-            )
-        migration(v)
-        current += 1
-    paths.atomic_write_text(version_path, f"{SCHEMA_VERSION}\n")
+    staging_root = Path(tempfile.mkdtemp(prefix=".a2l-migration-", dir=os.fspath(state.parent)))
+    staged_state = staging_root / ".a2l"
+    try:
+        shutil.copytree(state, staged_state, symlinks=True)
+        staged_vault = Vault(v.root)
+        staged_vault._state_override = staged_state
+        staged_vault._schema_migration_active = True
+
+        current = version
+        while current < SCHEMA_VERSION:
+            migration = MIGRATIONS.get(current)
+            if migration is None:
+                raise A2LError(
+                    f"vault schema {version} is older than {SCHEMA_VERSION} and has no "
+                    f"registered migration from {current}"
+                )
+            migration(staged_vault)
+            current += 1
+
+        paths.atomic_write_text(staged_state / "VERSION", f"{SCHEMA_VERSION}\n")
+        _install_migrated_state(state, staged_state, backup)
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
 
 
 def _entry_from_json(key: str, raw: object) -> ManifestEntry:
@@ -694,6 +714,91 @@ def _backup_state(state: Path, version: int) -> Path:
         number += 1
     shutil.copytree(state, candidate, symlinks=True)
     return candidate
+
+
+def _install_migrated_state(state: Path, staged_state: Path, backup: Path) -> None:
+    """Commit staged schema state, restoring the backup if installation fails."""
+
+    try:
+        _synchronize_state(staged_state, state)
+    except BaseException:
+        try:
+            _synchronize_state(backup, state)
+        except BaseException as restore_error:
+            raise A2LError("schema migration failed and rollback also failed") from restore_error
+        raise
+
+
+def _synchronize_state(source: Path, destination: Path) -> None:
+    """Synchronize one state tree into another with VERSION installed last."""
+
+    source_files, source_directories = _state_tree(source)
+    destination_files, destination_directories = _state_tree(destination)
+
+    obsolete = (destination_files - source_files) | (destination_directories - source_directories)
+    for relative in sorted(obsolete, key=_deepest_first):
+        _remove_state_path(destination / _relative_path(relative))
+
+    for relative in sorted(source_directories, key=_shallowest_first):
+        directory = destination / _relative_path(relative)
+        directory.mkdir(parents=True, exist_ok=True)
+
+    for relative in sorted(source_files - {"VERSION"}):
+        source_file = source / _relative_path(relative)
+        destination_file = destination / _relative_path(relative)
+        if not _same_file(source_file, destination_file):
+            paths.atomic_write_bytes(destination_file, _read_bytes(source_file))
+
+    version_source = source / "VERSION"
+    if "VERSION" not in source_files:
+        raise A2LError("staged schema state is missing VERSION")
+    paths.atomic_write_bytes(destination / "VERSION", _read_bytes(version_source))
+
+
+def _state_tree(root: Path) -> tuple[set[str], set[str]]:
+    files: set[str] = set()
+    directories: set[str] = set()
+    for candidate in root.rglob("*"):
+        if candidate.is_symlink():
+            raise A2LError("schema state cannot contain symlinks")
+        relative = candidate.relative_to(root).as_posix()
+        if candidate.is_file():
+            files.add(relative)
+        elif candidate.is_dir():
+            directories.add(relative)
+        else:
+            raise A2LError("schema state contains an unsupported filesystem entry")
+    return files, directories
+
+
+def _relative_path(relative: str) -> Path:
+    return Path(*PurePosixPath(relative).parts)
+
+
+def _deepest_first(relative: str) -> tuple[int, str]:
+    return (-len(PurePosixPath(relative).parts), relative)
+
+
+def _shallowest_first(relative: str) -> tuple[int, str]:
+    return (len(PurePosixPath(relative).parts), relative)
+
+
+def _remove_state_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def _same_file(first: Path, second: Path) -> bool:
+    if not first.is_file() or not second.is_file():
+        return False
+    return _hash_file(first) == _hash_file(second)
+
+
+def _read_bytes(source: Path) -> bytes:
+    with open(os.fspath(paths.long_path(source)), "rb") as handle:
+        return handle.read()
 
 
 def _occupied(path: Path) -> bool:

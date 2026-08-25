@@ -16,6 +16,7 @@ import pytest
 from agent2learn import paths
 from agent2learn.errors import A2LError
 from agent2learn.vault import (
+    MIGRATIONS,
     SCHEMA_VERSION,
     DerivedArtifact,
     ManifestEntry,
@@ -405,6 +406,60 @@ def test_schema_older_version_requires_a_registered_migration(tmp_path: Path) ->
 
     with pytest.raises(A2LError, match="migration"):
         check_schema(vault)
+
+
+def test_schema_migration_runs_once_and_commits_the_new_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_manifest(tmp_path, {KEY: _entry().__dict__})
+    paths.atomic_write_text(tmp_path / ".a2l" / "VERSION", "0\n")
+    calls = 0
+
+    def migrate(vault: Vault) -> None:
+        nonlocal calls
+        calls += 1
+        manifest_path = vault.state() / "manifest.json"
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload["entries"][KEY]["path"] = "T/C/migrated.pdf"
+        paths.atomic_write_text(
+            manifest_path,
+            json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        )
+
+    monkeypatch.setitem(MIGRATIONS, 0, migrate)
+
+    assert Vault(tmp_path).manifest()[KEY].path == "T/C/migrated.pdf"
+    assert calls == 1
+    assert (tmp_path / ".a2l" / "VERSION").read_text(encoding="utf-8") == "1\n"
+
+    assert Vault(tmp_path).manifest()[KEY].path == "T/C/migrated.pdf"
+    assert calls == 1
+
+
+def test_failed_schema_migration_preserves_original_version_and_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_manifest(tmp_path, {KEY: _entry().__dict__})
+    manifest_path = tmp_path / ".a2l" / "manifest.json"
+    original_manifest = manifest_path.read_bytes()
+    paths.atomic_write_text(tmp_path / ".a2l" / "VERSION", "0\n")
+
+    def fail_after_writing_manifest(vault: Vault) -> None:
+        payload = json.loads(vault.state().joinpath("manifest.json").read_text(encoding="utf-8"))
+        payload["entries"][KEY]["path"] = "T/C/half-migrated.pdf"
+        paths.atomic_write_text(
+            vault.state() / "manifest.json",
+            json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        )
+        raise RuntimeError("synthetic migration failure")
+
+    monkeypatch.setitem(MIGRATIONS, 0, fail_after_writing_manifest)
+
+    with pytest.raises(RuntimeError, match="synthetic migration failure"):
+        Vault(tmp_path).manifest()
+
+    assert (tmp_path / ".a2l" / "VERSION").read_text(encoding="utf-8") == "0\n"
+    assert manifest_path.read_bytes() == original_manifest
 
 
 def test_semesters_and_vault_markers_are_conservative(tmp_path: Path) -> None:

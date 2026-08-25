@@ -992,9 +992,13 @@ Steps:
       directories and hashes make repeated updates non-destructive. A missing or hash-mismatched
       prior file is reported as an integrity gap; it is never invented or silently marked preserved.
 - [ ] **Step 3b:** Implement schema versioning. `.a2l/VERSION` holds an integer, written at `init`
-      and checked by every command:
+      and checked by every command. Older-vault migrations run against an isolated staged `.a2l/`
+      copy; non-`VERSION` state is atomically installed and `VERSION` is written last. A callback
+      failure leaves the original VERSION and manifest untouched, and a publish failure restores
+      the pre-migration backup:
       - equal → proceed
-      - vault older → back up `.a2l/`, run `MIGRATIONS` in order
+      - vault older → back up `.a2l/`, run `MIGRATIONS` in order against the staged state, then
+        publish it atomically with `VERSION` last
       - **vault newer than the tool → refuse to write**, explain, suggest `a2l upgrade`
       ```python
       def test_newer_vault_is_refused(tmp_path):
