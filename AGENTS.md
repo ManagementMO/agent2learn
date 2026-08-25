@@ -28,10 +28,10 @@ architecture.
 ## Current state — 2026-08-25
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 8 are complete.** Task 9's automated implementation and cross-platform CI
-  verification are complete; its real-browser same-device validation remains a release gate.
-  Resume implementation at **Task 10 (`ingest.py`)**, after the calibrated, retry-safe API and
-  authentication boundaries established in Tasks 8–9.
+- **Tasks 0 through 10 are complete as automated implementations.** Task 9's real-browser
+  same-device validation remains a release gate. Resume implementation at **Task 11
+  (`convert.py`)**, after the calibrated API, authentication, metadata-first ingest, and outline
+  boundaries established in Tasks 8–10.
   - **Task 0** — packaging, licence, safety baseline. `pyproject.toml` declares the full runtime
     stack; `uv.lock` is committed; `a2l --version` works; Apache-2.0 is proven present in the built
     wheel and sdist as a PEP 639 `License-Expression`.
@@ -53,13 +53,18 @@ architecture.
     protected persistence, dual-backend clearing, and no unrelated cookie attachment.
   - **Task 8** — calibrated D2L API transport with explicit timeout/redirect/egress controls,
     bounded idempotent retries, conditional streaming downloads, disk/size validation, and
-    session-expiry detection; calibration persists only discovered versions and enrolment
-    metadata, and `a2l courses` is a deterministic offline view over that state.
+    session-expiry detection; mutating redirects are never replayed, `Retry-After` covers 429/503,
+    and calibration persists only discovered versions and enrolment metadata while `a2l courses`
+    remains a deterministic offline view over that state.
   - **Task 9 implementation** — persistent dedicated Chrome/Edge CDP authentication, explicit
     interactive egress interception, `Storage.getCookies` filtering, authoritative `whoami`
     verification, hidden cross-platform cookie paste, and TTY-confirmed profile clearing. Live
     same-device auth on Windows, macOS, and Linux is intentionally not represented as complete
     until manually run and recorded without retaining session material.
+  - **Task 10** — metadata-first, merge-not-replace course ingestion; revision-safe resumable
+    downloads; excluded-host link stubs; sanitized Dropbox RichText and first-party attachments;
+    opt-in pseudonymized discussions; explicit path-null fetch repair; and bounded outline
+    rendering through the existing dedicated CDP connection.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.
@@ -67,9 +72,10 @@ architecture.
   perturbation — seven fixture mutations, a notices-drift injection, a deliberately-broken offline
   guard. Three defects in these tasks were hidden *behind a passing job*, so a green badge is not
   evidence on its own.
-- Known open items, none blocking: `mypy` covers `src/` only (`tests/` and `tools/` have unresolved
-  annotations); there is no coverage measurement yet; three Dependabot PRs are blocked because they
-  propose versions past the declared caps and each needs a human decision.
+- Known open items, none blocking: Task 9's live same-device auth still needs pass/fail records on
+  Windows, macOS, and Linux; `mypy` covers `src/` only (`tests/` and `tools/` have unresolved
+  annotations); there is no coverage measurement yet; three Dependabot PRs are blocked because
+  they propose versions past the declared caps and each needs a human decision.
 - Do not publish a package, create a GitHub release, or register a production domain yet.
 - **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
   - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same

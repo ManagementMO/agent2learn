@@ -1238,6 +1238,11 @@ The implementation is in `a36cf2f`; subsequent commits `07a8acc`, `9de0e9f`, `7c
 `55aa1e0` keep synthetic secret fixtures and the historical scan policy truthful without hiding new
 findings.
 
+The corrective hardening commit `e804831` refuses to follow redirects for mutating requests,
+avoids buffering streamed HTML topics through `response.text`, amortizes streaming disk checks,
+and honors `Retry-After` on both 429 and 503 responses. The public safety wording is recorded in
+`e1b504c`; the focused regression suite covers each behavior.
+
 ---
 
 ### Task 9: `auth/` — two deliberate paths, one verb
@@ -1383,7 +1388,7 @@ phase.
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_excluded_hosts.py` — **this is a spec-critical test**:
+- [x] **Step 1:** Write `tests/test_excluded_hosts.py` — **this is a spec-critical test**:
       ```python
       def test_licensed_topics_are_never_downloaded(tmp_path, fake_client):
           toc = load_fixture("toc_with_lti.json")   # contains quicklink.d2l, type=lti, vitalsource
@@ -1397,14 +1402,14 @@ Steps:
       sanitized destination hostname. Seed API URLs with user-info, fragments, signed query values,
       and LTI launch payloads; prove none appears anywhere under the vault, manifest, logs, or
       report output.
-- [ ] **Step 2:** Write `tests/test_ingest.py` — an unchanged remote fingerprint plus matching local
+- [x] **Step 2:** Write `tests/test_ingest.py` — an unchanged remote fingerprint plus matching local
       SHA-256 skips; changed bytes for the same canonical source key preserve the prior revision
       before installing new bytes;
       a same-named topic in one folder yields `_2`; `~$` Office lock files are skipped; an interrupted
       stream leaves the previous file and manifest intact and removes `.part`; `KeyboardInterrupt`
       saves only completed entries and exits `130`.
-- [ ] **Step 3:** Run, verify failure.
-- [ ] **Step 4:** Implement the ingester from the approved spec, using the reference only to confirm
+- [x] **Step 3:** Run, verify failure.
+- [x] **Step 4:** Implement the ingester from the approved spec, using the reference only to confirm
       observable D2L edge cases. **Route every destination through
       `paths.safe_name` + `paths.unique_path` + `paths.long_path`.** Preserve: four download-route
       candidates with a previously proven calibrated one first when present; the `is_html_topic`
@@ -1422,7 +1427,7 @@ Steps:
       ceiling. An oversized/unknown-length source remains `metadata_only` with its stable ID and the
       exact `a2l fetch --allow-large <id>` action. That override is one-file only, prints free space,
       requires an interactive confirmation, and does not weaken future sync limits.
-- [ ] **Step 5:** Split the run into **two phases**, and make the split by *cost*, not by date:
+- [x] **Step 5:** Split the run into **two phases**, and make the split by *cost*, not by date:
 
       **Phase A — metadata, always complete, for every course.** TOC, dropbox folders and due dates,
       announcements, and quiz dates. Grade endpoints are called **only** when the student explicitly
@@ -1447,7 +1452,7 @@ Steps:
       > moment the product is built around. `LastModifiedDate` is a poor proxy for relevance and must
       > never gate metadata. Metadata is cheap; fetch all of it, always.
 
-- [ ] **Step 5b:** A topic whose file has not been downloaded yet is recorded in `content_map.json`
+- [x] **Step 5b:** A topic whose file has not been downloaded yet is recorded in `content_map.json`
       with `availability="metadata_only"`, `source_path: null`, and `path: null`. A downloaded
       original awaiting/failed conversion is `source_only` or `unsupported_format`, with
       `source_path` set and `path: null`; only a current verified twin is `markdown_ready` with
@@ -1457,14 +1462,14 @@ Steps:
       and print its verified citation path.
       Nothing may report a topic as missing merely because its file is not on disk yet. Add tests
       for stable-ID resolution, ambiguity, licensed-link refusal, and successful path-null repair.
-- [ ] **Step 5c:** Canonicalize and sanitize Dropbox RichText instructions into provenance-backed
+- [x] **Step 5c:** Canonicalize and sanitize Dropbox RichText instructions into provenance-backed
       `assignments/<item>/instructions.html` plus a hash-linked `instructions.md` twin, and ingest
       allowlisted first-party assignment attachments through the normal source pipeline. The
       generated assignment `README.md` is only a hub linking dates, source instructions,
       attachments, and matching course content; it is never the sole copy of prompt text and is not
       eligible as evidence itself. Store the canonical-input hash and source identity; never persist
       active tags/attributes or transient/signed URLs from the raw API field.
-- [ ] **Step 5d:** **Merge only after proving every response page completed.** Announcements,
+- [x] **Step 5d:** **Merge only after proving every response page completed.** Announcements,
       content topics, dropbox folders, and quizzes are unioned by stable ID against what is already
       on disk. A failed, partial, malformed, or interrupted listing may add confirmed items but may
       not mark any prior item absent. After one complete absence, retain the item with
@@ -1487,7 +1492,7 @@ Steps:
       > reference, where `get_news()` rewrote the file wholesale and D2L-expired announcements
       > silently vanished from the archive. Tolerable privately; unacceptable in a product whose
       > entire promise is "archive".
-- [ ] **Step 6:** Discussions are **off unless `include_discussions=True`**. When on, replace author
+- [x] **Step 6:** Discussions are **off unless `include_discussions=True`**. When on, replace author
       identities with stable vault-local pseudonyms using HMAC-SHA-256 and a 32-byte random key
       stored permission-restricted in private `.a2l` state, unless `discussion_authors=True`. HMAC
       the stable platform author ID when present; use normalized display name only as a documented
@@ -1496,9 +1501,9 @@ Steps:
       collide and post bodies can still contain self-identifying text; exclude all discussion
       content from logs, support reports, demos, and public fixtures. Test stability within one
       vault, unlinkability across two vault keys, fallback collision behavior, and key permissions.
-- [ ] **Step 6b:** Add tests proving grade endpoints are never called by default and grade values
+- [x] **Step 6b:** Add tests proving grade endpoints are never called by default and grade values
       never appear in logs, snapshots, doctor reports, or fixtures unless explicitly enabled.
-- [ ] **Step 6c:** Write `tests/test_outlines.py` against a fake CDP transport. Discover outline URLs
+- [x] **Step 6c:** Write `tests/test_outlines.py` against a fake CDP transport. Discover outline URLs
       from metadata, normalize them, and navigate only to the LEARN origin or boundary-matched
       `school.outline_hosts()`. Reject credentials in URLs, external redirects, lookalike domains,
       non-HTTPS origins, popups, undeclared subresources, and subresource-triggered top-level
@@ -1506,17 +1511,33 @@ Steps:
       canonical URL, and save a source
       HTML/PDF plus markdown twin through the same manifest/revision path as other content. A render
       timeout or SSO wall records `outline_unavailable`; it never guesses that no AI policy exists.
-- [ ] **Step 6d:** Implement `outlines.py` through the existing dedicated local CDP profile; do not
+- [x] **Step 6d:** Implement `outlines.py` through the existing dedicated local CDP profile; do not
       launch another browser engine, export outline-host cookies, or use the everyday browser
       profile. Process one outline at a time, close its target, keep the debugging listener on
       `127.0.0.1`, and apply request interception to every top-level and subresource request. If an
       undeclared dependency prevents a faithful render, record `outline_unavailable`; never expand
       the allowlist at runtime. Run it only after the metadata summary is available so onboarding
       time-to-first-deadline is unaffected.
-- [ ] **Step 7:** Tests pass on three OSes; commit.
+- [x] **Step 7:** Tests pass on three OSes; commit.
       ```
       git commit -m "feat: revision-safe metadata-first ingest with explicit fetch"
       ```
+
+**Task 10 automated implementation completed 2026-08-25.** The metadata phase is typed,
+merge-not-replace, and complete before any file transfer; the file phase is explicit, resumable,
+revision-safe, and refuses excluded, media, broken, lock-file, oversized, and unknown-size sources
+until the appropriate opt-in or one-file confirmation. RichText is sanitized into provenance-backed
+HTML/Markdown artifacts, first-party attachments use the ordinary source pipeline, discussion
+authors are vault-local HMAC pseudonyms by default, and path-null topics can be repaired through
+`a2l fetch`. Outline rendering uses the existing dedicated CDP connection with request-boundary
+egress validation, popup/subresource checks, bounded timeouts, and unavailable-state recording.
+
+The implementation and regression suite are in `230ae62`; the unbounded one-file fetch contract and
+duplicate-assignment directory regression were added before the commit. Local `uv sync`, ruff,
+format, mypy, full pytest, fixture reproducibility, notices, lock, build, and pre-commit gates all
+passed. CI run `32901575975` completed with exactly 14 successful jobs across Windows, macOS, and
+Linux, including the dependency/SBOM/notices and full-history secret-scan jobs. Task 9's live
+same-device auth step remains intentionally open and is not folded into this automated completion.
 
 ---
 
