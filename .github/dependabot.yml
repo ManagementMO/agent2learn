@@ -1,0 +1,24 @@
+# Dependabot keeps SHA pins current. Every proposed bump is reviewed, not auto-merged:
+# a pinned SHA is only a supply-chain control if a human looks at what it moves to.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels: ["dependencies", "github-actions"]
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+    labels: ["dependencies", "python"]
+    # The converter is exact-pinned deliberately: its output is part of the citation
+    # contract. A bump requires rerunning the PDF acceptance corpus and regenerating
+    # the golden vault, so it must not arrive as a routine automated PR.
+    ignore:
+      - dependency-name: "pdf-oxide"

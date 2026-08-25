@@ -1,0 +1,139 @@
+# Three-OS CI. Windows is a first-class target from the first commit, not a later port.
+#
+# Every action is pinned to a full commit SHA with the human-readable release in a
+# comment. A mutable tag is a supply-chain hole: the tag can be repointed at new code
+# without the reference here changing. Dependabot proposes SHA bumps; review them.
+#
+# All SHAs below were verified against the GitHub API on 2026-08-25 by resolving the
+# tag ref and comparing, rather than trusting a copied value.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default. No job here needs to write to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # The same script text must run on Windows runners as on POSIX ones.
+    shell: bash
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # one OS failing must not hide the others
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+
+      # --frozen: fail if uv.lock is stale rather than silently re-resolving.
+      - name: Sync locked environment
+        run: uv sync --frozen --all-extras --dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check src tests tools
+
+      - name: Types
+        run: uv run mypy src
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      # Install the built wheel into a throwaway environment with no source tree on
+      # sys.path, so a missing packaged module cannot be masked by the working copy.
+      - name: Install wheel in a clean environment and smoke test
+        run: |
+          set -euo pipefail
+          uv venv /tmp/a2l-smoke --python ${{ matrix.python }}
+          WHEEL=$(ls dist/*.whl | head -n 1)
+          echo "installing $WHEEL"
+          uv pip install --python /tmp/a2l-smoke "$WHEEL"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN=/tmp/a2l-smoke/Scripts; else BIN=/tmp/a2l-smoke/bin; fi
+          "$BIN/a2l" --version
+          "$BIN/a2l" --version | grep -q "agent2learn"
+
+  dependencies:
+    # The lock is the authority for release artifacts. This job exists to detect stale
+    # bounds: it resolves WITHOUT the lock, so a dependency that has moved past our
+    # declared ceiling, or a newly disclosed vulnerability, fails here rather than
+    # silently persisting in a pinned environment.
+    name: dependency audit · SBOM · notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+
+      - name: Resolve newest allowed versions (no lock)
+        run: uv sync --upgrade --all-extras --dev
+
+      - name: Tests against newest allowed versions
+        run: uv run pytest -q
+
+      - name: Resolve lowest allowed versions (no lock)
+        run: uv sync --upgrade --resolution lowest-direct --all-extras --dev
+
+      - name: Tests against lowest allowed versions
+        run: uv run pytest -q
+
+      - name: Audit for known vulnerabilities
+        run: |
+          uv sync --frozen --all-extras --dev
+          uv run pip-audit --progress-spinner off
+
+      - name: Generate CycloneDX SBOM
+        run: uv run cyclonedx-py environment --output-format json --outfile sbom.json
+
+      - name: Third-party notices are current
+        run: |
+          set -euo pipefail
+          uv run python tools/check_notices.py
+
+  secret-scan:
+    # Least privilege: no PR comments and no artifact upload, so a detected secret is
+    # never copied into a second surface where it would need redacting again.
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Push: scan full reachable history. PR: gitleaks scans the exact PR range.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 0 }}
+          persist-credentials: false
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_ENABLE_SUMMARY: "false"
