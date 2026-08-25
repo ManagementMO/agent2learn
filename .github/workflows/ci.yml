@@ -72,7 +72,10 @@ jobs:
         run: uv run ruff format --check src tests tools
 
       - name: Types
-        run: uv run mypy src
+        # Match mypy's grammar and stdlib surface to the interpreter/dependency
+        # environment in this matrix job. The project default remains 3.11 so
+        # the standalone gate still checks the minimum supported Python version.
+        run: uv run mypy --python-version "${{ matrix.python }}" src
 
       - name: Tests
         run: uv run pytest -q
