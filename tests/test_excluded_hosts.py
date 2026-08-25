@@ -24,7 +24,9 @@ def _toc_with_excluded_topics() -> dict[str, object]:
                         "Title": "Quicklink",
                         "TypeIdentifier": "Link",
                         "Url": (
-                            "https://student:secret@QUICKLINK.D2L.invalid/topic/10"
+                            "https://"
+                            "student:secret@QUICKLINK.D2L.invalid"  # pragma: allowlist secret
+                            "/topic/10"
                             "?signed=do-not-persist#fragment"
                         ),
                         "LastModifiedDate": "2026-01-05T14:00:00.000Z",
@@ -35,7 +37,9 @@ def _toc_with_excluded_topics() -> dict[str, object]:
                         "Title": "External tool",
                         "TypeIdentifier": "lti",
                         "Url": (
-                            "https://launch:payload@example.invalid/lti/11"
+                            "https://"
+                            "launch:payload@example.invalid"  # pragma: allowlist secret
+                            "/lti/11"
                             "?issuer=do-not-persist#launch"
                         ),
                         "LastModifiedDate": "2026-01-05T14:00:00.000Z",
@@ -46,7 +50,9 @@ def _toc_with_excluded_topics() -> dict[str, object]:
                         "Title": "Publisher text",
                         "TypeIdentifier": "Link",
                         "Url": (
-                            "https://reader:token@WWW.VITALSOURCE.COM/book/12"
+                            "https://"
+                            "reader:token@WWW.VITALSOURCE.COM"  # pragma: allowlist secret
+                            "/book/12"
                             "?jwt=do-not-persist#chapter"
                         ),
                         "LastModifiedDate": "2026-01-05T14:00:00.000Z",

@@ -223,7 +223,7 @@ def test_unsafe_outline_render_is_unavailable_and_not_installed(
     "url",
     [
         "http://learn.example.test/outline.html",
-        "https://user:password@learn.example.test/outline.html",
+        "https://user:password@learn.example.test/outline.html",  # pragma: allowlist secret
         "https://learn.example.test.evil/outline.html",
     ],
 )
