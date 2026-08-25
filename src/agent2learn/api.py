@@ -91,6 +91,7 @@ class Client:
 
         self.lp_version: str | None = None
         self.le_version: str | None = None
+        self.download_template: str | None = None
         self._transport = requests.Session()
         self._transport.cookies.update(session.requests_cookies())
 
@@ -112,7 +113,7 @@ class Client:
         temp: Path,
         *,
         prior: ManifestEntry | None = None,
-        max_bytes: int = DEFAULT_MAX_BYTES,
+        max_bytes: int | None = DEFAULT_MAX_BYTES,
         is_html_topic: bool = False,
     ) -> DownloadResult:
         """Stream one first-party source into ``temp`` and validate it before returning.
@@ -123,8 +124,10 @@ class Client:
         layer to fsync/install through the shared atomic primitive.
         """
 
-        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
-            raise ValueError("max_bytes must be a positive integer")
+        if max_bytes is not None and (
+            isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0
+        ):
+            raise ValueError("max_bytes must be a positive integer or None")
         _validate_part_path(temp)
         temp.parent.mkdir(parents=True, exist_ok=True)
 
@@ -175,7 +178,11 @@ class Client:
                 raise SessionExpired("session expired · run: a2l auth")
 
             advertised_size = _content_length(response)
-            if advertised_size is not None and advertised_size > max_bytes:
+            if (
+                max_bytes is not None
+                and advertised_size is not None
+                and advertised_size > max_bytes
+            ):
                 raise DownloadError("response exceeds the per-file ceiling")
             if advertised_size is not None:
                 _ensure_disk_space(temp, advertised_size)
@@ -189,7 +196,7 @@ class Client:
                     for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                         if not chunk:
                             continue
-                        if size + len(chunk) > max_bytes:
+                        if max_bytes is not None and size + len(chunk) > max_bytes:
                             raise DownloadError("response exceeds the per-file ceiling")
                         if chunks_since_disk_check == 0:
                             _ensure_disk_space(temp, len(chunk))
@@ -427,6 +434,7 @@ __all__ = [
     "Client",
     "CONNECT_TIMEOUT",
     "DEFAULT_MAX_BYTES",
+    "DISK_CHECK_EVERY_CHUNKS",
     "DiskSpaceExhausted",
     "DownloadError",
     "DownloadResult",

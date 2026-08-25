@@ -8,17 +8,22 @@ the filesystem, or a browser directly.
 from __future__ import annotations
 
 import json
+import shutil
+from pathlib import Path
 
 import typer
 
-from agent2learn import __version__
+from agent2learn import __version__, config
 from agent2learn import session as session_store
+from agent2learn.api import Client
 from agent2learn.auth import authenticate
 from agent2learn.auth import clear_profile as remove_profile
 from agent2learn.auth import verify as verify_session
 from agent2learn.calibrate import CourseRef, display_courses, load_calibration
 from agent2learn.errors import A2LError, NotConfigured, SessionExpired
+from agent2learn.ingest import fetch_topic
 from agent2learn.schools import UWaterloo
+from agent2learn.vault import Vault
 
 app = typer.Typer(
     name="a2l",
@@ -132,6 +137,50 @@ def auth(
         )
     else:
         typer.echo("authentication verified")
+
+
+@app.command()
+def fetch(
+    topic: str = typer.Argument(..., help="Stable topic ID, source key, title, or vault path."),
+    allow_large: bool = typer.Option(
+        False,
+        "--allow-large",
+        help="Permit this one oversized or unknown-length source after confirmation.",
+    ),
+) -> None:
+    """Fetch one known topic and print its verified citation path."""
+
+    try:
+        cfg = config.load()
+        saved = session_store.load()
+        if saved is None:
+            raise NotConfigured("no saved session · run: a2l auth")
+        school = UWaterloo()
+        vault = Vault(Path(cfg.vault))
+
+        def confirm_large(size: int | None) -> bool:
+            free = shutil.disk_usage(vault.root).free
+            advertised = "unknown size" if size is None else f"{size:,} bytes"
+            typer.echo(f"large-file override: {advertised}; free space: {free:,} bytes")
+            return typer.confirm("Fetch this one source?", default=False)
+
+        result = fetch_topic(
+            Client(school, saved),
+            vault,
+            school,
+            topic,
+            allow_large=allow_large,
+            confirm=confirm_large if allow_large else None,
+        )
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+
+    citation = result.citation_path or result.source_path
+    if citation is None:
+        typer.echo("source fetched, but no verified citation twin is available", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"verified citation: {citation}")
 
 
 def _courses_json(courses: list[CourseRef], *, all_terms: bool) -> str:

@@ -298,6 +298,23 @@ def test_body_ceiling_is_enforced_before_install(
     assert not part.exists()
 
 
+def test_none_max_bytes_allows_an_explicit_unbounded_fetch(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    synthetic_api.server.expect_request("/explicit-large").respond_with_data(
+        b"0123456789", content_type="application/octet-stream"
+    )
+    monkeypatch.setattr(api.time, "sleep", lambda _seconds: None)
+    part = tmp_path / "explicit-large.bin.part"
+
+    result = _client(synthetic_api).download(
+        synthetic_api.base_url + "/explicit-large", part, max_bytes=None
+    )
+
+    assert result.size == 10
+    assert part.read_bytes() == b"0123456789"
+
+
 def test_free_disk_reserve_is_enforced_before_stream(
     synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

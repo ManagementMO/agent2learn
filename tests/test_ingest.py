@@ -1,0 +1,623 @@
+"""Regression tests for metadata-first, revision-safe ingest."""
+
+from __future__ import annotations
+
+import json
+import os
+import stat
+from hashlib import sha256
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import pytest
+from ingest_support import FakeClient, course
+
+from agent2learn import ingest as ingest_module
+from agent2learn.api import DownloadError, DownloadResult
+from agent2learn.ingest import fetch_topic, ingest_files, ingest_metadata
+from agent2learn.vault import Vault
+
+
+def _toc(*topics: dict[str, object]) -> dict[str, object]:
+    return {
+        "Modules": [
+            {
+                "ModuleId": 1,
+                "Title": "Week 1",
+                "Modules": [],
+                "Topics": list(topics),
+            }
+        ]
+    }
+
+
+def _topic(
+    topic_id: int,
+    title: str,
+    *,
+    filename: str | None = None,
+    modified: str = "2026-01-05T14:00:00.000Z",
+    kind: str = "File",
+) -> dict[str, object]:
+    name = filename or f"topic-{topic_id}.pdf"
+    return {
+        "TopicId": topic_id,
+        "Title": title,
+        "TypeIdentifier": kind,
+        "Url": f"/content/enforced/111111-COURSE101/{name}",
+        "LastModifiedDate": modified,
+        "IsBroken": False,
+        "Size": 1024,
+    }
+
+
+def _map_files(root: Path) -> list[Path]:
+    return sorted(root.rglob("content_map.json"))
+
+
+def _map(root: Path) -> dict[str, object]:
+    paths = _map_files(root)
+    assert len(paths) == 1
+    return json.loads(paths[0].read_text(encoding="utf-8"))
+
+
+def _topic_rows(root: Path) -> list[dict[str, object]]:
+    raw = _map(root)
+    rows = raw["topics"]
+    assert isinstance(rows, list)
+    return rows
+
+
+def _handler_for(payloads: dict[str, bytes], *, last_modified: str | None = None):
+    def download(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        del prior
+        key = urlsplit(url).path.rsplit("/", 1)[-1]
+        if key not in payloads:
+            key = next((name for name in payloads if name in urlsplit(url).path), key)
+        if key not in payloads and len(payloads) == 1:
+            key = next(iter(payloads))
+        payload = payloads[key]
+        temp.parent.mkdir(parents=True, exist_ok=True)
+        temp.write_bytes(payload)
+        return DownloadResult(
+            temp=temp,
+            sha256=sha256(payload).hexdigest(),
+            size=len(payload),
+            etag=None,
+            last_modified=last_modified,
+            not_modified=False,
+        )
+
+    return download
+
+
+def test_unchanged_fingerprint_and_matching_local_hash_skip_download(tmp_path: Path) -> None:
+    topic = _topic(1, "Lecture", modified="2026-01-05T14:00:00.000Z")
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic)},
+        download_handler=_handler_for(
+            {"topic-1.pdf": b"same bytes"}, last_modified="2026-01-05T14:00:00.000Z"
+        ),
+    )
+    vault = Vault(tmp_path)
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school)
+    first_count = len(fake_client.download_calls)
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert first_count == 1
+    assert len(fake_client.download_calls) == first_count
+    assert report.skipped >= 1
+
+
+def test_changed_bytes_preserve_previous_revision_before_install(tmp_path: Path) -> None:
+    topic = _topic(1, "Lecture", modified="2026-01-05T14:00:00.000Z")
+    payload = {"topic-1.pdf": b"old bytes"}
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic)},
+        download_handler=_handler_for(payload, last_modified="2026-01-05T14:00:00.000Z"),
+    )
+    vault = Vault(tmp_path)
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school)
+    old_hash = sha256(payload["topic-1.pdf"]).hexdigest()
+
+    payload["topic-1.pdf"] = b"new bytes"
+    topic["LastModifiedDate"] = "2026-01-12T14:00:00.000Z"
+    fake_client.download_handler = _handler_for(payload, last_modified="2026-01-12T14:00:00.000Z")
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school)
+
+    key = "uwaterloo:111111:topic:1"
+    current = vault.entry(key)
+    assert current is not None
+    assert current.sha256 == sha256(b"new bytes").hexdigest()
+    history = vault.history_bucket(key)
+    revisions = [
+        path for path in history.rglob("*") if path.is_file() and path.name != "revision.json"
+    ]
+    assert revisions
+    assert any(path.read_bytes() == b"old bytes" for path in revisions)
+    assert old_hash != current.sha256
+
+
+def test_same_named_topics_get_stable_collision_suffixes(tmp_path: Path) -> None:
+    topics = (
+        _topic(1, "Lab Notes", filename="a.pdf"),
+        _topic(2, "lab notes", filename="b.pdf"),
+    )
+    fake_client = FakeClient([course()], tocs={111111: _toc(*topics)})
+    vault = Vault(tmp_path)
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school)
+
+    paths = sorted(entry.path for entry in vault.manifest().values())
+    assert len(paths) == 2
+    assert paths[0].endswith("Lab Notes.pdf")
+    assert paths[1].casefold().endswith("lab notes_2.pdf")
+
+
+def test_office_lock_file_is_recorded_without_download(tmp_path: Path) -> None:
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "~$Draft.docx", filename="~$Draft.docx"))},
+    )
+    vault = Vault(tmp_path)
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert fake_client.download_calls == []
+    assert report.metadata_only >= 1
+    row = _topic_rows(tmp_path)[0]
+    assert row["availability"] == "metadata_only"
+    assert row["next_action"] == "office lock file skipped"
+
+
+def test_interrupted_stream_preserves_previous_file_and_manifest(tmp_path: Path) -> None:
+    topic = _topic(1, "Lecture")
+    first = True
+
+    def download(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        nonlocal first
+        del url, prior
+        if first:
+            payload = b"complete old source"
+            first = False
+            temp.write_bytes(payload)
+            return DownloadResult(
+                temp, sha256(payload).hexdigest(), len(payload), None, None, False
+            )
+        temp.write_bytes(b"partial new source")
+        raise RuntimeError("stream interrupted")
+
+    fake_client = FakeClient([course()], tocs={111111: _toc(topic)}, download_handler=download)
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school)
+    before = vault.entry("uwaterloo:111111:topic:1")
+    assert before is not None
+    before_bytes = vault.materialized(before).read_bytes()
+
+    topic["LastModifiedDate"] = "2026-01-12T14:00:00.000Z"
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        ingest_files(fake_client, vault, fake_client.school)
+
+    after = Vault(tmp_path).entry("uwaterloo:111111:topic:1")
+    assert after == before
+    assert Vault(tmp_path).materialized(after).read_bytes() == before_bytes  # type: ignore[arg-type]
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_keyboard_interrupt_checkpoints_completed_entries(tmp_path: Path) -> None:
+    topics = (_topic(1, "First", filename="first.pdf"), _topic(2, "Second", filename="second.pdf"))
+    calls = 0
+
+    def download(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        nonlocal calls
+        del prior
+        calls += 1
+        if calls == 2:
+            raise KeyboardInterrupt
+        payload = urlsplit(url).path.encode("utf-8")
+        temp.write_bytes(payload)
+        return DownloadResult(temp, sha256(payload).hexdigest(), len(payload), None, None, False)
+
+    fake_client = FakeClient([course()], tocs={111111: _toc(*topics)}, download_handler=download)
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert report.interrupted is True
+    assert report.exit_code == 130
+    assert "uwaterloo:111111:topic:1" in Vault(tmp_path).manifest()
+    assert "uwaterloo:111111:topic:2" not in Vault(tmp_path).manifest()
+
+
+def test_metadata_phase_writes_typed_projections_and_grades_are_opt_in(tmp_path: Path) -> None:
+    topic = _topic(1, "Lecture")
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic)},
+        responses={
+            "/dropbox/folders/": [
+                {
+                    "Id": 20,
+                    "Name": "Problem Set",
+                    "DueDate": "2026-02-06T04:59:00.000Z",
+                    "Availability": {"StartDate": "2026-01-05T14:00:00.000Z", "EndDate": None},
+                    "GradeItemId": 1,
+                    "GroupTypeId": None,
+                }
+            ],
+            "/news/": [
+                {
+                    "Id": 30,
+                    "Title": "Welcome",
+                    "Body": {"Text": "Read the outline.", "Html": None},
+                    "StartDate": "2026-01-05T14:00:00.000Z",
+                    "EndDate": None,
+                    "IsPublished": True,
+                }
+            ],
+            "/quizzes/": {"Next": None, "Objects": []},
+            "/grades/values/myGradeValues/": [
+                {
+                    "GradeObjectIdentifier": "1",
+                    "GradeObjectName": "Problem Set",
+                    "GradeObjectType": "Numeric",
+                    "PointsNumerator": 5,
+                    "PointsDenominator": 5,
+                    "DisplayedGrade": "100%",
+                }
+            ],
+        },
+    )
+    vault = Vault(tmp_path)
+
+    report = ingest_metadata(fake_client, vault, fake_client.school)
+    course_dir = report.courses[0].directory
+    assert report.deadline_count == 1
+    assert (course_dir / "INDEX.md").is_file()
+    assert not (course_dir / "_meta" / "my_grades.json").exists()
+    assert not any("/grades/" in path for path in fake_client.json_calls)
+    assert json.loads((course_dir / "_meta" / "assignments.json").read_text())
+
+    ingest_metadata(fake_client, vault, fake_client.school, include_grades=True)
+    assert (course_dir / "_meta" / "my_grades.json").is_file()
+    assert any("/grades/" in path for path in fake_client.json_calls)
+
+
+def test_assignment_richtext_is_sanitized_and_attachments_use_file_pipeline(
+    tmp_path: Path,
+) -> None:
+    assignment = {
+        "Id": 700001,
+        "Name": "Problem Set 1",
+        "DueDate": "2026-02-06T04:59:00.000Z",
+        "Description": {
+            "Html": (
+                '<p>Read <a href="https://learn.example.test/instructions?signature=secret#frag">'
+                "the prompt</a>.</p><script>alert('ignore')</script>"
+                '<img src="https://evil.example/pixel?token=secret" onerror="steal()">'
+            )
+        },
+        "Attachments": [
+            {
+                "Id": 900001,
+                "FileName": "starter.pdf",
+                "Url": "/content/enforced/111111-COURSE101/starter.pdf?signature=secret#frag",
+                "Size": 17,
+            },
+            {
+                "Id": 900002,
+                "FileName": "publisher.pdf",
+                "Url": "https://publisher.example/book.pdf?token=secret",
+            },
+        ],
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "Assignment link", kind="Link"))},
+        responses={"/dropbox/folders/": [assignment]},
+    )
+    vault = Vault(tmp_path)
+
+    metadata = ingest_metadata(fake_client, vault, fake_client.school)
+    course_dir = metadata.courses[0].directory
+    instructions = course_dir / "assignments" / "Problem Set 1" / "instructions.html"
+    instructions_md = instructions.with_suffix(".md")
+    html = instructions.read_text(encoding="utf-8")
+    assert "alert" not in html
+    assert "onerror" not in html
+    assert "secret" not in html
+    assert "the prompt" in html
+    assert instructions_md.is_file()
+    assert (instructions.parent / "README.md").is_file()
+    assert not any(
+        "secret" in path.read_text(encoding="utf-8", errors="ignore")
+        for path in tmp_path.rglob("*")
+        if path.is_file() and path.name != "discussion-hmac.key"
+    )
+
+    assignment_row = next(
+        row
+        for row in json.loads(
+            (course_dir / "_meta" / "assignments.json").read_text(encoding="utf-8")
+        )
+        if row["id"] == 700001
+    )
+    assert assignment_row["instructions_html"].endswith("instructions.html")
+    assert "secret" not in json.dumps(assignment_row)
+    attachment_row = next(
+        row for row in _topic_rows(tmp_path) if row["source_id"] == "700001-900001"
+    )
+    assert attachment_row["url_path"] == "/content/enforced/111111-COURSE101/starter.pdf"
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+    assert report.downloaded == 1
+    assert len(fake_client.download_calls) == 1
+    index = (course_dir / "INDEX.md").read_text(encoding="utf-8")
+    assert "(content/Assignments/Problem Set 1/starter.pdf)" in index
+    assert "(Winter 2026/COURSE101_1261/" not in index
+
+
+def test_same_named_assignments_get_distinct_instruction_directories(tmp_path: Path) -> None:
+    assignments = [
+        {
+            "Id": 700001,
+            "Name": "Problem Set",
+            "Description": {"Html": "<p>First prompt</p>"},
+        },
+        {
+            "Id": 700002,
+            "Name": "Problem Set",
+            "Description": {"Html": "<p>Second prompt</p>"},
+        },
+    ]
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc()},
+        responses={"/dropbox/folders/": assignments},
+    )
+    metadata = ingest_metadata(fake_client, Vault(tmp_path), fake_client.school)
+
+    assignment_root = metadata.courses[0].directory / "assignments"
+    instruction_paths = sorted(assignment_root.glob("*/instructions.html"))
+    assert [path.parent.name for path in instruction_paths] == ["Problem Set", "Problem Set_2"]
+    assert instruction_paths[0].read_text(encoding="utf-8") != instruction_paths[1].read_text(
+        encoding="utf-8"
+    )
+
+
+def test_discussion_pseudonyms_are_vault_local_stable_and_permission_restricted(
+    tmp_path: Path,
+) -> None:
+    forum = {
+        "ForumId": 50001,
+        "Name": "General Discussion",
+        "Topics": [
+            {
+                "Posts": [
+                    {
+                        "PostId": 1,
+                        "Author": {"Identifier": "student-1", "DisplayName": "Alice Example"},
+                        "Body": {"Html": "<p>Hello from Alice Example</p>"},
+                    },
+                    {
+                        "PostId": 2,
+                        "Author": {"DisplayName": "Bob Example"},
+                        "Body": {"Text": "Bob's post"},
+                    },
+                ]
+            }
+        ],
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "Discussion link", kind="Link"))},
+        responses={"/discussions/forums/": [forum]},
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+
+    course_dir = next(tmp_path.rglob("content_map.json")).parent.parent
+    discussion_path = course_dir / "_meta" / "discussions.json"
+    first = discussion_path.read_text(encoding="utf-8")
+    discussion_rows = json.loads(first)
+    authors = [
+        post["author"] for forum_row in discussion_rows for post in forum_row.get("posts", [])
+    ]
+    assert "student-1" not in first
+    assert "Alice Example" not in authors
+    assert "Bob Example" not in authors
+    assert "author-" in first
+    key_path = tmp_path / ".a2l" / "private" / "discussion-hmac.key"
+    assert key_path.stat().st_size == 32
+    if os.name != "nt":
+        assert stat.S_IMODE(key_path.stat().st_mode) == 0o600
+
+    ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+    assert discussion_path.read_text(encoding="utf-8") == first
+
+    other_root = tmp_path / "other-vault"
+    other_vault = Vault(other_root)
+    ingest_metadata(fake_client, other_vault, fake_client.school)
+    ingest_files(fake_client, other_vault, fake_client.school, include_discussions=True)
+    other_discussion = next(other_root.rglob("discussions.json")).read_text(encoding="utf-8")
+    assert other_discussion != first
+
+
+def test_discussion_pseudonym_collision_gets_deterministic_disambiguators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SameDigest:
+        def hexdigest(self) -> str:
+            return "a" * 64
+
+    monkeypatch.setattr(ingest_module.hmac, "new", lambda *_args, **_kwargs: SameDigest())
+
+    first = ingest_module._discussion_pseudonyms(b"k" * 32, {"id:one", "id:two"})
+    second = ingest_module._discussion_pseudonyms(b"k" * 32, {"id:two", "id:one"})
+
+    assert first == second
+    assert len(set(first.values())) == 2
+    assert all(value.startswith("author-aaaaaaaaaaaaaaaaaaaa-") for value in first.values())
+
+
+def test_expired_news_is_retained_and_withdrawn_after_two_complete_absences(
+    tmp_path: Path,
+) -> None:
+    topic = _topic(1, "Lecture")
+    news = [
+        {"Id": 1, "Title": "A", "Body": {"Text": "a"}, "StartDate": "2026-01-05T14:00:00.000Z"},
+        {"Id": 2, "Title": "B", "Body": {"Text": "b"}, "StartDate": "2026-01-12T14:00:00.000Z"},
+        {"Id": 3, "Title": "C", "Body": {"Text": "c"}, "StartDate": "2026-01-19T14:00:00.000Z"},
+    ]
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic)},
+        responses={"/news/": news, "/quizzes/": {"Next": None, "Objects": []}},
+    )
+    vault = Vault(tmp_path)
+    report = ingest_metadata(fake_client, vault, fake_client.school)
+    news_path = report.courses[0].directory / "_meta" / "news.json"
+    fake_client.responses["/news/"] = [news[0], news[2]]
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    first_absence = json.loads(news_path.read_text())
+    retained = next(row for row in first_absence if row["id"] == 2)
+    assert retained["missing_since"]
+    assert retained["withdrawn_at"] is None
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    second_absence = json.loads(news_path.read_text())
+    retained = next(row for row in second_absence if row["id"] == 2)
+    assert {row["id"] for row in second_absence} == {1, 2, 3}
+    assert retained["withdrawn_at"]
+    assert (
+        "No longer posted"
+        in (report.courses[0].directory / "announcements" / "announcements.md").read_text()
+    )
+
+
+def test_reversed_toc_order_allocates_new_siblings_by_source_key(tmp_path: Path) -> None:
+    topics = [_topic(2, "Same", filename="two.pdf"), _topic(1, "Same", filename="one.pdf")]
+    fake_client = FakeClient([course()], tocs={111111: _toc(*topics)})
+    vault = Vault(tmp_path)
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school)
+
+    entries = vault.manifest()
+    assert entries["uwaterloo:111111:topic:1"].path.casefold().endswith("same.pdf")
+    assert entries["uwaterloo:111111:topic:2"].path.casefold().endswith("same_2.pdf")
+
+
+def test_fetch_resolves_stable_id_and_repairs_a_path_null_topic(tmp_path: Path) -> None:
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "Lecture"))},
+        download_handler=_handler_for({"topic-1.pdf": b"fetched bytes"}),
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    result = fetch_topic(fake_client, vault, fake_client.school, "1")
+
+    assert result.source_key == "uwaterloo:111111:topic:1"
+    assert result.source_path is not None
+    assert result.citation_path is None
+    assert Vault(tmp_path).entry(result.source_key) is not None
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_unknown_size_stays_metadata_only_until_confirmed_one_file_fetch(tmp_path: Path) -> None:
+    unknown_size_topic = _topic(1, "Unknown size")
+    unknown_size_topic.pop("Size")
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(unknown_size_topic)},
+        download_handler=_handler_for({"topic-1.pdf": b"explicitly fetched"}),
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+    assert report.metadata_only == 1
+    assert fake_client.download_calls == []
+
+    with pytest.raises(Exception, match="unknown"):
+        fetch_topic(fake_client, vault, fake_client.school, "1")
+
+    confirmations: list[int | None] = []
+    result = fetch_topic(
+        fake_client,
+        vault,
+        fake_client.school,
+        "1",
+        allow_large=True,
+        confirm=lambda size: confirmations.append(size) or True,
+    )
+    assert confirmations == [None]
+    assert result.source_path is not None
+    assert len(fake_client.download_calls) == 1
+
+
+def test_fetch_rejects_licensed_topic_and_ambiguous_title(tmp_path: Path) -> None:
+    external = {
+        "TopicId": 8,
+        "Title": "Publisher",
+        "TypeIdentifier": "Link",
+        "Url": "https://reader.vitalsource.com/book/8",
+        "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+        "IsBroken": False,
+    }
+    fake_client = FakeClient(
+        [course(), course(222222, code="COURSE202")],
+        tocs={111111: _toc(external, _topic(10, "Same")), 222222: _toc(_topic(9, "Same"))},
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    with pytest.raises(Exception, match="cannot be fetched"):
+        fetch_topic(fake_client, vault, fake_client.school, "8")
+    with pytest.raises(Exception, match="ambiguous"):
+        fetch_topic(fake_client, vault, fake_client.school, "Same")
+
+
+def test_download_route_candidates_fall_through_in_documented_order(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def download(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        del prior
+        calls.append(url)
+        if len(calls) < 3:
+            raise DownloadError("candidate unavailable")
+        payload = b"route success"
+        temp.write_bytes(payload)
+        return DownloadResult(temp, sha256(payload).hexdigest(), len(payload), None, None, False)
+
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "Lecture"))},
+        download_handler=download,
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school)
+
+    assert len(calls) == 3
+    assert "/topics/files/download/1/DirectFileTopicDownload" in calls[0]
+    assert "/content/topics/1/file" in calls[1]

@@ -69,6 +69,7 @@ def calibrate(client: Client) -> Calibration:
         courses=courses,
         calibrated_at=calibrated_at,
     )
+    client.download_template = previous_template
     _write(result)
     return result
 
