@@ -850,7 +850,12 @@ def _merge_topic_records(
         for field in ("source_path", "path", "sha256", "size", "stub_path", "source_sha256"):
             if row.get(field) is None and prior.get(field) is not None:
                 row[field] = prior[field]
-        if prior.get("availability") in {"source_only", "markdown_ready", "integrity_gap"}:
+        if prior.get("availability") in {
+            "source_only",
+            "markdown_ready",
+            "unsupported_format",
+            "integrity_gap",
+        }:
             row["availability"] = prior["availability"]
             row["next_action"] = prior.get("next_action", row["next_action"])
         row["missing_since"] = None
@@ -1341,7 +1346,7 @@ def _ingest_one_topic(
     prior = manifest.get(key)
     destination = _destination_for_topic(vault, course_dir, topic, prior)
     if prior is not None and _unchanged_local(prior, topic, vault):
-        _mark_topic_source_only(course_dir, topic, prior, school)
+        _mark_topic_source_only(vault, course_dir, topic, school)
         return "skipped"
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1361,7 +1366,7 @@ def _ingest_one_topic(
         if result.not_modified:
             if prior is None or not vault.materialized(prior).is_file():
                 raise DownloadError("server returned 304 without a local source")
-            _mark_topic_source_only(course_dir, topic, prior, school)
+            _mark_topic_source_only(vault, course_dir, topic, school)
             return "skipped"
         if result.temp is None or not result.temp.is_file():
             raise DownloadError("download did not produce a source file")
@@ -1391,7 +1396,7 @@ def _ingest_one_topic(
         )
         vault.mark(key, entry)
         vault.save_manifest()
-        _mark_topic_source_only(course_dir, topic, entry, school)
+        _mark_topic_source_only(vault, course_dir, topic, school)
         return "downloaded"
     except BaseException:
         # A failed transfer has an incomplete part and may be restarted from byte zero.  A
@@ -1496,27 +1501,16 @@ def _unchanged_local(entry: ManifestEntry, topic: TopicRecord, vault: Vault) -> 
 
 
 def _mark_topic_source_only(
-    course_dir: Path, topic: TopicRecord, entry: ManifestEntry, school: School
+    vault: Vault,
+    course_dir: Path,
+    topic: TopicRecord,
+    school: School,
 ) -> None:
     rows = _map_topics(_read_content_map(course_dir))
-    for row in rows:
-        if isinstance(row, dict) and row.get("source_key") == topic.source_key:
-            derived = entry.derived.get("markdown")
-            derived_path = derived.path if derived is not None else None
-            row.update(
-                {
-                    "availability": "markdown_ready" if derived_path else "source_only",
-                    "source_path": entry.path,
-                    "path": derived_path,
-                    "sha256": entry.sha256,
-                    "source_sha256": entry.sha256,
-                    "size": entry.size,
-                    "next_action": "ready for citation"
-                    if derived_path
-                    else "convert source to a markdown twin",
-                }
-            )
-    _write_content_map(course_dir, rows)
+    # A manifest artifact record is not proof that the current twin bytes are still trusted.
+    # Reconcile through the same source-and-derived hash checks used by metadata sync.
+    reconciled = course_index.reconcile_content_map(vault, rows)
+    _write_content_map(course_dir, reconciled)
     course = CourseRef(
         topic.course_org_unit_id,
         topic.course_code,
@@ -1524,7 +1518,9 @@ def _mark_topic_source_only(
         topic.term,
         True,
     )
-    topics = tuple(_topic_from_row(row, course=course) for row in rows if isinstance(row, dict))
+    topics = tuple(
+        _topic_from_row(row, course=course) for row in reconciled if isinstance(row, dict)
+    )
     _write_index(course_dir, school=school, course=course, topics=topics)
 
 

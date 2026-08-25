@@ -15,49 +15,95 @@ AI_POLICY_SCHEMA_VERSION = 1
 _KEYWORDS = re.compile(
     r"generative ai|chatgpt|artificial intelligence|genai|large language model", re.IGNORECASE
 )
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+")
+_POLICY_START = "<!-- a2l:ai-policy:start -->"
+_POLICY_END = "<!-- a2l:ai-policy:end -->"
 
 
 def surface_ai_policy(course_dir: Path, outline: Path | None) -> dict[str, object]:
     """Record a local observation without classifying, scoring, or enforcing a policy."""
+    record = _scan_outline(course_dir, outline)
+    _write_record(course_dir, record)
+    return record
+
+
+def _scan_outline(course_dir: Path, outline: Path | None) -> dict[str, object]:
     if outline is None:
-        record: dict[str, object] = {
-            "schema_version": AI_POLICY_SCHEMA_VERSION,
-            "status": "outline_unavailable",
-            "text": None,
-            "source": None,
-        }
-    else:
-        try:
-            with open(os.fspath(paths.long_path(outline)), encoding="utf-8", newline="") as handle:
-                lines = handle.read().splitlines()
-        except (FileNotFoundError, OSError, UnicodeError):
-            record = {
-                "schema_version": AI_POLICY_SCHEMA_VERSION,
-                "status": "outline_unavailable",
-                "text": None,
-                "source": None,
-            }
-        else:
-            hit = next((index for index, line in enumerate(lines) if _KEYWORDS.search(line)), None)
-            if hit is None:
-                record = {
-                    "schema_version": AI_POLICY_SCHEMA_VERSION,
-                    "status": "not_found_in_scanned_outline",
-                    "text": None,
-                    "source": None,
-                }
-            else:
-                end = next(
-                    (index for index in range(hit + 1, len(lines)) if lines[index].startswith("#")),
-                    len(lines),
-                )
-                text = "\n".join(lines[hit:end]).strip()
-                record = {
-                    "schema_version": AI_POLICY_SCHEMA_VERSION,
-                    "status": "found",
-                    "text": text,
-                    "source": f"{outline.relative_to(course_dir).as_posix()}:{hit + 1}",
-                }
+        return _unavailable()
+    try:
+        with open(os.fspath(paths.long_path(outline)), encoding="utf-8", newline="") as handle:
+            lines = handle.read().splitlines()
+    except (FileNotFoundError, OSError, UnicodeError):
+        return _unavailable()
+
+    heading_match = next(
+        (
+            (index, line)
+            for index, line in enumerate(lines)
+            if _HEADING.match(line) and _KEYWORDS.search(line)
+        ),
+        None,
+    )
+    if heading_match is not None:
+        start, _ = heading_match
+        end = next(
+            (index for index in range(start + 1, len(lines)) if _HEADING.match(lines[index])),
+            len(lines),
+        )
+        text = "\n".join(lines[start:end]).strip()
+        return _found(course_dir, outline, text, start)
+
+    for offset, block in _paragraph_blocks(lines):
+        if _KEYWORDS.search("\n".join(block)):
+            return _found(course_dir, outline, "\n".join(block).strip(), offset)
+    return {
+        "schema_version": AI_POLICY_SCHEMA_VERSION,
+        "status": "not_found_in_scanned_outline",
+        "text": None,
+        "source": None,
+    }
+
+
+def _paragraph_blocks(lines: Sequence[str]) -> list[tuple[int, list[str]]]:
+    blocks: list[tuple[int, list[str]]] = []
+    current: list[str] = []
+    start = 0
+    for index, line in enumerate(lines):
+        if line.strip():
+            if not current:
+                start = index
+            current.append(line)
+        elif current:
+            blocks.append((start, current))
+            current = []
+    if current:
+        blocks.append((start, current))
+    return blocks
+
+
+def _found(course_dir: Path, outline: Path, text: str, line: int) -> dict[str, object]:
+    try:
+        source = f"{outline.relative_to(course_dir).as_posix()}:{line + 1}"
+    except ValueError:
+        source = f"{outline.name}:{line + 1}"
+    return {
+        "schema_version": AI_POLICY_SCHEMA_VERSION,
+        "status": "found",
+        "text": text,
+        "source": source,
+    }
+
+
+def _unavailable() -> dict[str, object]:
+    return {
+        "schema_version": AI_POLICY_SCHEMA_VERSION,
+        "status": "outline_unavailable",
+        "text": None,
+        "source": None,
+    }
+
+
+def _write_record(course_dir: Path, record: dict[str, object]) -> None:
     destination = course_dir / "_meta" / "ai_policy.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
     paths.atomic_write_text(
@@ -66,7 +112,6 @@ def surface_ai_policy(course_dir: Path, outline: Path | None) -> dict[str, objec
         + "\n",
     )
     _surface_index_line(course_dir, record)
-    return record
 
 
 def surface_course_ai_policy(course_dir: Path, outlines: Sequence[Path]) -> dict[str, object]:
@@ -79,11 +124,13 @@ def surface_course_ai_policy(course_dir: Path, outlines: Sequence[Path]) -> dict
         return surface_ai_policy(course_dir, None)
     last: dict[str, object] | None = None
     for outline in sorted(outlines, key=lambda value: value.as_posix()):
-        record = surface_ai_policy(course_dir, outline)
+        record = _scan_outline(course_dir, outline)
         if record["status"] == "found":
+            _write_record(course_dir, record)
             return record
         last = record
     assert last is not None
+    _write_record(course_dir, last)
     return last
 
 
@@ -91,12 +138,38 @@ def _surface_index_line(course_dir: Path, record: dict[str, object]) -> None:
     index = course_dir / "INDEX.md"
     try:
         with open(os.fspath(paths.long_path(index)), encoding="utf-8", newline="") as handle:
-            lines = [
-                line for line in handle.read().splitlines() if not line.startswith("- AI policy: ")
-            ]
+            lines = handle.read().splitlines()
     except FileNotFoundError:
         return
+    cleaned: list[str] = []
+    index_position = 0
+    while index_position < len(lines):
+        if lines[index_position] == _POLICY_START:
+            index_position += 1
+            while index_position < len(lines) and lines[index_position] != _POLICY_END:
+                index_position += 1
+            index_position += 1
+            continue
+        if lines[index_position].strip() == "## AI policy":
+            index_position += 1
+            while index_position < len(lines) and not _HEADING.match(lines[index_position]):
+                index_position += 1
+            continue
+        cleaned.append(lines[index_position])
+        index_position += 1
     status = str(record["status"])
     detail = str(record["source"]) if record["source"] is not None else status
-    lines.extend(["", "## AI policy", "", f"- AI policy: {status} — {detail}", ""])
-    paths.atomic_write_text(paths.long_path(index), "\n".join(lines))
+    while cleaned and not cleaned[-1].strip():
+        cleaned.pop()
+    cleaned.extend(
+        [
+            "",
+            _POLICY_START,
+            "## AI policy",
+            "",
+            f"- AI policy: {status} — {detail}",
+            _POLICY_END,
+            "",
+        ]
+    )
+    paths.atomic_write_text(paths.long_path(index), "\n".join(cleaned))

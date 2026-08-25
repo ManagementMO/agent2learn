@@ -21,13 +21,13 @@ from typing import Any, Protocol, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from agent2learn import aipolicy, paths
+from agent2learn import index as course_index
 from agent2learn.ingest import (
     CourseMetadata,
     MetadataReport,
     OutlineReport,
     TopicRecord,
     _content_directory,
-    _read_content_map,
     _sanitize_richtext,
     _topic_from_row,
     _write_content_map,
@@ -284,7 +284,7 @@ def _install_outline(
     )
     vault.mark(topic.source_key, entry)
     vault.save_manifest()
-    _update_topic_map(metadata, topic, entry, school)
+    _update_topic_map(vault, metadata, topic, entry, school)
     return entry.path, derived.path
 
 
@@ -345,9 +345,13 @@ def _install_bytes(destination: Path, data: bytes) -> None:
 
 
 def _update_topic_map(
-    metadata: CourseMetadata, topic: TopicRecord, entry: ManifestEntry, school: School
+    vault: Vault,
+    metadata: CourseMetadata,
+    topic: TopicRecord,
+    entry: ManifestEntry,
+    school: School,
 ) -> None:
-    rows = _read_content_map(metadata.directory).get("topics")
+    rows = course_index.read_content_map(metadata.directory).get("topics")
     if not isinstance(rows, list):
         return
     derived = entry.derived.get("markdown")
@@ -364,6 +368,7 @@ def _update_topic_map(
                     "next_action": "ready for citation",
                 }
             )
+    rows = course_index.reconcile_content_map(vault, rows)
     _write_content_map(metadata.directory, rows)
     topics = tuple(
         _topic_from_row(row, course=metadata.course) for row in rows if isinstance(row, dict)

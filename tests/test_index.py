@@ -4,7 +4,9 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
 
+from agent2learn import ingest
 from agent2learn.index import reconcile_content_map, write_course_index, write_submission_readme
+from agent2learn.schools.uwaterloo import UWaterloo
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
 
@@ -179,3 +181,94 @@ def test_index_and_submission_readme_use_vault_relative_posix_links_and_remove_e
     assert "(content/Week 1/guide.md)" in index
     assert str(tmp_path) not in index
     assert "\\" not in index
+
+
+def test_unchanged_source_path_never_retrusts_a_modified_markdown_twin(tmp_path: Path) -> None:
+    """A manifest artifact record is not proof that the current twin bytes are still trusted."""
+    vault = Vault(tmp_path)
+    course_dir = tmp_path / "Term" / "COURSE_1"
+    source = course_dir / "content" / "source.pdf"
+    twin = course_dir / "content" / "source.md"
+    source.parent.mkdir(parents=True)
+    entry = _entry(source, twin, "1")
+    vault.mark("waterloo:1:topic:1", entry)
+    vault.save_manifest()
+    twin.write_bytes(b"locally modified")
+    (course_dir / "_meta").mkdir(parents=True)
+    (course_dir / "_meta" / "content_map.json").write_text(
+        '{"schema_version": 1, "topics": [{"source_key": "waterloo:1:topic:1", '
+        '"source_id": "1", "topic_id": 1, "title": "Source", '
+        '"availability": "source_only", "source_path": "Term/COURSE_1/content/source.pdf"}]}',
+        encoding="utf-8",
+        newline="\n",
+    )
+    topic = ingest.TopicRecord(
+        source_key="waterloo:1:topic:1",
+        source_id="1",
+        topic_id=1,
+        course_org_unit_id=1,
+        course_code="COURSE_1",
+        course_name="Course",
+        term="1261",
+        title="Source",
+        kind="File",
+        module_path=(),
+        module_ids=(),
+        view_url="https://learn.uwaterloo.ca/d2l/home/1",
+        outline_url=None,
+        url_path="/source.pdf",
+        external_host=None,
+        etag="etag",
+        last_modified=None,
+        is_broken=False,
+    )
+
+    ingest._mark_topic_source_only(vault, course_dir, topic, UWaterloo())
+
+    row = ingest._read_content_map(course_dir)["topics"][0]
+    assert isinstance(row, dict)
+    assert row["availability"] == "integrity_gap"
+    assert row["path"] is None
+    assert row["next_action"] == "verify or re-fetch the source"
+
+
+def test_unsupported_format_survives_a_complete_metadata_refresh() -> None:
+    """A conversion gap must not become an ordinary source-only row on the next sync."""
+    topic = ingest.TopicRecord(
+        source_key="waterloo:1:topic:1",
+        source_id="1",
+        topic_id=1,
+        course_org_unit_id=1,
+        course_code="COURSE_1",
+        course_name="Course",
+        term="1261",
+        title="Unsupported",
+        kind="File",
+        module_path=(),
+        module_ids=(),
+        view_url="https://learn.uwaterloo.ca/d2l/home/1",
+        outline_url=None,
+        url_path="/unsupported.xyz",
+        external_host=None,
+        etag=None,
+        last_modified=None,
+        is_broken=False,
+    )
+    merged = ingest._merge_topic_records(
+        [
+            {
+                "source_key": topic.source_key,
+                "source_id": "1",
+                "topic_id": 1,
+                "availability": "unsupported_format",
+                "source_path": "Term/COURSE_1/content/unsupported.xyz",
+                "next_action": "retry conversion",
+            }
+        ],
+        [topic],
+        complete=True,
+    )
+
+    assert merged[0]["availability"] == "unsupported_format"
+    assert merged[0]["source_path"] == "Term/COURSE_1/content/unsupported.xyz"
+    assert merged[0]["next_action"] == "retry conversion"

@@ -206,10 +206,11 @@ def write_submission_readme(
     file remains untouched.
     """
     stub = assignment_dir / "instructions.html"
-    if stub.is_file():
-        with open(os.fspath(paths.long_path(stub)), encoding="utf-8", newline="") as handle:
+    io_stub = paths.long_path(stub)
+    if io_stub.is_file():
+        with open(os.fspath(io_stub), encoding="utf-8", newline="") as handle:
             if not _EMPTY_HTML.sub("", handle.read()):
-                stub.unlink()
+                io_stub.unlink()
     course_dir = assignment_dir.parent.parent
     prefix = "../" * len(assignment_dir.relative_to(course_dir).parts)
     lines = [

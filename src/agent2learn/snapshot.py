@@ -24,6 +24,7 @@ def write_snapshot(
         meta = course / "_meta"
         content = _read_json(meta / "content_map.json", {"topics": []})
         assignments = _read_json(meta / "assignments.json", [])
+        quizzes = _read_json(meta / "quizzes.json", [])
         news = _read_json(meta / "news.json", [])
         item: dict[str, object] = {
             "course": paths.rel_posix(course, vault.root),
@@ -35,7 +36,7 @@ def write_snapshot(
             "due_dates": sorted(
                 {
                     str(row["due_date"])
-                    for row in assignments
+                    for row in [*assignments, *quizzes]
                     if isinstance(row, dict) and row.get("due_date")
                 }
             ),
@@ -53,7 +54,11 @@ def write_snapshot(
         "created_at": timestamp,
         "courses": courses,
     }
-    filename = timestamp.replace("-", "").replace(":", "").replace("+00:00", "Z") + ".json"
+    normalized_timestamp = timestamp.replace("+00:00", "Z")
+    filename = normalized_timestamp.replace("-", "").replace(":", "")
+    if not filename.endswith("Z"):
+        filename += "Z"
+    filename += ".json"
     destination = vault.state() / "snapshots" / filename
     destination.parent.mkdir(parents=True, exist_ok=True)
     paths.atomic_write_text(

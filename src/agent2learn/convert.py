@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 from urllib.parse import urlsplit, urlunsplit
 
 import pypdfium2 as pdfium  # type: ignore[import-untyped]
@@ -32,6 +32,7 @@ import pytesseract  # type: ignore[import-untyped]
 from pdf_oxide import PdfDocument
 from PIL import Image
 
+from agent2learn import index as course_index
 from agent2learn import paths
 from agent2learn.errors import A2LError
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
@@ -1114,20 +1115,21 @@ def _hash_file(source: Path) -> tuple[str, int]:
 def _update_content_map(vault: Vault, key: str, **updates: object) -> None:
     for destination in sorted(vault.root.rglob("content_map.json")):
         try:
-            raw: Any = json.loads(destination.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
-        if not isinstance(raw, dict) or not isinstance(raw.get("topics"), list):
+            raw = course_index.read_content_map(destination.parent.parent)
+        except A2LError:
             continue
         changed = False
-        rows = raw["topics"]
+        raw_rows = raw.get("topics")
+        if not isinstance(raw_rows, list):
+            continue
+        rows: list[object] = raw_rows
         for row in rows:
             if isinstance(row, dict) and row.get("source_key") == key:
                 row.update(updates)
                 changed = True
         if changed:
-            text = json.dumps(raw, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-            paths.atomic_write_text(paths.long_path(destination), text)
+            checked = course_index.reconcile_content_map(vault, rows)
+            course_index.write_content_map(destination.parent.parent, checked)
 
 
 def _now() -> str:

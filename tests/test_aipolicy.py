@@ -45,6 +45,46 @@ def test_ai_policy_distinguishes_scanned_no_match_from_unavailable_outline(tmp_p
     assert surface_ai_policy(course, None)["status"] == "outline_unavailable"
 
 
+def test_ai_policy_keeps_the_complete_matching_markdown_paragraph(tmp_path: Path) -> None:
+    course = tmp_path / "Term" / "COURSE_1"
+    course.mkdir(parents=True)
+    outline = course / "outline.md"
+    outline.write_text(
+        "# Outline\n\n"
+        "This opening sentence explains the rule before ChatGPT is mentioned.\n"
+        "The second sentence remains part of the same paragraph.\n\n"
+        "This unrelated paragraph must not be captured.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    record = surface_ai_policy(course, outline)
+
+    assert record["text"] == (
+        "This opening sentence explains the rule before ChatGPT is mentioned.\n"
+        "The second sentence remains part of the same paragraph."
+    )
+    assert record["source"] == "outline.md:3"
+
+
+def test_ai_policy_index_block_is_idempotent_for_multiple_outlines(tmp_path: Path) -> None:
+    course = tmp_path / "Term" / "COURSE_1"
+    course.mkdir(parents=True)
+    (course / "INDEX.md").write_text("# COURSE\n\n## Coverage\n", encoding="utf-8", newline="\n")
+    first = course / "outline-a.md"
+    second = course / "outline-b.md"
+    first.write_text("# A\n\nNo policy here.\n", encoding="utf-8", newline="\n")
+    second.write_text("# B\n\n## GenAI\nChatGPT clause.\n", encoding="utf-8", newline="\n")
+
+    from agent2learn.aipolicy import surface_course_ai_policy
+
+    surface_course_ai_policy(course, [first, second])
+
+    index = (course / "INDEX.md").read_text(encoding="utf-8")
+    assert index.count("## AI policy") == 1
+    assert index.count("- AI policy:") == 1
+
+
 def test_snapshot_is_atomic_and_omits_stale_grades_when_disabled(tmp_path: Path) -> None:
     """Retaining a prior grade when collection is disabled leaks an opted-out category."""
     vault = Vault(tmp_path)
@@ -58,6 +98,9 @@ def test_snapshot_is_atomic_and_omits_stale_grades_when_disabled(tmp_path: Path)
         '[{"id": 1, "due_date": "2026-09-01T00:00:00Z"}]', encoding="utf-8", newline="\n"
     )
     (meta / "news.json").write_text('[{"id": 2}]', encoding="utf-8", newline="\n")
+    (meta / "quizzes.json").write_text(
+        '[{"id": 4, "due_date": "2026-09-02T00:00:00Z"}]', encoding="utf-8", newline="\n"
+    )
     (meta / "my_grades.json").write_text(
         '[{"id": "grade", "displayed": "100%"}]', encoding="utf-8", newline="\n"
     )
@@ -74,4 +117,8 @@ def test_snapshot_is_atomic_and_omits_stale_grades_when_disabled(tmp_path: Path)
     )
 
     assert included["courses"][0]["grades"] == [{"id": "grade", "displayed": "100%"}]
+    assert included["courses"][0]["due_dates"] == [
+        "2026-09-01T00:00:00Z",
+        "2026-09-02T00:00:00Z",
+    ]
     assert "grades" not in excluded["courses"][0]
