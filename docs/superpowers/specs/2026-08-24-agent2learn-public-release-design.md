@@ -1107,9 +1107,10 @@ a2l check <draft-file> [--course CODE] [--assignment QUERY]
    - a fenced code block that uses a library, function, or API;
    - a step in an enumerated derivation.
    Prose that is purely connective ("Next, we consider…") is skipped and reported as such.
-3. **Retrieve.** For each claim, score candidate source lines by term overlap using the reference
-   tokeniser from `ground.py` — which splits letter/digit boundaries so `Lab4` yields
-   `{lab4, lab, 4}` — with the same versioned `GENERIC` stopword set. For claim terms `C`, source
+3. **Retrieve.** For each claim, score candidate source lines by term overlap using the shared
+   tokeniser — which splits letter/digit boundaries so `Lab4` yields `{lab4, lab, 4}` — with the
+   versioned `GENERIC` stopword set. **Both are specified in full in
+   `2026-08-25-algorithm-reference.md`**; implement from there rather than inferring them. For claim terms `C`, source
    terms `S`, claim values/symbols `V`, and source values/symbols `W`, compute:
 
    - `term_coverage = |C ∩ S| / max(1, |C|)`;

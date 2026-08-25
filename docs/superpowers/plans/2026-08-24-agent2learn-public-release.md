@@ -67,6 +67,10 @@ Apply to **every** task. A step that violates one of these is wrong even if its 
 9. **Task 2 must make Tasks 0–2 green on all three OSes. From then on, CI must be green before the
    next task begins.** If a task breaks Windows, fix it in that task, not later. Never push
    uncommitted work and mistake a prior workflow run for validation of the current task.
+9b. **The algorithms the spec references but does not define live in
+    `docs/superpowers/specs/2026-08-25-algorithm-reference.md`** — tokeniser, `GENERIC` stopwords,
+    lecture ranking, the four download routes, `is_html_topic`, and the HTTP constants. Implement
+    from there; do not re-derive them. It also flags two prototype defects not to reproduce.
 10. **Port deliberately, not blindly.** The private implementation is behavioural evidence, not
     public product authority. The design spec governs intentional changes: revision-aware state,
     metadata-first merge semantics, scoped CDP authentication, human-gated submission, schemas,

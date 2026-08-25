@@ -15,7 +15,11 @@ These documents are authoritative, in this order:
    — product, safety, data, UX, and architecture contract.
 2. [`docs/superpowers/plans/2026-08-24-agent2learn-public-release.md`](docs/superpowers/plans/2026-08-24-agent2learn-public-release.md)
    — executable TDD implementation sequence and definition of done.
-3. [`docs/LAUNCH.md`](docs/LAUNCH.md) — release gates and truthful public positioning.
+3. [`docs/superpowers/specs/2026-08-25-algorithm-reference.md`](docs/superpowers/specs/2026-08-25-algorithm-reference.md)
+   — the tokeniser, `GENERIC` stopwords, lecture ranking, download routes, and HTTP constants that
+   the design spec references but does not define. **Required for Tasks 8, 10, 11, 18, and 19**; a
+   cold-read audit put those tasks at 30–70% buildable without it.
+4. [`docs/LAUNCH.md`](docs/LAUNCH.md) — release gates and truthful public positioning.
 
 If prose here conflicts with the design spec, the spec wins. If implementation evidence invalidates
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
