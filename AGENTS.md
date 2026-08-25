@@ -28,8 +28,8 @@ architecture.
 ## Current state — 2026-08-25
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 7 are complete.** Resume at **Task 8 (`api.py` and `calibrate.py`)**, after
-  the session storage and expiry boundary established in Task 7.
+- **Tasks 0 through 8 are complete.** Resume at **Task 9 (`auth/`)**, after the calibrated,
+  retry-safe API and course-discovery boundary established in Task 8.
   - **Task 0** — packaging, licence, safety baseline. `pyproject.toml` declares the full runtime
     stack; `uv.lock` is committed; `a2l --version` works; Apache-2.0 is proven present in the built
     wheel and sdist as a PEP 639 `License-Expression`.
@@ -49,6 +49,10 @@ architecture.
     allowlists remain empty until redacted same-device host evidence is reviewed.
   - **Task 7** — strict scoped session projection with silent keyring-to-file fallback, atomic
     protected persistence, dual-backend clearing, and no unrelated cookie attachment.
+  - **Task 8** — calibrated D2L API transport with explicit timeout/redirect/egress controls,
+    bounded idempotent retries, conditional streaming downloads, disk/size validation, and
+    session-expiry detection; calibration persists only discovered versions and enrolment
+    metadata, and `a2l courses` is a deterministic offline view over that state.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.

@@ -1179,7 +1179,7 @@ def calibrate(client: Client) -> Calibration
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_api.py` against `pytest-httpserver`:
+- [x] **Step 1:** Write `tests/test_api.py` against `pytest-httpserver`:
       HTML response → raises `SessionExpired`; `429` with `Retry-After` → backs off then succeeds;
       a `text/html` body for a binary topic and a zero-byte body both fail without leaving `.part`
       debris; a valid download computes SHA-256 while streaming; `ETag`/`Last-Modified` produce a
@@ -1190,8 +1190,8 @@ Steps:
       Add egress tests proving an external URL is never requested, an allowed-origin redirect may be
       followed one hop at a time, and an off-origin redirect is returned as a link/gap before any
       request reaches its target. Include deceptive lookalike hosts and mixed-case IDNs.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement the specified retry/back-off, using the private reference only to verify
+- [x] **Step 2:** Run, verify failure.
+- [x] **Step 3:** Implement the specified retry/back-off, using the private reference only to verify
       observable edge cases. **Default `workers=2`, jittered**
       (spec: politeness). Set
       `User-Agent: agent2learn/<version> (+https://github.com/ManagementMO/agent2learn)`. Stream only
@@ -1199,7 +1199,7 @@ Steps:
       Validate status, content type, expected size when known, and non-zero bytes; flush/fsync before
       returning the result. Disable automatic redirects; parse, normalize, and allow each next-hop
       origin before requesting it. The ingest layer preserves history and performs the atomic install.
-- [ ] **Step 4:** Implement calibration: discover `lp`/`le` from `/d2l/api/versions/`, verify
+- [x] **Step 4:** Implement calibration: discover `lp`/`le` from `/d2l/api/versions/`, verify
       `whoami`, and enumerate enrolments using metadata-only requests. Do **not** probe a file body
       during auth or metadata onboarding. Persist only version/enrolment metadata and an optional
       previously proven download template to `config.state_dir()/calibration.json` through
@@ -1215,15 +1215,28 @@ Steps:
       > inconsistent between its own modules. In the public port there are **no version defaults**:
       > if calibration has never run or is unreadable, commands fail with a message telling the user
       > to run `a2l auth` (which calibrates). `doctor` reports the calibrated versions and their age.
-- [ ] **Step 4b:** Add the thin `a2l courses [--all-terms]` command over calibrated enrolments. The
+- [x] **Step 4b:** Add the thin `a2l courses [--all-terms]` command over calibrated enrolments. The
       default shows current active academic offerings; `--all-terms` groups every discovered
       offering by term, including an explicit distinct-term summary. Show IDs only in
       machine-readable JSON and make no course-file, grade, or discussion request. Add synthetic
       pagination and session-expiry tests. Do not add a redundant standalone `terms` verb.
-- [ ] **Step 5:** Tests pass; commit.
+- [x] **Step 5:** Tests pass; commit.
       ```
       git commit -m "feat: d2l api client with expiry detection and polite concurrency"
       ```
+
+**Task 8 completed 2026-08-25.** The API client now discovers live D2L product versions instead
+of relying on stale defaults, detects login HTML as session expiry, restricts every redirect to
+the calibrated origin, streams only to caller-owned `.part` files, enforces timeout/retry/size/disk
+policies, and preserves conditional-download metadata. Calibration persists version and enrolment
+metadata through the existing atomic writer; `a2l courses` reads that state without making content,
+grade, or discussion requests. The initial test collection was observed failing before the modules
+existed, and the final repository gates passed locally. The pushed CI run `32893952096` completed
+successfully with all 14 required jobs, including the Windows matrix and full-history secret scan.
+
+The implementation is in `a36cf2f`; subsequent commits `07a8acc`, `9de0e9f`, `7c99cc7`, and
+`55aa1e0` keep synthetic secret fixtures and the historical scan policy truthful without hiding new
+findings.
 
 ---
 
