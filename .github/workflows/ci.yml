@@ -20,7 +20,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs, but never abandon a main commit half-verified.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 defaults:
   run:
@@ -31,6 +32,7 @@ jobs:
   test:
     name: ${{ matrix.os }} · py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false # one OS failing must not hide the others
       matrix:
@@ -98,6 +100,7 @@ jobs:
     # silently persisting in a pinned environment.
     name: dependency audit · SBOM · notices
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -137,16 +140,32 @@ jobs:
     # never copied into a second surface where it would need redacting again.
     name: secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Push: scan full reachable history. PR: gitleaks scans the exact PR range.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 0 }}
+          fetch-depth: 0 # full history, required by the explicit scan below
           persist-credentials: false
 
+      # The action scans the pushed commit range, which is the right incremental
+      # behaviour for PRs but is NOT full history: the first run reported "1 commits
+      # scanned". A secret committed earlier and later removed would never be seen.
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
           GITLEAKS_ENABLE_SUMMARY: "false"
+
+      # Full reachable history, as the plan requires. --redact so a finding is reported
+      # without echoing the secret into a public log. Cheap now; revisit if it slows.
+      - name: Scan full reachable history
+        env:
+          GITLEAKS_VERSION: 8.24.3 # matches the version the pinned action installs
+        run: |
+          set -euo pipefail
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks --version
+          /tmp/gitleaks detect --source . --redact --no-banner --exit-code 1
