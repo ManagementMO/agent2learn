@@ -1037,8 +1037,9 @@ Authority: D2L's current
 [multipart upload guide](https://docs.valence.desire2learn.com/basic/fileupload.html), reviewed
 2026-08-24. Re-check both during the release API review.
 
-The private route is not evidence for a public mutation because it was never exercised against a
-real Dropbox. A dry run validates resolution and body construction, not server behavior.
+The private route was never evidence for a public mutation, because it was never exercised against
+a real Dropbox — a dry run validates resolution and body construction, not server behaviour. That
+gap is now closed empirically in favour of the documented route: see the validation note below.
 
 Required handling in the public implementation:
 
@@ -1053,10 +1054,16 @@ Required handling in the public implementation:
 3. **The dry run must resolve the folder and report the calibrated version/route without sending a
    file.** `OPTIONS` or `GET` is capability evidence, not proof that POST works, and must not be
    described as a verified upload.
-4. Treat this whole path as **unproven until one supervised upload to a designated non-graded test
-   Dropbox succeeds and read-back is observed.** Do not test against graded coursework merely because
-   it is described as low-stakes. Until that release gate passes, the command remains disabled in
-   published builds and the FAQ states why.
+4. **Route validated 2026-08-25.** One supervised POST to a human-selected non-graded individual
+   Dropbox in a completed term returned **200** on
+   `…/dropbox/folders/{id}/submissions/mysubmissions/` with `le 1.96`, and API read-back located the
+   file by exact filename, byte size, and a post-confirmation timestamp. `X-Csrf-Token` is required
+   and present in the harvested session; the documented `multipart/mixed` shape — JSON RichText part
+   first, then the file part with `name=""` — is correct as written. `mypost` proved unnecessary.
+   **Group submissions, closed folders, large files, and non-Waterloo instances remain unproven.**
+   The route being real does not relax any safety control: `submit` still ships disabled behind
+   `a2l enable-submit` plus a fresh per-file interactive TTY confirmation, and the FAQ states what
+   has and has not been validated.
 
 ---
 

@@ -31,6 +31,18 @@ architecture.
   `a2l = "agent2learn.cli:app"` only with the specified implementation and smoke test.
 - Do not publish a package, create a GitHub release, register a production domain, or reserve PyPI
   with a placeholder release until the Task 0 safety baseline and synthetic-fixture review pass.
+- **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
+  - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same
+    device (`whoami` 200/JSON). **Build `api.py` on `requests`.** Windows and Linux still need the
+    same check before release.
+  - **P2:** the documented `…/submissions/mysubmissions/` route returned 200 for a supervised
+    non-graded upload and API read-back matched filename, size, and timestamp. `X-Csrf-Token` is
+    required. **`mypost` is unnecessary — do not implement it.** Group submissions, closed folders,
+    large files, and non-Waterloo instances remain unproven, so every submission safety control
+    stays exactly as specified.
+  - Live instance versions are **`lp 1.62` / `le 1.96`**, and `GET /d2l/api/versions/` is
+    unauthenticated. Never hardcode versions; unauthenticated API calls return 403 `text/html`,
+    which is the login-HTML shape the expiry detector must catch.
 
 ## Frozen v0.1 decisions
 

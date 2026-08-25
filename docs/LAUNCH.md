@@ -55,10 +55,14 @@ description and the one that survives a hostile reading.
 **Duration:** ~2 weeks. **Gate:** do not proceed until every box is ticked.
 
 - [ ] v0.1 passes its definition of done, including the three-OS CI matrix.
-- [ ] Same-device browser-to-API auth is manually validated on Windows, macOS, and Linux without
+- [x] macOS validated 2026-08-25: harvested session authenticated a plain `requests` call
+      (`whoami` 200/JSON) on the same device, no credentials moved.
+- [ ] Same-device browser-to-API auth still to be validated on **Windows and Linux**, without
       moving cookies, profiles, or Duo state between devices.
-- [ ] The designated non-graded upload test and exact read-back pass with the human confirmation
-      gate. If not, the published build and every launch asset say submission is disabled.
+- [x] Designated non-graded upload test passed 2026-08-25: `mysubmissions` returned 200 and API
+      read-back matched filename, size, and timestamp. Group submissions, closed folders, and large
+      files remain unvalidated, so the shipped default stays disabled behind `a2l enable-submit`
+      plus a per-file interactive confirmation, and launch copy says exactly that.
 - [ ] The dependency/license review, third-party notices, SBOM, secret scan, and synthetic fixture
       review are signed off for the exact release artifacts.
 - [ ] The private 262-PDF converter acceptance corpus passes at the shipped 80-words-per-page

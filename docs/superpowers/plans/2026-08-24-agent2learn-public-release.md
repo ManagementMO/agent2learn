@@ -180,6 +180,21 @@ touching graded coursework.
 
 ### P1. Validate same-device browser-to-API replay on each supported OS — 20 minutes per OS
 
+> **macOS: PASS — 2026-08-25.** Chrome for Testing 151 (dedicated `--user-data-dir`,
+> `--remote-debugging-port=0`) → WatIAM SAML → Duo → four LEARN-scoped cookies harvested over CDP.
+> Loaded into a plain `requests.Session` on the same device:
+> `GET /d2l/api/lp/1.62/users/whoami` → **200, `application/json`, expected shape**.
+> **The `requests` transport is therefore correct: LEARN does not bind the session to the browser.**
+> Windows and Linux remain outstanding and are still release gates.
+>
+> Two facts discovered by the same run, both already reflected in this plan:
+> - Version discovery `GET /d2l/api/versions/` is **unauthenticated** — calibration can run before a
+>   session exists.
+> - UW currently serves **`lp 1.62` / `le 1.96`**, not the reference's hardcoded `lp 1.47/1.60`,
+>   `le 1.74/1.94`. Hardcoded version defaults drift; calibration is mandatory.
+> - An unauthenticated API request returns **403 with `text/html`**, which is exactly the login-HTML
+>   shape the expiry detector must catch.
+
 The load-bearing assumption is that a LEARN session harvested from the dedicated local browser
 profile can authenticate a plain `requests` call **on that same device**. Validate macOS, Windows,
 and Linux independently: authenticate normally on each test device, let the implementation select
@@ -197,6 +212,31 @@ profile, `session.json`, cookie database, keyring export, or Duo state to anothe
 Record only the redacted result, OS/browser versions, and date in the release evidence.
 
 ### P2. Validate the documented individual upload route — 30 minutes, supervised and non-graded
+
+> **PASS — 2026-08-25.** One supervised POST to a human-selected **non-graded** individual Dropbox
+> folder in a completed term, using `le 1.96`:
+>
+> ```
+> POST /d2l/api/le/1.96/{ou}/dropbox/folders/{id}/submissions/mysubmissions/   -> 200
+> read-back GET .../submissions/                                              -> 200
+>   filename matched exactly · 307 bytes · submitted 1s after the POST
+> ```
+>
+> **Confirmed by this run:**
+> - The **documented `mysubmissions` route accepts a browser-harvested session cookie.**
+> - **`X-Csrf-Token` is required** for the mutation and is present in the harvested session.
+> - The documented multipart shape is correct: `multipart/mixed`, JSON RichText part **first**,
+>   then the file part with `Content-Disposition: form-data; name=""; filename="…"`. The empty
+>   `name` is deliberate, exactly as D2L documents it.
+> - **API read-back verification works** — the file was located by exact filename, byte size, and a
+>   submission timestamp after the confirmation, which is the evidence `submit` must require.
+> - **`mypost` is unnecessary.** The reference's undocumented route was never needed at this
+>   institution. v0.1 keeps no `mypost` implementation and no automatic fallback.
+>
+> **Not proven, and still assumed:** group submissions (`…/submissions/group/{groupId}/`), closed or
+> past-end-date folders, large files, and any non-Waterloo Brightspace instance. `submit` therefore
+> stays disabled by default behind `a2l enable-submit` and the per-file interactive TTY confirmation.
+> The route is validated; the safety design is unchanged.
 
 Submission is release-blocking because the reference has never completed a mutating POST. Use only
 an institution-provided sandbox or a designated non-graded test Dropbox whose owner has approved
