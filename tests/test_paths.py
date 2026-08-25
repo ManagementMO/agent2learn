@@ -342,6 +342,27 @@ def test_atomic_install_temp_requires_a_sibling_part_file(tmp_path: Path) -> Non
     _assert_no_temporary_files(tmp_path)
 
 
+def test_failed_install_preserves_the_downloaded_part_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    destination = tmp_path / "source.pdf"
+    part = tmp_path / "source.pdf.part"
+    original_bytes = b"downloaded and validated"
+    part.write_bytes(original_bytes)
+
+    def always_fail(*args: object, **kwargs: object) -> None:
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(paths.os, "replace", always_fail)
+    monkeypatch.setattr(paths.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(PermissionError):
+        paths.atomic_install_temp(destination, part, retries=2)
+
+    assert part.read_bytes() == original_bytes
+    assert not destination.exists()
+
+
 def test_fsync_file_uses_a_windows_compatible_handle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
