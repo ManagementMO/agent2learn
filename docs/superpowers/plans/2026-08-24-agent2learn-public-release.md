@@ -1681,7 +1681,13 @@ Steps:
       cases, threshold and source invalidation, local-twin history preservation, and offline
       adversarial HTML/archive checks. The full local gate passed on 2026-08-25; the private
       262-PDF empirical gate remains the recorded prerequisite above and was not rerun from this
-      public synthetic-only workspace.
+      public synthetic-only workspace. The first push's CI run `32904839959` exposed a matrix-only
+      type-check issue: Python 3.12/3.13 environments resolved NumPy stubs containing Python
+      3.12-only syntax while mypy was configured for its fixed 3.11 grammar. Commit `d1fb793`
+      changed only the CI invocation to pass each matrix interpreter's version explicitly while
+      retaining the standalone 3.11 minimum-version gate. Follow-up CI run `32905583433` completed
+      with exactly 14 successful jobs across Windows, macOS, and Linux, including dependency/SBOM/
+      notices and full-history secret scanning.
 
 ---
 
