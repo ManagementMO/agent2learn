@@ -1,0 +1,26 @@
+[
+  {
+    "Entity": {
+      "Active": true,
+      "EntityId": 99999999,
+      "EntityType": "User"
+    },
+    "Submissions": [
+      {
+        "Comment": {
+          "Html": "",
+          "Text": ""
+        },
+        "Files": [
+          {
+            "FileId": 300001,
+            "FileName": "submission.txt",
+            "Size": 307
+          }
+        ],
+        "Id": 400001,
+        "SubmissionDate": "2026-01-19T14:00:00.000Z"
+      }
+    ]
+  }
+]

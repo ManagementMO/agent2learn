@@ -1,0 +1,35 @@
+[
+  {
+    "Availability": {
+      "EndDate": null,
+      "StartDate": "2026-01-05T14:00:00.000Z"
+    },
+    "DueDate": "2026-02-06T04:59:00.000Z",
+    "GradeItemId": 600001,
+    "GroupTypeId": null,
+    "Id": 700001,
+    "Name": "Problem Set 1"
+  },
+  {
+    "Availability": {
+      "EndDate": null,
+      "StartDate": "2026-01-05T14:00:00.000Z"
+    },
+    "DueDate": "2026-03-13T03:59:00.000Z",
+    "GradeItemId": null,
+    "GroupTypeId": null,
+    "Id": 700002,
+    "Name": "Practice Upload"
+  },
+  {
+    "Availability": {
+      "EndDate": null,
+      "StartDate": "2026-01-05T14:00:00.000Z"
+    },
+    "DueDate": "2026-03-13T03:59:00.000Z",
+    "GradeItemId": 600002,
+    "GroupTypeId": 500001,
+    "Id": 700003,
+    "Name": "Team Report"
+  }
+]

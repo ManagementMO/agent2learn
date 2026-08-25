@@ -1,0 +1,42 @@
+{
+  "Items": [
+    {
+      "Access": {
+        "EndDate": null,
+        "IsActive": true,
+        "StartDate": "2026-01-05T14:00:00.000Z"
+      },
+      "OrgUnit": {
+        "Code": "COURSE202_sec02_1261",
+        "Id": 222222,
+        "Name": "Intermediate Example Methods",
+        "Type": {
+          "Code": "Course Offering",
+          "Id": 3,
+          "Name": "Course Offering"
+        }
+      }
+    },
+    {
+      "Access": {
+        "EndDate": null,
+        "IsActive": true,
+        "StartDate": "2026-01-05T14:00:00.000Z"
+      },
+      "OrgUnit": {
+        "Code": "EXAMPLEDEPT",
+        "Id": 333333,
+        "Name": "Example Department",
+        "Type": {
+          "Code": "Department",
+          "Id": 2,
+          "Name": "Department"
+        }
+      }
+    }
+  ],
+  "PagingInfo": {
+    "Bookmark": "SYNTHETIC-BOOKMARK-0002",
+    "HasMoreItems": false
+  }
+}

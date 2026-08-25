@@ -1,0 +1,25 @@
+{
+  "Items": [
+    {
+      "Access": {
+        "EndDate": null,
+        "IsActive": true,
+        "StartDate": "2026-01-05T14:00:00.000Z"
+      },
+      "OrgUnit": {
+        "Code": "COURSE101_sec01_1261",
+        "Id": 111111,
+        "Name": "Introduction to Example Studies",
+        "Type": {
+          "Code": "Course Offering",
+          "Id": 3,
+          "Name": "Course Offering"
+        }
+      }
+    }
+  ],
+  "PagingInfo": {
+    "Bookmark": "SYNTHETIC-BOOKMARK-0001",
+    "HasMoreItems": true
+  }
+}

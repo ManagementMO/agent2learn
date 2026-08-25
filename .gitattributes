@@ -1,2 +1,12 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
+
+# Binary fixtures must never be line-ending converted. The hand-built PDF is 100%
+# printable ASCII with no NUL bytes, so git's text=auto heuristic classifies it as TEXT
+# and would rewrite its line endings on a Windows checkout - silently corrupting a
+# byte-exact fixture and breaking both SHA256SUMS and the golden-vault test.
+tests/fixtures/files/** -text -diff
+tests/fixtures/SHA256SUMS text eol=lf
+
+# JSON fixtures are canonical LF by contract; never let a platform rewrite them.
+tests/fixtures/api/** text eol=lf

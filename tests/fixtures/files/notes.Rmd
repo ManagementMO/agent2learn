@@ -1,0 +1,12 @@
+---
+title: "Example R Notes"
+output: html_document
+---
+
+## Setup
+
+```{r}
+summary(cars)
+```
+
+Repository-authored text. No course material appears in this file.

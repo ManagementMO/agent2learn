@@ -64,6 +64,9 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Fixtures are data, not source. The notebook deliberately contains an undefined name so
+# the converter has an error-output case to preserve; linting it is a category error.
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

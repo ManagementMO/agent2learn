@@ -1,0 +1,38 @@
+[
+  {
+    "Attachments": [],
+    "Body": {
+      "Html": null,
+      "Text": "Office hours are listed in the outline."
+    },
+    "EndDate": null,
+    "Id": 200001,
+    "IsPublished": true,
+    "StartDate": "2026-01-05T14:00:00.000Z",
+    "Title": "Welcome to the course"
+  },
+  {
+    "Attachments": [],
+    "Body": {
+      "Html": null,
+      "Text": "The Week 2 reading is now available."
+    },
+    "EndDate": null,
+    "Id": 200002,
+    "IsPublished": true,
+    "StartDate": "2026-01-12T14:00:00.000Z",
+    "Title": "Reading posted"
+  },
+  {
+    "Attachments": [],
+    "Body": {
+      "Html": null,
+      "Text": "This notice is withdrawn in a later sync."
+    },
+    "EndDate": null,
+    "Id": 200003,
+    "IsPublished": true,
+    "StartDate": "2026-01-19T14:00:00.000Z",
+    "Title": "Temporary notice"
+  }
+]

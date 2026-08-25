@@ -430,35 +430,81 @@ describes only the structural mismatch.
 
 Steps:
 
-- [ ] **Step 1:** Define the minimal endpoint fixtures needed for `/versions/`, `myenrollments`,
+- [x] **Step 1:** Define the minimal endpoint fixtures needed for `/versions/`, `myenrollments`,
       `content/toc`, `dropbox/folders/`, `news/`, `quizzes/`, optional grades, optional discussions,
       `mysubmissions` read-back, login HTML, rate limiting, pagination, and malformed responses.
       Use obvious synthetic IDs, `COURSE101`/`COURSE202`, `Alex Example`, fixed 2026 timestamps, and
       repository-authored prose. Include only fields exercised by the public adapters.
-- [ ] **Step 2:** Write failing `tests/test_fixture_contract.py` assertions that every JSON fixture
+- [x] **Step 2:** Write failing `tests/test_fixture_contract.py` assertions that every JSON fixture
       matches its endpoint-specific key/type contract, contains only approved synthetic identity
       tokens, has no URL query strings or high-entropy values, and uses fixed UTC timestamps. Reject
       unknown keys so schema drift becomes an explicit review instead of accidental fixture growth.
-- [ ] **Step 3:** Implement `tools/generate_fixtures.py` as a deterministic generator for those JSON
+- [x] **Step 3:** Implement `tools/generate_fixtures.py` as a deterministic generator for those JSON
       files and their expected hashes. It contains no network code and no environment/session access.
       Generated JSON is sorted, UTF-8, LF-only, and ends with one newline. Regeneration must produce
       a clean Git diff.
-- [ ] **Step 4:** Add adversarial path cases: a module named `CON`, a topic with a trailing dot, a
+- [x] **Step 4:** Add adversarial path cases: a module named `CON`, a topic with a trailing dot, a
       300-character title, two topics differing only in case, an NFD-encoded accented filename, and
       one each of `type=lti`, `quicklink.d2l`, and `vitalsource` exclusions.
-- [ ] **Step 5:** Generate a small 2-page PDF, `.ipynb`, `.Rmd`, and `.html.zip` from repository-owned
+- [x] **Step 5:** Generate a small 2-page PDF, `.ipynb`, `.Rmd`, and `.html.zip` from repository-owned
       text. Commit deterministic generator sources alongside the binaries; normalize document
       metadata and never use course material.
-- [ ] **Step 6:** Write `tests/conftest.py` exposing a `synthetic_api` fixture through
+- [x] **Step 6:** Write `tests/conftest.py` exposing a `synthetic_api` fixture through
       `pytest-httpserver`. Run the contract tests and prove the entire fixture harness is offline and
       deterministic.
-- [ ] **Step 7:** Run detect-secrets, gitleaks, a high-entropy/PII scanner, binary metadata/text
+- [x] **Step 7:** Run detect-secrets, gitleaks, a high-entropy/PII scanner, binary metadata/text
       extraction, and manual key/value review over the staged diff. Confirm there is no live-capture
       utility, raw response, editor recovery file, course file, or transformed private value in the
       worktree. Run `git diff --cached --check`, then commit.
       ```
       git commit -m "test: synthetic api fixtures and offline test harness"
       ```
+
+**Task 1 completed 2026-08-25.** 20 fixtures, 109 tests, all green on three OSes.
+
+**Everything is authored, nothing captured.** No live-capture utility exists in the
+repository and none was written; the shapes come from D2L's documented schemas and the observed
+`/versions/` response, and every identifier, name, and timestamp is an obvious invention.
+
+**Determinism is enforced, not asserted.** `tools/generate_fixtures.py --check` regenerates the
+whole corpus and fails if a single byte differs; a test shells out to it, so a non-reproducible
+fixture breaks the suite rather than quietly drifting. The PDF is hand-built rather than
+library-generated precisely so it carries no `/CreationDate` or producer string, and archive member
+timestamps are frozen.
+
+**The contract tests were verified by perturbation, not by passing.** Seven deliberate mutations
+were each injected and confirmed to fail the suite: an unknown key, an unfixed timestamp, a URL
+query string, a credential-shaped value, a real course code, an unapproved identity value, and
+non-canonical JSON formatting. A gate nobody has watched fail is not a gate.
+
+**Two assertions were wrong on first write and were fixed by measurement rather than by loosening:**
+
+- The high-entropy check fired on ordinary prose. Measured: English prose scores 4.07 and a content
+  path 4.14, while a JWT header scores 4.36 and a random 32-character token 4.81. The check now
+  skips whitespace-bearing prose and URLs, and tests the remainder at 4.2.
+- A name detector keyed on capitalisation reported `"The Week"` from the sentence *"The Week 2
+  reading is now available."* Capitalisation is not a signal in authored prose, so identity is now
+  constrained on the keys that actually carry it (`FirstName`, `UniqueName`, `Identifier`, …), plus
+  a second test asserting those keys exist so the first cannot become vacuous.
+
+**A Windows-only corruption was found and fixed.** The hand-built PDF is 878 bytes, 100% printable
+ASCII, with **zero NUL bytes** — so git's `text=auto` heuristic classifies it as *text*, and the
+repository-wide `eol=lf` rule would rewrite its line endings on a Windows checkout, silently
+corrupting a byte-exact fixture and breaking both `SHA256SUMS` and the golden-vault test.
+`.gitattributes` now marks `tests/fixtures/files/** -text -diff`, the whitespace pre-commit hooks
+skip that directory, and a regression test asserts the attribute is present.
+
+**`synthetic_api` serves the corpus over a real local HTTP server**, not a monkeypatched
+`requests`, so status codes, headers, content types, and binary transport are genuinely exercised.
+An unregistered route returns an error, so a test reaching an unplanned endpoint fails loudly. A
+`no_network` fixture blocks non-loopback connections and **has its own test proving the guard
+works**, since an offline guard that silently no-ops is worse than none.
+
+**The notebook fixture is executed on purpose.** It carries `stream`, `execute_result`, `error`, and
+`display_data` outputs plus a markdown attachment and a code body containing backticks, because
+Task 11 must preserve executed-cell output as grounding evidence. `tests/fixtures` is excluded from
+ruff: the notebook deliberately contains an undefined name, and linting data is a category error.
+
 
 ---
 

@@ -1,0 +1,19 @@
+{
+  "Modules": [
+    {
+      "ModuleId": 910001,
+      "Modules": [],
+      "Title": "Unit 1",
+      "Topics": [
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Course Outline",
+          "TopicId": 810001,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/222222-COURSE202/outline.pdf"
+        }
+      ]
+    }
+  ]
+}

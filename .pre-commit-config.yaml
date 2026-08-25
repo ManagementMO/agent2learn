@@ -16,7 +16,12 @@ repos:
       - id: check-added-large-files
         args: ["--maxkb=512"]
       - id: check-merge-conflict
+      # Fixture binaries are byte-exact by design: a PDF xref entry legitimately ends
+      # in a space, and "fixing" it would corrupt the file and break SHA256SUMS.
       - id: end-of-file-fixer
+        exclude: ^tests/fixtures/files/
       - id: trailing-whitespace
+        exclude: ^tests/fixtures/files/
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        exclude: ^tests/fixtures/files/

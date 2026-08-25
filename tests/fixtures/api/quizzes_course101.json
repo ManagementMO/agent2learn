@@ -1,0 +1,13 @@
+{
+  "Next": null,
+  "Objects": [
+    {
+      "DueDate": "2026-02-06T04:59:00.000Z",
+      "EndDate": null,
+      "IsActive": true,
+      "Name": "Quiz 1",
+      "QuizId": 100001,
+      "StartDate": "2026-01-05T14:00:00.000Z"
+    }
+  ]
+}

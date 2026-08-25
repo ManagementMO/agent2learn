@@ -1,0 +1,20 @@
+[
+  {
+    "LatestVersion": "1.96",
+    "ProductCode": "le",
+    "SupportedVersions": [
+      "1.94",
+      "1.95",
+      "1.96"
+    ]
+  },
+  {
+    "LatestVersion": "1.62",
+    "ProductCode": "lp",
+    "SupportedVersions": [
+      "1.60",
+      "1.61",
+      "1.62"
+    ]
+  }
+]

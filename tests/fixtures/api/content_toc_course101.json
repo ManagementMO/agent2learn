@@ -1,0 +1,134 @@
+{
+  "Modules": [
+    {
+      "ModuleId": 900001,
+      "Modules": [],
+      "Title": "Week 1 Introduction",
+      "Topics": [
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Lecture Slides",
+          "TopicId": 800001,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/lecture01.pdf"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Reading list.",
+          "TopicId": 800002,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/reading.pdf"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Café Notes.pdf",
+          "TopicId": 800003,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/cafe-notes.pdf"
+        }
+      ]
+    },
+    {
+      "ModuleId": 900002,
+      "Modules": [
+        {
+          "ModuleId": 900003,
+          "Modules": [],
+          "Title": "Nested Submodule",
+          "Topics": [
+            {
+              "IsBroken": false,
+              "LastModifiedDate": "2026-01-12T14:00:00.000Z",
+              "Title": "Notebook",
+              "TopicId": 800004,
+              "TypeIdentifier": "File",
+              "Url": "/content/enforced/111111-COURSE101/analysis.ipynb"
+            }
+          ]
+        }
+      ],
+      "Title": "CON",
+      "Topics": []
+    },
+    {
+      "ModuleId": 900004,
+      "Modules": [],
+      "Title": "Week 2 Hazards",
+      "Topics": [
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Lab Notes",
+          "TopicId": 800005,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/lab-notes-a.pdf"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "lab notes",
+          "TopicId": 800006,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/lab-notes-b.pdf"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Long title xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "TopicId": 800007,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/long.pdf"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Publisher eText",
+          "TopicId": 800008,
+          "TypeIdentifier": "Link",
+          "Url": "https://example-vitalsource.invalid/book/synthetic-0001"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "External Tool",
+          "TopicId": 800009,
+          "TypeIdentifier": "lti",
+          "Url": "https://example-lti.invalid/launch/synthetic-0001"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Quicklink",
+          "TopicId": 800010,
+          "TypeIdentifier": "Link",
+          "Url": "https://quicklink.d2l.invalid/d2l/le/content/synthetic-0001"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-19T14:00:00.000Z",
+          "Title": "Site Archive",
+          "TopicId": 800011,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/site.html.zip"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-19T14:00:00.000Z",
+          "Title": "R Notes",
+          "TopicId": 800012,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/notes.Rmd"
+        }
+      ]
+    },
+    {
+      "ModuleId": 900005,
+      "Modules": [],
+      "Title": "Week 3 Empty",
+      "Topics": []
+    }
+  ]
+}
