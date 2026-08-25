@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from agent2learn import paths
+from agent2learn import aipolicy, paths
 from agent2learn.ingest import (
     CourseMetadata,
     MetadataReport,
@@ -117,6 +117,12 @@ def ingest_outlines(
             finally:
                 _close_target(browser)
         _write_json(course_metadata.directory / "_meta" / "outlines.json", status_rows)
+        rendered_paths = [
+            vault.root / path
+            for row in status_rows
+            if row.get("status") == "rendered" and isinstance((path := row.get("path")), str)
+        ]
+        aipolicy.surface_course_ai_policy(course_metadata.directory, rendered_paths)
 
     return OutlineReport(rendered=rendered, unavailable=unavailable, errors=tuple(errors))
 

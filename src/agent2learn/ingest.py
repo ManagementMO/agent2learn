@@ -29,7 +29,8 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from requests import RequestException
 
-from agent2learn import api, paths
+from agent2learn import api, paths, snapshot
+from agent2learn import index as course_index
 from agent2learn.api import Client, DownloadError, DownloadResult
 from agent2learn.calibrate import CourseRef, calibrate, load_calibration
 from agent2learn.errors import A2LError, SessionExpired
@@ -41,7 +42,7 @@ from agent2learn.schools import (
 )
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
-CONTENT_MAP_VERSION = 1
+CONTENT_MAP_VERSION = course_index.CONTENT_MAP_VERSION
 DEFAULT_SCOPE: Literal["all", "priority"] = "all"
 _MAX_PAGES = 1000
 _COURSE_CONTENT = "content"
@@ -272,7 +273,14 @@ def ingest_metadata(
             if not grades_complete:
                 errors.append("grades: incomplete response")
 
+        merged_topics = course_index.reconcile_content_map(vault, merged_topics)
         _write_content_map(course_dir, merged_topics)
+        _materialize_submission_only_readmes(
+            assignments,
+            artifacts=assignment_artifacts,
+            course_dir=course_dir,
+            topics=merged_topics,
+        )
         deadline_count += sum(1 for row in assignments_rows + quiz_rows if row.get("due_date"))
         typed_topics = tuple(_topic_from_row(row, course=course) for row in merged_topics)
         _write_index(course_dir, school=school, course=course, topics=typed_topics)
@@ -285,6 +293,12 @@ def ingest_metadata(
             )
         )
 
+    snapshot.write_snapshot(
+        vault,
+        [report.directory for report in reports],
+        include_grades=include_grades,
+        timestamp=_now(),
+    )
     return MetadataReport(
         courses=tuple(reports),
         topic_count=sum(len(report.topics) for report in reports),
@@ -1184,6 +1198,40 @@ def _write_assignment_readme(
     paths.atomic_write_text(paths.long_path(directory / "README.md"), "\n".join(lines))
 
 
+def _materialize_submission_only_readmes(
+    values: Sequence[object],
+    *,
+    artifacts: Mapping[str, Mapping[str, object]],
+    course_dir: Path,
+    topics: Sequence[Mapping[str, object]],
+) -> None:
+    """Give a Dropbox folder without RichText a generated navigation hub.
+
+    This is deliberately a metadata-only projection: it creates no fetch route and does not copy
+    a prompt into the README.  Exact display-title matches are only navigation cross-links; topic
+    resolution itself remains stable-ID/manifest based in :mod:`agent2learn.index`.
+    """
+    for assignment in sorted(
+        (row for row in values if isinstance(row, Mapping) and isinstance(row.get("Id"), int)),
+        key=lambda row: int(row["Id"]),
+    ):
+        assignment_id = str(assignment["Id"])
+        if assignment_id in artifacts:
+            continue
+        title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
+        directory = course_dir / "assignments" / paths.safe_name(f"{title} {assignment_id}")
+        directory.mkdir(parents=True, exist_ok=True)
+        links: list[tuple[str, str]] = []
+        for topic in topics:
+            if str(topic.get("title", "")).casefold() != title.casefold():
+                continue
+            target = topic.get("path") or topic.get("source_path") or topic.get("stub_path")
+            source_id = topic.get("source_id")
+            if isinstance(target, str) and isinstance(source_id, str):
+                links.append((source_id, _course_relative_link(target, course_dir)))
+        course_index.write_submission_readme(directory, title=title, content_links=links)
+
+
 def _materialize_external_stubs(
     rows: list[dict[str, object]],
     *,
@@ -1536,20 +1584,7 @@ def _resolve_topic(vault: Vault, query: str) -> tuple[CourseRef, TopicRecord, Pa
 
 
 def _read_content_map(course_dir: Path) -> dict[str, object]:
-    destination = course_dir / "_meta" / "content_map.json"
-    try:
-        with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
-            raw: Any = json.load(handle)
-    except FileNotFoundError:
-        return {"schema_version": CONTENT_MAP_VERSION, "topics": []}
-    except (OSError, json.JSONDecodeError) as exc:
-        raise A2LError("content_map.json is unreadable") from exc
-    if not isinstance(raw, dict) or raw.get("schema_version") != CONTENT_MAP_VERSION:
-        raise A2LError("content_map.json has an unsupported schema")
-    topics = raw.get("topics")
-    if not isinstance(topics, list):
-        raise A2LError("content_map.json topics must be an array")
-    return {"schema_version": CONTENT_MAP_VERSION, "topics": topics}
+    return course_index.read_content_map(course_dir)
 
 
 def _map_topics(content_map: Mapping[str, object]) -> list[object]:
@@ -1560,16 +1595,7 @@ def _map_topics(content_map: Mapping[str, object]) -> list[object]:
 
 
 def _write_content_map(course_dir: Path, rows: Sequence[object]) -> None:
-    _write_json(
-        course_dir / "_meta" / "content_map.json",
-        {
-            "schema_version": CONTENT_MAP_VERSION,
-            "topics": sorted(
-                (row for row in rows if isinstance(row, dict)),
-                key=lambda row: str(row.get("source_key", "")),
-            ),
-        },
-    )
+    course_index.write_content_map(course_dir, rows)
 
 
 def _write_toc(course_dir: Path, modules: Sequence[dict[str, object]]) -> None:
@@ -1771,15 +1797,8 @@ def _write_index(
         # network response in memory. The existing index remains valid until metadata runs again.
         return
     term_label = school.term_label(course.term) if course.term else "Unclassified"
-    lines = [
-        f"# {course.code} — {course.name}",
-        "",
-        f"Term: {term_label} ({course.term or 'none'})",
-        "",
-    ]
     assignments = _read_list(course_dir / "_meta" / "assignments.json")
     quizzes = _read_list(course_dir / "_meta" / "quizzes.json")
-    lines.extend(["## Deadlines", ""])
     deadlines = [
         (str(row.get("due_date")), str(row.get("title") or "Untitled"), "assignment")
         for row in assignments
@@ -1789,26 +1808,15 @@ def _write_index(
         for row in quizzes
         if row.get("due_date")
     ]
-    for date, title, kind in sorted(deadlines):
-        lines.append(f"- {date} — {title} ({kind})")
-    if not deadlines:
-        lines.append("- No deadlines recorded.")
-    lines.extend(["", "## Content", ""])
-    for topic in sorted(topics, key=lambda item: item.source_key):
-        indent = "  " * len(topic.module_path)
-        if topic.path:
-            display = f"[{topic.title}]({_course_relative_link(topic.path, course_dir)})"
-        elif topic.source_path:
-            display = f"[{topic.title}]({_course_relative_link(topic.source_path, course_dir)})"
-        elif topic.stub_path:
-            display = f"[{topic.title}]({_course_relative_link(topic.stub_path, course_dir)})"
-        else:
-            display = f"{topic.title} _(metadata only)_"
-        lines.append(f"{indent}- {display} — {topic.availability}")
-    lines.extend(["", "## Coverage", "", f"- Topics discovered: {len(topics)}"])
-    lines.append(f"- Markdown-ready topics: {sum(topic.path is not None for topic in topics)}")
-    lines.append("")
-    paths.atomic_write_text(paths.long_path(course_dir / "INDEX.md"), "\n".join(lines))
+    course_index.write_course_index(
+        course_dir,
+        course_code=course.code,
+        course_name=course.name,
+        term_label=term_label,
+        term_code=course.term,
+        topics=[_topic_to_row(topic) for topic in topics],
+        deadlines=deadlines,
+    )
 
 
 def _course_relative_link(value: str, course_dir: Path) -> str:
