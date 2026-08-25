@@ -82,6 +82,14 @@ def test_missing_optional_office_dependency_is_a_conversion_gap(
     assert any("optional" in warning.casefold() for warning in result.warnings)
 
 
+def test_conversion_ignores_an_invalid_utf8_content_map(tmp_path: Path) -> None:
+    course_meta = tmp_path / "Term" / "COURSE101" / "_meta"
+    course_meta.mkdir(parents=True)
+    (course_meta / "content_map.json").write_bytes(b"{\xff")
+
+    convert._update_content_map(Vault(tmp_path), "waterloo:1:topic:1", availability="integrity_gap")
+
+
 def test_extension_alone_does_not_make_a_source_a_pdf(tmp_path: Path) -> None:
     source = tmp_path / "not-a-pdf.pdf"
     source.write_text("plain text", encoding="utf-8")

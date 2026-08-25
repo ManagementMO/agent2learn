@@ -1116,7 +1116,7 @@ def _update_content_map(vault: Vault, key: str, **updates: object) -> None:
     for destination in sorted(vault.root.rglob("content_map.json")):
         try:
             raw = course_index.read_content_map(destination.parent.parent)
-        except A2LError:
+        except (A2LError, UnicodeError):
             continue
         changed = False
         raw_rows = raw.get("topics")
