@@ -505,6 +505,17 @@ works**, since an offline guard that silently no-ops is worse than none.
 Task 11 must preserve executed-cell output as grounding evidence. `tests/fixtures` is excluded from
 ruff: the notebook deliberately contains an undefined name, and linting data is a category error.
 
+**CI found a determinism bug that eleven of twelve matrix entries missed.** `windows-latest ·
+py3.14` failed alone: the `html.zip` fixture used `ZIP_DEFLATED`, and **deflate output depends on
+the zlib build linked into the interpreter**, so a compressed archive is not byte-reproducible
+across platforms. The members are a few hundred bytes, so compression bought nothing and cost the
+determinism guarantee the golden-vault test depends on. Now `ZIP_STORED`, with a test asserting it.
+**Generalise this: any compressed artifact in a byte-exact fixture corpus is a portability hazard.**
+
+The same failure exposed a flaw in the tooling: `--check` reported only *that* output was not
+reproducible, which on a remote runner is a guessing game. It now names each changed fixture with
+recorded and current digests, byte size, platform, and interpreter version.
+
 
 ---
 
