@@ -264,7 +264,9 @@ def _tighten_permissions(path: Path) -> None:
 
 
 def _fsync_file(path: Path) -> None:
-    with open(os.fspath(long_path(path)), "rb") as handle:
+    # Windows requires a writable handle for fsync; POSIX accepts a read-only one.
+    mode = "r+b" if WINDOWS else "rb"
+    with open(os.fspath(long_path(path)), mode) as handle:
         os.fsync(handle.fileno())
 
 

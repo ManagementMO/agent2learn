@@ -7,6 +7,7 @@ failed replacement must never damage an existing destination or leave temporary 
 
 from __future__ import annotations
 
+import builtins
 import os
 import stat
 import sys
@@ -333,6 +334,24 @@ def test_atomic_install_temp_requires_a_sibling_part_file(tmp_path: Path) -> Non
     assert destination.read_bytes() == b"downloaded"
     assert not part.exists()
     _assert_no_temporary_files(tmp_path)
+
+
+def test_fsync_file_uses_a_windows_compatible_handle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "source.part"
+    source.write_bytes(b"downloaded")
+    opened_modes: list[str] = []
+    real_open = builtins.open
+
+    def recording_open(file: object, mode: str = "r", *args: object, **kwargs: object) -> object:
+        opened_modes.append(mode)
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", recording_open)
+    paths._fsync_file(source)
+
+    assert opened_modes == ["r+b" if paths.WINDOWS else "rb"]
 
 
 def test_atomic_install_temp_rejects_a_non_part_source(tmp_path: Path) -> None:
