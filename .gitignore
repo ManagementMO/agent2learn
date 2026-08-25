@@ -1,0 +1,31 @@
+# Python build and test state
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local editor and operating-system state
+.DS_Store
+Thumbs.db
+
+# Agent2Learn vaults, machine state, browser state, and session exports
+/agent2learn/
+.a2l/
+browser-profile/
+browser-profiles/
+browser_profiles/
+session.json
+cookies.json
+*.session
+
+# Local configuration that may contain machine-specific or secret values
+.env
+.env.*
+!.env.example
