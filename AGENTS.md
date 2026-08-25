@@ -74,7 +74,10 @@ architecture.
   original source bytes are archived permanently, `ConverterBackend` isolates the library, and a
   changed `tool_version` regenerates twins — so this is not a one-way door.
 - Office extra: `markitdown[pptx,docx,xlsx]`; no direct `openpyxl` declaration because MarkItDown's
-  xlsx extra supplies it and Agent2Learn has no direct import.
+  xlsx extra supplies it and Agent2Learn has no direct import. **The office extra cannot install on
+  Python 3.14** — `markitdown` → `magika` → `onnxruntime` ships no cp314 wheels — so CI syncs 3.14
+  without it. The core package and the notebook extra are fully 3.14-capable; do not drop 3.14 from
+  the matrix over this, and remove the branch when onnxruntime ships cp314.
 - Notebook extra: `nbformat`, not `nbconvert`. The owned renderer must preserve Markdown cells,
   attachments, fenced code, stream output, `text/plain`/`text/markdown` results, deterministic image
   data URIs, and error tracebacks. It never executes a notebook. Executed-cell output is evidence,

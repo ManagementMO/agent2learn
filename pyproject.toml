@@ -28,6 +28,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Python 3.11-3.13 only in practice: markitdown -> magika -> onnxruntime publishes no
+# cp314 wheels. The core package and the notebook extra are fully 3.14-capable, so this
+# is a limitation of the extra, not of Agent2Learn. CI skips this extra on 3.14.
 office = ["markitdown[pptx,docx,xlsx]>=0.1,<1"]
 notebook = ["nbformat>=5.10,<6"]
 

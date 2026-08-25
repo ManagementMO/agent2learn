@@ -47,8 +47,21 @@ jobs:
           enable-cache: true
 
       # --frozen: fail if uv.lock is stale rather than silently re-resolving.
+      #
+      # The `office` extra is skipped on 3.14: markitdown -> magika -> onnxruntime
+      # publishes no cp314 wheels (only cp311/cp312/cp313/cp313t). The core package and
+      # the `notebook` extra are fully 3.14-capable, so 3.14 is still a first-class
+      # matrix entry rather than being dropped. Remove this branch once onnxruntime
+      # ships cp314 wheels.
       - name: Sync locked environment
-        run: uv sync --frozen --all-extras --dev
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.python }}" = "3.14" ]; then
+            echo "3.14: syncing without the office extra (onnxruntime has no cp314 wheel)"
+            uv sync --frozen --extra notebook --dev
+          else
+            uv sync --frozen --all-extras --dev
+          fi
 
       - name: Lint
         run: uv run ruff check .
@@ -112,7 +125,7 @@ jobs:
           uv run pip-audit --progress-spinner off
 
       - name: Generate CycloneDX SBOM
-        run: uv run cyclonedx-py environment --output-format json --outfile sbom.json
+        run: uv run cyclonedx-py environment --output-format json --output-file sbom.json
 
       - name: Third-party notices are current
         run: |
