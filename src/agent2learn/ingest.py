@@ -13,6 +13,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import tempfile
 import unicodedata
 from collections import defaultdict
@@ -32,7 +33,7 @@ from agent2learn import api, clock, paths, snapshot
 from agent2learn import index as course_index
 from agent2learn.api import Client, DownloadError, DownloadResult
 from agent2learn.calibrate import CourseRef, calibrate, load_calibration
-from agent2learn.errors import A2LError, SessionExpired
+from agent2learn.errors import A2LError, NotConfigured, SessionExpired
 from agent2learn.schools import (
     School,
     hostname_matches_suffix,
@@ -67,6 +68,21 @@ _MEDIA_SUFFIXES = frozenset(
     }
 )
 _DOWNLOADABLE_KINDS = frozenset({"file", "html", "htmlfile"})
+_PENDING_MARKER_SUFFIX = ".meta.json"
+_PENDING_INSTALL_SUFFIX = ".part" + _PENDING_MARKER_SUFFIX
+_PENDING_INSTALL_KEYS = frozenset(
+    {
+        "version",
+        "source_key",
+        "destination",
+        "sha256",
+        "size",
+        "etag",
+        "last_modified",
+        "prior_sha256",
+        "revision_preserved",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -157,6 +173,22 @@ class OutlineReport:
     errors: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class _PendingInstall:
+    """Durable proof that a validated download is waiting only on filesystem installation."""
+
+    marker: Path
+    part: Path
+    source_key: str
+    destination: str
+    sha256: str
+    size: int
+    etag: str | None
+    last_modified: str | None
+    prior_sha256: str | None
+    revision_preserved: bool
+
+
 def ingest_metadata(
     client: Client,
     vault: Vault,
@@ -179,7 +211,7 @@ def ingest_metadata(
 
     for course in courses:
         course_dir = _course_directory(vault, school, course)
-        course_dir.mkdir(parents=True, exist_ok=True)
+        paths.long_path(course_dir).mkdir(parents=True, exist_ok=True)
         try:
             toc_payload, toc_complete, toc_error = _fetch_one(client, _toc_path(client, course))
             if toc_error is not None:
@@ -215,7 +247,13 @@ def ingest_metadata(
         if toc_complete:
             _write_toc(course_dir, module_tree)
         else:
-            module_tree = _read_toc_modules(course_dir)
+            try:
+                module_tree = _read_toc_modules(course_dir)
+            except A2LError as exc:
+                # A failed TOC fetch must not turn a corrupt cached tree into an apparently empty
+                # course.  Keep the metadata phase usable, but make the coverage gap explicit.
+                errors.append(_safe_error("toc cache", exc))
+                module_tree = []
 
         assignments_rows = _project_assignments(assignments)
         assignments_rows = _merge_rows(
@@ -268,8 +306,27 @@ def ingest_metadata(
             )
             if grades_error is not None:
                 errors.append(_safe_error("grades", grades_error))
-            _write_list(course_dir / "_meta" / "my_grades.json", _project_grades(grades))
-            if not grades_complete:
+            grades_path = course_dir / "_meta" / "my_grades.json"
+            if grades_complete:
+                grade_rows = _merge_rows(
+                    _read_list(grades_path),
+                    _project_grades(grades),
+                    id_field="id",
+                    complete=True,
+                )
+                _write_list(grades_path, grade_rows)
+            else:
+                # Grade values are sensitive, but they still obey merge-not-replace: an
+                # incomplete response must never erase the last complete opt-in snapshot.
+                partial_grades = _project_grades(grades)
+                if partial_grades:
+                    grade_rows = _merge_rows(
+                        _read_list(grades_path),
+                        partial_grades,
+                        id_field="id",
+                        complete=False,
+                    )
+                    _write_list(grades_path, grade_rows)
                 errors.append("grades: incomplete response")
 
         merged_topics = course_index.reconcile_content_map(vault, merged_topics)
@@ -344,13 +401,15 @@ def ingest_files(
         planned = _plan_file_paths(rows, course_dir=course_dir, vault=vault, scope=scope)
         chosen = _priority_rows(planned, scope=scope, budget=priority_budget_bytes)
         if include_discussions:
-            _ingest_discussions(
+            discussion_error = _ingest_discussions(
                 client,
                 course,
                 course_dir,
                 vault,
                 include_authors=discussion_authors,
             )
+            if discussion_error is not None:
+                errors.append(discussion_error)
 
         for topic in chosen:
             if topic.availability == "external_link":
@@ -503,7 +562,7 @@ def _selected_courses(
         if calibration is None:
             try:
                 calibration = load_calibration()
-            except Exception:
+            except NotConfigured:
                 calibration = calibrate(client)
         raw_courses = getattr(calibration, "courses", None)
         if getattr(client, "lp_version", None) is None:
@@ -614,6 +673,8 @@ def _fetch_collection(client: Client, path: str) -> tuple[list[object], bool, Ex
         page, next_page, valid = _page_values(payload, current)
         if not valid:
             return values, False, A2LError("metadata endpoint returned an invalid page")
+        if any(not _collection_item_is_valid(item, current) for item in page):
+            return values, False, A2LError("metadata endpoint returned an invalid item")
         values.extend(page)
         if next_page is None:
             return values, True, None
@@ -652,6 +713,32 @@ def _page_values(payload: object, current: str) -> tuple[list[object], str | Non
             True,
         )
     return [], None, False
+
+
+def _collection_item_is_valid(value: object, path: str) -> bool:
+    """Require stable IDs before a response can be considered complete for merge purposes."""
+    if not isinstance(value, dict):
+        return False
+    route = path.casefold()
+    if "dropbox/folders" in route or "/news/" in route:
+        identifier = value.get("Id")
+        if not isinstance(identifier, int) or isinstance(identifier, bool):
+            return False
+        if "dropbox/folders" in route:
+            return _assignment_attachments_are_valid(value)
+        return True
+    if "/quizzes/" in route:
+        identifier = value.get("QuizId")
+        return isinstance(identifier, int) and not isinstance(identifier, bool)
+    if "/grades/" in route:
+        identifier = value.get("GradeObjectIdentifier")
+        return (isinstance(identifier, int) and not isinstance(identifier, bool)) or (
+            isinstance(identifier, str) and bool(identifier)
+        )
+    if "/discussions/forums/" in route:
+        identifier = value.get("ForumId")
+        return isinstance(identifier, int) and not isinstance(identifier, bool)
+    return True
 
 
 def _as_route_string(value: object) -> str:
@@ -965,7 +1052,11 @@ def _assignment_attachment_topics(
 
     records: list[TopicRecord] = []
     for assignment in values:
-        if not isinstance(assignment, dict) or not isinstance(assignment.get("Id"), int):
+        if (
+            not isinstance(assignment, dict)
+            or not isinstance(assignment.get("Id"), int)
+            or isinstance(assignment.get("Id"), bool)
+        ):
             continue
         assignment_id = assignment["Id"]
         assignment_title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
@@ -1027,6 +1118,26 @@ def _attachment_values(assignment: Mapping[str, object]) -> list[object]:
     return list(raw) if isinstance(raw, list) else []
 
 
+def _assignment_attachments_are_valid(assignment: Mapping[str, object]) -> bool:
+    """Reject malformed attachment containers before they can mark old files missing."""
+    if "Attachments" not in assignment and "attachments" not in assignment:
+        return True
+    raw = assignment.get("Attachments", assignment.get("attachments"))
+    if isinstance(raw, dict):
+        raw = raw.get("Items", raw.get("Objects"))
+    if not isinstance(raw, list):
+        return False
+    for attachment in raw:
+        if not isinstance(attachment, dict):
+            return False
+        identifier = attachment.get("Id", attachment.get("FileId"))
+        if isinstance(identifier, bool) or not isinstance(identifier, (int, str)):
+            return False
+        if isinstance(identifier, str) and not identifier:
+            return False
+    return True
+
+
 def _first_string(value: Mapping[str, object], *keys: str) -> str | None:
     for key in keys:
         candidate = value.get(key)
@@ -1073,10 +1184,10 @@ def _materialize_assignments(
             source_destination = assignment_directory / "instructions.html"
         if prior is not None and prior.sha256 != source_hash:
             preserved = vault.preserve_revision(key, changed_at=clock.now())
-            if preserved is None and vault.materialized(prior).exists():
+            if preserved is None and paths.long_path(vault.materialized(prior)).exists():
                 raise A2LError("assignment instructions could not be preserved")
-        source_destination.parent.mkdir(parents=True, exist_ok=True)
-        paths.atomic_write_bytes(paths.long_path(source_destination), html_bytes)
+        paths.long_path(source_destination.parent).mkdir(parents=True, exist_ok=True)
+        paths.atomic_write_bytes(source_destination, html_bytes)
 
         title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
         markdown_bytes = _richtext_markdown(title, canonical_html).encode("utf-8")
@@ -1095,8 +1206,8 @@ def _materialize_assignments(
             )
         else:
             markdown_destination = source_destination.with_suffix(".md")
-        markdown_destination.parent.mkdir(parents=True, exist_ok=True)
-        paths.atomic_write_bytes(paths.long_path(markdown_destination), markdown_bytes)
+        paths.long_path(markdown_destination.parent).mkdir(parents=True, exist_ok=True)
+        paths.atomic_write_bytes(markdown_destination, markdown_bytes)
         derived = DerivedArtifact(
             path=paths.rel_posix(markdown_destination, vault.root),
             sha256=sha256(markdown_bytes).hexdigest(),
@@ -1199,7 +1310,7 @@ def _write_assignment_readme(
     else:
         lines.append("- None recorded.")
     lines.append("")
-    paths.atomic_write_text(paths.long_path(directory / "README.md"), "\n".join(lines))
+    paths.atomic_write_text(directory / "README.md", "\n".join(lines))
 
 
 def _materialize_submission_only_readmes(
@@ -1224,7 +1335,7 @@ def _materialize_submission_only_readmes(
             continue
         title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
         directory = course_dir / "assignments" / paths.safe_name(f"{title} {assignment_id}")
-        directory.mkdir(parents=True, exist_ok=True)
+        paths.long_path(directory).mkdir(parents=True, exist_ok=True)
         links: list[tuple[str, str]] = []
         for topic in topics:
             if str(topic.get("title", "")).casefold() != title.casefold():
@@ -1258,9 +1369,8 @@ def _materialize_external_stubs(
             )
             stub = _unique_reserved(destination, reserved)
             row["stub_path"] = paths.rel_posix(stub, vault.root)
-        io_stub = paths.long_path(stub)
-        io_stub.parent.mkdir(parents=True, exist_ok=True)
-        if not io_stub.is_file():
+        paths.long_path(stub.parent).mkdir(parents=True, exist_ok=True)
+        if not paths.long_path(stub).is_file():
             record = _topic_from_row(row, course=course)
             text = (
                 "Agent2Learn external-topic stub\n"
@@ -1268,7 +1378,9 @@ def _materialize_external_stubs(
                 f"view in LEARN: {record.view_url}\n"
                 f"destination host: {record.external_host or 'unknown-host'}\n"
             )
-            paths.atomic_write_text(io_stub, text)
+            # Keep the ordinary path as the value passed between layers; long_path belongs only
+            # at filesystem boundaries, and atomic_write_text applies it internally.
+            paths.atomic_write_text(stub, text)
     return rows
 
 
@@ -1344,18 +1456,25 @@ def _ingest_one_topic(
     manifest = vault.manifest()
     prior = manifest.get(key)
     destination = _destination_for_topic(vault, course_dir, topic, prior)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+    pending = _find_pending_install(vault, destination, topic)
+    if pending is not None:
+        retried = _retry_pending_install(
+            vault, course_dir, school, topic, destination, prior, pending
+        )
+        if retried is not None:
+            return retried
     if prior is not None and _unchanged_local(prior, topic, vault):
         _mark_topic_source_only(vault, course_dir, topic, school)
         return "skipped"
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
     fd, raw_temp = tempfile.mkstemp(
         prefix=f".{destination.name}.",
         suffix=".part",
         dir=os.fspath(paths.long_path(destination.parent)),
     )
     os.close(fd)
-    temporary = Path(raw_temp)
+    temporary = paths.plain_path(Path(raw_temp))
     install_attempted = False
     installed = False
     try:
@@ -1363,39 +1482,58 @@ def _ingest_one_topic(
             client, school, topic, temporary, prior=prior, max_bytes=max_bytes
         )
         if result.not_modified:
-            if prior is None or not vault.materialized(prior).is_file():
+            if prior is None or not paths.long_path(vault.materialized(prior)).is_file():
                 raise DownloadError("server returned 304 without a local source")
             _mark_topic_source_only(vault, course_dir, topic, school)
             return "skipped"
-        if result.temp is None or not result.temp.is_file():
+        if result.temp is None or not paths.long_path(result.temp).is_file():
             raise DownloadError("download did not produce a source file")
         actual_hash, actual_size = _hash_file(result.temp)
         if actual_size <= 0 or result.sha256 != actual_hash or result.size != actual_size:
             raise DownloadError("download integrity validation failed")
-        if prior is not None and actual_hash != prior.sha256:
-            preserved = vault.preserve_revision(key, changed_at=clock.now())
-            if preserved is None and vault.materialized(prior).exists():
-                raise A2LError("current source could not be preserved; refusing replacement")
-
-        install_attempted = True
-        paths.atomic_install_temp(destination, temporary)
-        installed = True
-        fetched_at = _now()
-        entry = ManifestEntry(
-            path=paths.rel_posix(destination, vault.root),
+        pending = _PendingInstall(
+            marker=_pending_marker_path(temporary),
+            part=temporary,
+            source_key=key,
+            destination=paths.rel_posix(destination, vault.root),
             sha256=actual_hash,
-            source_id=topic.source_id,
+            size=actual_size,
             etag=result.etag or topic.etag or (prior.etag if prior else None),
             last_modified=result.last_modified
             or topic.last_modified
             or (prior.last_modified if prior else None),
+            prior_sha256=(
+                prior.sha256 if prior is not None and actual_hash != prior.sha256 else None
+            ),
+            revision_preserved=prior is None or actual_hash == prior.sha256,
+        )
+        _write_pending_install(pending)
+        install_attempted = True
+        if pending.prior_sha256 is not None:
+            if prior is None:
+                raise A2LError("pending source revision has no current manifest entry")
+            preserved = vault.preserve_revision(key, changed_at=clock.now())
+            if preserved is None and paths.long_path(vault.materialized(prior)).exists():
+                raise A2LError("current source could not be preserved; refusing replacement")
+            pending = replace(pending, revision_preserved=True)
+            _write_pending_install(pending)
+
+        paths.atomic_install_temp(destination, temporary)
+        installed = True
+        entry = _manifest_entry_for_install(
+            vault,
+            topic,
+            destination=destination,
+            prior=prior,
+            sha256=actual_hash,
             size=actual_size,
-            fetched_at=fetched_at,
-            derived=prior.derived if prior is not None and actual_hash == prior.sha256 else {},
+            etag=pending.etag,
+            last_modified=pending.last_modified,
         )
         vault.mark(key, entry)
         vault.save_manifest()
         _mark_topic_source_only(vault, course_dir, topic, school)
+        _remove_pending_install(pending)
         return "downloaded"
     except BaseException:
         # A failed transfer has an incomplete part and may be restarted from byte zero.  A
@@ -1407,6 +1545,225 @@ def _ingest_one_topic(
     finally:
         if installed:
             _remove_quietly(temporary)
+
+
+def _pending_marker_path(part: Path) -> Path:
+    return part.with_name(part.name + _PENDING_MARKER_SUFFIX)
+
+
+def _write_pending_install(pending: _PendingInstall) -> None:
+    payload = {
+        "version": 1,
+        "source_key": pending.source_key,
+        "destination": pending.destination,
+        "sha256": pending.sha256,
+        "size": pending.size,
+        "etag": pending.etag,
+        "last_modified": pending.last_modified,
+        "prior_sha256": pending.prior_sha256,
+        "revision_preserved": pending.revision_preserved,
+    }
+    paths.atomic_write_text(
+        pending.marker,
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+    )
+
+
+def _read_pending_install(marker: Path, part: Path) -> _PendingInstall | None:
+    if not _is_safe_local_file(marker):
+        return None
+    try:
+        with open(os.fspath(paths.long_path(marker)), encoding="utf-8", newline="") as handle:
+            raw: Any = json.load(handle)
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return None
+    if not isinstance(raw, dict) or set(raw) != _PENDING_INSTALL_KEYS:
+        return None
+    source_key = raw.get("source_key")
+    destination = raw.get("destination")
+    sha256_value = raw.get("sha256")
+    size = raw.get("size")
+    etag = raw.get("etag")
+    last_modified = raw.get("last_modified")
+    prior_sha256 = raw.get("prior_sha256")
+    revision_preserved = raw.get("revision_preserved")
+    if (
+        raw.get("version") != 1
+        or not isinstance(source_key, str)
+        or not source_key
+        or not isinstance(destination, str)
+        or not destination
+        or not isinstance(sha256_value, str)
+        or re.fullmatch(r"[0-9a-f]{64}", sha256_value) is None
+        or isinstance(size, bool)
+        or not isinstance(size, int)
+        or size <= 0
+        or (etag is not None and not isinstance(etag, str))
+        or (last_modified is not None and not isinstance(last_modified, str))
+        or (
+            prior_sha256 is not None
+            and (
+                not isinstance(prior_sha256, str)
+                or re.fullmatch(r"[0-9a-f]{64}", prior_sha256) is None
+            )
+        )
+        or not isinstance(revision_preserved, bool)
+    ):
+        return None
+    return _PendingInstall(
+        marker=marker,
+        part=part,
+        source_key=source_key,
+        destination=destination,
+        sha256=sha256_value,
+        size=size,
+        etag=etag,
+        last_modified=last_modified,
+        prior_sha256=prior_sha256,
+        revision_preserved=revision_preserved,
+    )
+
+
+def _is_safe_local_file(path: Path) -> bool:
+    try:
+        file_stat = os.lstat(os.fspath(paths.long_path(path)))
+    except OSError:
+        return False
+    return (
+        not paths.is_link(path)
+        and stat.S_ISREG(file_stat.st_mode)
+        and getattr(file_stat, "st_nlink", 1) == 1
+    )
+
+
+def _remove_pending_install(pending: _PendingInstall) -> None:
+    # The marker is removed first so an orphaned part is never treated as a validated download.
+    _remove_pending_paths(pending.marker, pending.part)
+
+
+def _remove_pending_paths(marker: Path, part: Path) -> None:
+    paths.remove_tree(marker, ignore_errors=True)
+    paths.remove_tree(part, ignore_errors=True)
+
+
+def _pending_matches_topic(pending: _PendingInstall, topic: TopicRecord) -> bool:
+    # A stable key and matching byte count do not prove that a remote file with no validator is
+    # unchanged. Revalidate it over the network rather than replaying a potentially stale part.
+    if topic.etag is None and topic.last_modified is None:
+        return False
+    if topic.etag is not None and pending.etag != topic.etag:
+        return False
+    if topic.last_modified is not None and pending.last_modified != topic.last_modified:
+        return False
+    return topic.remote_size is None or pending.size == topic.remote_size
+
+
+def _find_pending_install(
+    vault: Vault, destination: Path, topic: TopicRecord
+) -> _PendingInstall | None:
+    """Find a validated install left by a prior sync, rejecting stale or untrusted markers."""
+    expected_destination = paths.rel_posix(destination, vault.root)
+    prefix = f".{destination.name}."
+    try:
+        with os.scandir(os.fspath(paths.long_path(destination.parent))) as iterator:
+            candidates = sorted(entry.name for entry in iterator)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise A2LError("pending download state is unreadable") from exc
+
+    for name in candidates:
+        if not name.startswith(prefix) or not name.endswith(_PENDING_INSTALL_SUFFIX):
+            continue
+        marker = destination.parent / name
+        part = destination.parent / name[: -len(_PENDING_MARKER_SUFFIX)]
+        pending = _read_pending_install(marker, part)
+        if pending is None:
+            _remove_pending_paths(marker, part)
+            continue
+        if pending.destination == expected_destination and pending.source_key != topic.source_key:
+            _remove_pending_install(pending)
+            continue
+        if pending.source_key != topic.source_key or pending.destination != expected_destination:
+            continue
+        if not _pending_matches_topic(pending, topic) or not _is_safe_local_file(pending.part):
+            _remove_pending_install(pending)
+            continue
+        actual_hash, actual_size = _hash_file(pending.part)
+        if actual_hash != pending.sha256 or actual_size != pending.size:
+            _remove_pending_install(pending)
+            continue
+        return pending
+    return None
+
+
+def _retry_pending_install(
+    vault: Vault,
+    course_dir: Path,
+    school: School,
+    topic: TopicRecord,
+    destination: Path,
+    prior: ManifestEntry | None,
+    pending: _PendingInstall,
+) -> Literal["downloaded"] | None:
+    """Install a previously validated part; return ``None`` when it is stale and was removed."""
+    if pending.prior_sha256 is None:
+        if prior is not None and pending.sha256 != prior.sha256:
+            _remove_pending_install(pending)
+            return None
+    elif prior is None or pending.prior_sha256 != prior.sha256:
+        _remove_pending_install(pending)
+        return None
+
+    if pending.prior_sha256 is not None and not pending.revision_preserved:
+        if prior is None:
+            _remove_pending_install(pending)
+            return None
+        preserved = vault.preserve_revision(topic.source_key, changed_at=clock.now())
+        if preserved is None and paths.long_path(vault.materialized(prior)).exists():
+            raise A2LError("current source could not be preserved; refusing replacement")
+        pending = replace(pending, revision_preserved=True)
+        _write_pending_install(pending)
+
+    paths.atomic_install_temp(destination, pending.part)
+    entry = _manifest_entry_for_install(
+        vault,
+        topic,
+        destination=destination,
+        prior=prior,
+        sha256=pending.sha256,
+        size=pending.size,
+        etag=pending.etag,
+        last_modified=pending.last_modified,
+    )
+    vault.mark(topic.source_key, entry)
+    vault.save_manifest()
+    _mark_topic_source_only(vault, course_dir, topic, school)
+    _remove_pending_install(pending)
+    return "downloaded"
+
+
+def _manifest_entry_for_install(
+    vault: Vault,
+    topic: TopicRecord,
+    *,
+    destination: Path,
+    prior: ManifestEntry | None,
+    sha256: str,
+    size: int,
+    etag: str | None,
+    last_modified: str | None,
+) -> ManifestEntry:
+    return ManifestEntry(
+        path=paths.rel_posix(destination, vault.root),
+        sha256=sha256,
+        source_id=topic.source_id,
+        etag=etag,
+        last_modified=last_modified,
+        size=size,
+        fetched_at=_now(),
+        derived=prior.derived if prior is not None and sha256 == prior.sha256 else {},
+    )
 
 
 def _download_with_candidates(
@@ -1434,11 +1791,9 @@ def _download_with_candidates(
         except DownloadError as exc:
             last_error = exc
             _remove_quietly(temporary)
-            temporary.touch()
         except RequestException:
             last_error = DownloadError("download route returned an unusable response")
             _remove_quietly(temporary)
-            temporary.touch()
     if last_error is not None:
         raise last_error
     raise DownloadError("no first-party download route was available")
@@ -1493,7 +1848,7 @@ def _unchanged_local(entry: ManifestEntry, topic: TopicRecord, vault: Vault) -> 
     if topic.last_modified is not None and entry.last_modified != topic.last_modified:
         return False
     source = vault.materialized(entry)
-    if not source.is_file():
+    if not paths.long_path(source).is_file():
         return False
     actual_hash, actual_size = _hash_file(source)
     return actual_hash == entry.sha256 and actual_size == entry.size
@@ -1545,7 +1900,9 @@ def _resolve_topic(vault: Vault, query: str) -> tuple[CourseRef, TopicRecord, Pa
     exact: list[tuple[CourseRef, TopicRecord, Path]] = []
     fuzzy: list[tuple[CourseRef, TopicRecord, Path]] = []
     folded = query.casefold()
-    for map_path in sorted(vault.root.rglob("content_map.json")):
+    for map_path in sorted(
+        path for path in paths.walk(vault.root) if path.name == "content_map.json"
+    ):
         course_dir = map_path.parent.parent
         raw = _read_content_map(course_dir)
         for row in _map_topics(raw):
@@ -1602,23 +1959,27 @@ def _read_toc_modules(course_dir: Path) -> list[dict[str, object]]:
     try:
         with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
             raw: Any = json.load(handle)
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
+    except FileNotFoundError:
         return []
-    modules = raw.get("modules") if isinstance(raw, dict) else None
-    return (
-        [cast(dict[str, object], value) for value in modules if isinstance(value, dict)]
-        if isinstance(modules, list)
-        else []
-    )
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise A2LError(f"{destination.name} is unreadable") from exc
+    if not isinstance(raw, dict):
+        raise A2LError(f"{destination.name} must contain an object")
+    modules = raw.get("modules")
+    if not isinstance(modules, list):
+        raise A2LError(f"{destination.name} must contain a modules list")
+    if any(not isinstance(value, dict) for value in modules):
+        raise A2LError(f"{destination.name} contains an invalid module")
+    return [cast(dict[str, object], value) for value in modules]
 
 
 def _write_json(destination: Path, payload: object) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
     text = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n"
     )
-    paths.atomic_write_text(paths.long_path(destination), text)
+    paths.atomic_write_text(destination, text)
 
 
 def _read_list(destination: Path) -> list[dict[str, object]]:
@@ -1627,13 +1988,13 @@ def _read_list(destination: Path) -> list[dict[str, object]]:
             raw: Any = json.load(handle)
     except FileNotFoundError:
         return []
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise A2LError(f"{destination.name} is unreadable") from exc
-    return (
-        [cast(dict[str, object], row) for row in raw if isinstance(row, dict)]
-        if isinstance(raw, list)
-        else []
-    )
+    if not isinstance(raw, list):
+        raise A2LError(f"{destination.name} must contain a list")
+    if any(not isinstance(row, dict) for row in raw):
+        raise A2LError(f"{destination.name} contains an invalid item")
+    return [cast(dict[str, object], row) for row in raw]
 
 
 def _write_list(destination: Path, rows: Sequence[Mapping[str, object]]) -> None:
@@ -1681,7 +2042,11 @@ def _merge_rows(
 def _project_assignments(values: Sequence[object]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for value in values:
-        if not isinstance(value, dict) or not isinstance(value.get("Id"), int):
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("Id"), int)
+            or isinstance(value.get("Id"), bool)
+        ):
             continue
         availability = value.get("Availability")
         rows.append(
@@ -1702,7 +2067,11 @@ def _project_assignments(values: Sequence[object]) -> list[dict[str, object]]:
 def _project_news(values: Sequence[object]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for value in values:
-        if not isinstance(value, dict) or not isinstance(value.get("Id"), int):
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("Id"), int)
+            or isinstance(value.get("Id"), bool)
+        ):
             continue
         body = value.get("Body")
         body_text = body.get("Text") if isinstance(body, dict) else None
@@ -1726,7 +2095,11 @@ def _project_news(values: Sequence[object]) -> list[dict[str, object]]:
 def _project_quizzes(values: Sequence[object]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for value in values:
-        if not isinstance(value, dict) or not isinstance(value.get("QuizId"), int):
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("QuizId"), int)
+            or isinstance(value.get("QuizId"), bool)
+        ):
             continue
         due = _optional_text(value.get("DueDate"))
         rows.append(
@@ -1766,7 +2139,7 @@ def _project_grades(values: Sequence[object]) -> list[dict[str, object]]:
 
 
 def _write_announcements(destination: Path, rows: Sequence[Mapping[str, object]]) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
     lines = ["# Announcements", ""]
     for row in rows:
         title = str(row.get("title") or "Untitled")
@@ -1777,7 +2150,7 @@ def _write_announcements(destination: Path, rows: Sequence[Mapping[str, object]]
         text = str(row.get("text") or "").strip()
         if text:
             lines.extend([text, ""])
-    paths.atomic_write_text(paths.long_path(destination), "\n".join(lines).rstrip() + "\n")
+    paths.atomic_write_text(destination, "\n".join(lines).rstrip() + "\n")
 
 
 def _write_index(
@@ -1855,7 +2228,7 @@ def _topic_filename(topic: TopicRecord) -> str:
 
 
 def _unique_reserved(destination: Path, reserved: set[str]) -> Path:
-    candidate = paths.unique_path(paths.long_path(destination))
+    candidate = paths.unique_path(destination)
     for number in range(1, 100_000):
         if _canonical_name(candidate) not in reserved and not paths.collides(candidate):
             reserved.add(_canonical_name(candidate))
@@ -2145,7 +2518,7 @@ def _hash_file(path: Path) -> tuple[str, int]:
 def _remove_quietly(path: Path) -> None:
     try:
         os.unlink(os.fspath(paths.long_path(path)))
-    except FileNotFoundError:
+    except OSError:
         return
 
 
@@ -2161,14 +2534,27 @@ def _ingest_discussions(
     vault: Vault,
     *,
     include_authors: bool,
-) -> None:
+) -> str | None:
     """Fetch opt-in discussions while keeping raw author identity out of the vault."""
 
     values, complete, error = _fetch_collection(
         client, _endpoint_path(client, course, "discussions/forums/")
     )
-    if error is not None or not complete:
-        return
+    if error is not None:
+        return _safe_error("discussions", error)
+    if not complete:
+        return _safe_error("discussions", A2LError("incomplete response"))
+    if any(
+        not isinstance(value, dict) or not _discussion_forum_is_valid(value) for value in values
+    ):
+        return _safe_error("discussions", A2LError("metadata endpoint returned an invalid forum"))
+    forum_ids = [value["ForumId"] for value in values if isinstance(value, dict)]
+    if len({str(value) for value in forum_ids}) != len(forum_ids):
+        return _safe_error("discussions", A2LError("metadata endpoint returned duplicate forums"))
+    try:
+        existing_rows = _read_discussion_rows(course_dir / "_meta" / "discussions.json")
+    except A2LError as exc:
+        return _safe_error("discussions", exc)
     key = _discussion_key(vault)
     posts = [
         post for value in values if isinstance(value, dict) for post in _discussion_posts(value)
@@ -2177,8 +2563,7 @@ def _ingest_discussions(
         identity for post in posts if (identity := _discussion_identity(post)) is not None
     }
     pseudonyms = _discussion_pseudonyms(key, identities)
-    rows: list[dict[str, object]] = []
-    markdown_lines = ["# Discussions", ""]
+    incoming_rows: list[dict[str, object]] = []
     for value in values:
         if not isinstance(value, dict) or not isinstance(value.get("ForumId"), int):
             continue
@@ -2204,37 +2589,47 @@ def _ingest_discussions(
             )
         if rendered_posts:
             forum_row["posts"] = rendered_posts
-        rows.append(forum_row)
+        incoming_rows.append(forum_row)
+
+    rows = _merge_discussion_rows(existing_rows, incoming_rows)
+    _write_list(course_dir / "_meta" / "discussions.json", rows)
+    markdown_lines = ["# Discussions", ""]
+    for forum_row in rows:
         markdown_lines.extend([f"## {forum_row['name'] or 'Untitled forum'}", ""])
+        description_text = str(forum_row.get("description") or "")
         if description_text:
             markdown_lines.extend([description_text, ""])
-        for post in rendered_posts:
+        if forum_row.get("withdrawn_at"):
+            markdown_lines.extend(["> No longer posted in LEARN.", ""])
+        raw_posts = forum_row.get("posts", [])
+        for post in raw_posts if isinstance(raw_posts, list) else []:
+            if not isinstance(post, dict):
+                continue
             markdown_lines.extend(
                 [
-                    f"### {post['author']}",
+                    f"### {post.get('author') or 'author-unknown'}",
                     "",
-                    str(post["text"]),
+                    str(post.get("text") or ""),
                     "",
                 ]
             )
 
-    _write_list(course_dir / "_meta" / "discussions.json", rows)
     discussion_dir = course_dir / "discussions"
-    discussion_dir.mkdir(parents=True, exist_ok=True)
-    paths.atomic_write_text(
-        paths.long_path(discussion_dir / "discussions.md"), "\n".join(markdown_lines)
-    )
+    paths.long_path(discussion_dir).mkdir(parents=True, exist_ok=True)
+    paths.atomic_write_text(discussion_dir / "discussions.md", "\n".join(markdown_lines))
+    return None
 
 
 def _discussion_key(vault: Vault) -> bytes:
     private = vault.state() / "private"
-    private.mkdir(parents=True, exist_ok=True, mode=0o700)
+    paths.long_path(private).mkdir(parents=True, exist_ok=True, mode=0o700)
     destination = private / "discussion-hmac.key"
     try:
-        key = destination.read_bytes()
+        with open(os.fspath(paths.long_path(destination)), "rb") as handle:
+            key = handle.read()
     except FileNotFoundError:
         key = secrets.token_bytes(32)
-        paths.atomic_write_bytes(paths.long_path(destination), key)
+        paths.atomic_write_bytes(destination, key)
     if len(key) != 32:
         raise A2LError("discussion pseudonym key is invalid")
     return key
@@ -2255,6 +2650,114 @@ def _discussion_posts(forum: Mapping[str, object]) -> list[dict[str, object]]:
     if isinstance(direct_posts, list):
         raw_posts.extend(direct_posts)
     return [post for post in raw_posts if isinstance(post, dict)]
+
+
+def _read_discussion_rows(destination: Path) -> list[dict[str, object]]:
+    rows = _read_list(destination)
+    validated: list[dict[str, object]] = []
+    seen_forums: set[str] = set()
+    for row in rows:
+        identifier = row.get("id")
+        if isinstance(identifier, bool) or not isinstance(identifier, int):
+            raise A2LError("discussions.json contains an invalid forum ID")
+        forum_key = str(identifier)
+        if forum_key in seen_forums:
+            raise A2LError("discussions.json contains duplicate forum IDs")
+        seen_forums.add(forum_key)
+        raw_posts = row.get("posts", [])
+        if not isinstance(raw_posts, list) or any(
+            not isinstance(post, dict) or not _discussion_post_is_valid(post) for post in raw_posts
+        ):
+            raise A2LError("discussions.json contains invalid posts")
+        post_ids = [str(post["id"]) for post in raw_posts if isinstance(post, dict)]
+        if len(set(post_ids)) != len(post_ids):
+            raise A2LError("discussions.json contains duplicate post IDs")
+        validated.append(dict(row))
+    return validated
+
+
+def _merge_discussion_rows(
+    existing: Sequence[Mapping[str, object]], incoming: Sequence[Mapping[str, object]]
+) -> list[dict[str, object]]:
+    """Union complete discussion captures by forum and post ID without deleting history."""
+    by_forum: dict[str, dict[str, object]] = {
+        str(row["id"]): dict(row) for row in existing if isinstance(row.get("id"), int)
+    }
+    incoming_forums: set[str] = set()
+    for row in incoming:
+        forum_id = row.get("id")
+        if isinstance(forum_id, bool) or not isinstance(forum_id, int):
+            raise A2LError("discussion capture contains an invalid forum ID")
+        forum_key = str(forum_id)
+        incoming_forums.add(forum_key)
+        prior = by_forum.get(forum_key, {})
+        merged = dict(prior)
+        for field, value in row.items():
+            if field == "posts":
+                continue
+            if field in {"name", "description"} and not value and prior.get(field):
+                continue
+            merged[field] = value
+        old_posts = prior.get("posts", [])
+        new_posts = row.get("posts", [])
+        merged["posts"] = _merge_rows(
+            old_posts if isinstance(old_posts, list) else [],
+            new_posts if isinstance(new_posts, list) else [],
+            id_field="id",
+            complete=True,
+        )
+        merged["missing_since"] = None
+        merged["withdrawn_at"] = None
+        by_forum[forum_key] = merged
+
+    now = _now()
+    for forum_key, row in by_forum.items():
+        if forum_key in incoming_forums:
+            continue
+        if row.get("missing_since") is None:
+            row["missing_since"] = now
+        elif row.get("withdrawn_at") is None:
+            row["withdrawn_at"] = now
+    return sorted(by_forum.values(), key=lambda row: str(row.get("id")))
+
+
+def _discussion_forum_is_valid(forum: Mapping[str, object]) -> bool:
+    """Validate nested discussion containers before replacing a prior capture."""
+    raw_topics = forum.get("Topics", forum.get("topics", []))
+    if "Topics" in forum or "topics" in forum:
+        if isinstance(raw_topics, dict):
+            raw_topics = raw_topics.get("Items", raw_topics.get("Objects"))
+        if not isinstance(raw_topics, list) or any(
+            not isinstance(topic, dict) for topic in raw_topics
+        ):
+            return False
+        for topic in raw_topics:
+            if "Posts" not in topic and "posts" not in topic:
+                return False
+            raw_posts = topic.get("Posts", topic.get("posts", []))
+            if not isinstance(raw_posts, list) or any(
+                not isinstance(post, dict) or not _discussion_post_is_valid(post)
+                for post in raw_posts
+            ):
+                return False
+
+    direct_posts = forum.get("Posts", forum.get("posts", []))
+    if ("Posts" in forum or "posts" in forum) and (
+        not isinstance(direct_posts, list)
+        or any(
+            not isinstance(post, dict) or not _discussion_post_is_valid(post)
+            for post in direct_posts
+        )
+    ):
+        return False
+    posts = _discussion_posts(forum)
+    post_ids = [str(_discussion_post_id(post)) for post in posts]
+    return len(set(post_ids)) == len(post_ids)
+
+
+def _discussion_post_is_valid(post: Mapping[str, object]) -> bool:
+    identifier = _discussion_post_id(post)
+    return identifier is not None and (not isinstance(identifier, str) or bool(identifier))
 
 
 def _discussion_identity(post: Mapping[str, object]) -> str | None:

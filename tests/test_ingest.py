@@ -14,6 +14,7 @@ from ingest_support import FakeClient, course
 
 from agent2learn import ingest as ingest_module
 from agent2learn.api import DownloadError, DownloadResult
+from agent2learn.errors import A2LError
 from agent2learn.ingest import fetch_topic, ingest_files, ingest_metadata
 from agent2learn.vault import Vault
 
@@ -66,6 +67,51 @@ def _topic_rows(root: Path) -> list[dict[str, object]]:
     rows = raw["topics"]
     assert isinstance(rows, list)
     return rows
+
+
+def test_external_stub_keeps_plain_paths_at_long_path_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An extended Windows path must never become a value that callers join or store."""
+    vault = Vault(tmp_path)
+    course_dir = vault.root / "Term 1261" / "COURSE101_1261"
+    stub = course_dir / "content" / "external.url.txt"
+    rows: list[dict[str, object]] = [
+        {
+            "source_key": "uwaterloo:111111:topic:1",
+            "source_id": "1",
+            "topic_id": 1,
+            "course_code": "COURSE101",
+            "course_name": "Synthetic Course",
+            "title": "External",
+            "kind": "Link",
+            "module_path": [],
+            "availability": "external_link",
+            "view_url": "https://example.test/topic/1",
+            "stub_path": "Term 1261/COURSE101_1261/content/external.url.txt",
+        }
+    ]
+    calls: list[Path] = []
+
+    def fake_long_path(path: Path) -> Path:
+        return path.parent / "__extended__" / path.name
+
+    monkeypatch.setattr(ingest_module.paths, "long_path", fake_long_path)
+    monkeypatch.setattr(
+        ingest_module.paths,
+        "atomic_write_text",
+        lambda destination, text: calls.append(destination),
+    )
+
+    ingest_module._materialize_external_stubs(
+        rows,
+        course_dir=course_dir,
+        vault=vault,
+        school=FakeClient([]).school,
+        course=course(),
+    )
+
+    assert calls == [stub]
 
 
 def _handler_for(payloads: dict[str, bytes], *, last_modified: str | None = None):
@@ -218,6 +264,76 @@ def test_interrupted_stream_preserves_previous_file_and_manifest(tmp_path: Path)
     assert not list(tmp_path.rglob("*.part"))
 
 
+def test_failed_install_retries_the_retained_part_without_redownloading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    topic = _topic(1, "Lecture")
+    payload = b"downloaded once"
+    topic["Size"] = len(payload)
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic)},
+        download_handler=_handler_for({"topic-1.pdf": payload}),
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    def refuse_install(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(5, "Access is denied")
+
+    real_install = ingest_module.paths.atomic_install_temp
+    monkeypatch.setattr(ingest_module.paths, "atomic_install_temp", refuse_install)
+    with pytest.raises(PermissionError):
+        ingest_files(fake_client, vault, fake_client.school)
+
+    assert len(fake_client.download_calls) == 1
+    assert list(tmp_path.rglob("*.part"))
+    assert next(tmp_path.rglob("*.part")).read_bytes() == payload
+    assert list(tmp_path.rglob("*.part.meta.json"))
+
+    monkeypatch.setattr(ingest_module.paths, "atomic_install_temp", real_install)
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert len(fake_client.download_calls) == 1
+    assert report.downloaded == 1
+    assert not list(tmp_path.rglob("*.part"))
+    assert not list(tmp_path.rglob("*.part.meta.json"))
+
+
+def test_retained_part_without_remote_fingerprint_is_revalidated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    topic = _topic(1, "Lecture")
+    topic["LastModifiedDate"] = None
+    payload = b"downloaded once"
+    topic["Size"] = len(payload)
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic)},
+        download_handler=_handler_for({"topic-1.pdf": payload}),
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    real_install = ingest_module.paths.atomic_install_temp
+
+    def refuse_install(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(
+        ingest_module.paths,
+        "atomic_install_temp",
+        refuse_install,
+    )
+    with pytest.raises(PermissionError):
+        ingest_files(fake_client, vault, fake_client.school)
+
+    monkeypatch.setattr(ingest_module.paths, "atomic_install_temp", real_install)
+    ingest_files(fake_client, vault, fake_client.school)
+
+    assert len(fake_client.download_calls) == 2
+
+
 def test_keyboard_interrupt_checkpoints_completed_entries(tmp_path: Path) -> None:
     topics = (_topic(1, "First", filename="first.pdf"), _topic(2, "Second", filename="second.pdf"))
     calls = 0
@@ -296,6 +412,157 @@ def test_metadata_phase_writes_typed_projections_and_grades_are_opt_in(tmp_path:
     ingest_metadata(fake_client, vault, fake_client.school, include_grades=True)
     assert (course_dir / "_meta" / "my_grades.json").is_file()
     assert any("/grades/" in path for path in fake_client.json_calls)
+
+
+def test_unexpected_calibration_load_error_is_not_replaced_by_recalibration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = FakeClient([])
+    del fake_client.courses
+
+    def fail_load() -> object:
+        raise RuntimeError("calibration parser regression")
+
+    def should_not_recalibrate(_client: object) -> object:
+        raise AssertionError("unexpected calibration errors must not trigger network work")
+
+    monkeypatch.setattr(ingest_module, "load_calibration", fail_load)
+    monkeypatch.setattr(ingest_module, "calibrate", should_not_recalibrate)
+
+    with pytest.raises(RuntimeError, match="parser regression"):
+        ingest_module._selected_courses(fake_client, term=None, only=None)
+
+
+def test_metadata_list_with_wrong_root_shape_is_not_treated_as_empty(tmp_path: Path) -> None:
+    destination = tmp_path / "assignments.json"
+    destination.write_text(json.dumps({"items": []}), encoding="utf-8")
+
+    with pytest.raises(A2LError, match="assignments.json"):
+        ingest_module._read_list(destination)
+
+
+def test_metadata_list_with_malformed_utf8_is_not_treated_as_empty(tmp_path: Path) -> None:
+    destination = tmp_path / "assignments.json"
+    destination.write_bytes(b"[\xff")
+
+    with pytest.raises(A2LError, match="assignments.json"):
+        ingest_module._read_list(destination)
+
+
+def test_metadata_list_with_invalid_items_is_not_silently_filtered(tmp_path: Path) -> None:
+    destination = tmp_path / "assignments.json"
+    destination.write_text(json.dumps([{"id": 1}, "lost row"]), encoding="utf-8")
+
+    with pytest.raises(A2LError, match="invalid item"):
+        ingest_module._read_list(destination)
+
+
+def test_malformed_collection_response_cannot_mark_existing_rows_missing(
+    tmp_path: Path,
+) -> None:
+    assignment = {
+        "Id": 20,
+        "Name": "Problem Set",
+        "DueDate": "2026-02-06T04:59:00.000Z",
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc()},
+        responses={"/dropbox/folders/": [assignment]},
+    )
+    vault = Vault(tmp_path)
+    first = ingest_metadata(fake_client, vault, fake_client.school)
+    assignments_path = first.courses[0].directory / "_meta" / "assignments.json"
+    assert json.loads(assignments_path.read_text(encoding="utf-8"))[0]["id"] == 20
+
+    fake_client.responses["/dropbox/folders/"] = ["malformed row"]
+    second = ingest_metadata(fake_client, vault, fake_client.school)
+
+    row = json.loads(assignments_path.read_text(encoding="utf-8"))[0]
+    assert row["missing_since"] is None
+    assert row["withdrawn_at"] is None
+    assert "assignments: A2LError" in second.errors
+
+
+def test_incomplete_grade_response_preserves_previous_values(tmp_path: Path) -> None:
+    grade = {
+        "GradeObjectIdentifier": "1",
+        "GradeObjectName": "Problem Set",
+        "GradeObjectType": "Numeric",
+        "PointsNumerator": 5,
+        "PointsDenominator": 5,
+        "DisplayedGrade": "100%",
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc()},
+        responses={"/grades/values/myGradeValues/": [grade]},
+    )
+    vault = Vault(tmp_path)
+    first = ingest_metadata(fake_client, vault, fake_client.school, include_grades=True)
+    grades_path = first.courses[0].directory / "_meta" / "my_grades.json"
+    original_bytes = grades_path.read_bytes()
+
+    fake_client.responses["/grades/values/myGradeValues/"] = ["malformed row"]
+    second = ingest_metadata(fake_client, vault, fake_client.school, include_grades=True)
+
+    assert grades_path.read_bytes() == original_bytes
+    assert "grades: A2LError" in second.errors
+
+
+def test_malformed_assignment_attachments_cannot_mark_existing_topics_missing(
+    tmp_path: Path,
+) -> None:
+    assignment = {
+        "Id": 20,
+        "Name": "Problem Set",
+        "Attachments": [
+            {
+                "Id": 900001,
+                "FileName": "starter.pdf",
+                "Url": "/content/enforced/111111-COURSE101/starter.pdf",
+                "Size": 4,
+            }
+        ],
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc()},
+        responses={"/dropbox/folders/": [assignment]},
+    )
+    vault = Vault(tmp_path)
+    first = ingest_metadata(fake_client, vault, fake_client.school)
+    map_path = first.courses[0].directory / "_meta" / "content_map.json"
+    original = next(
+        row
+        for row in json.loads(map_path.read_text(encoding="utf-8"))["topics"]
+        if row["source_id"] == "20-900001"
+    )
+    assert original["missing_since"] is None
+
+    fake_client.responses["/dropbox/folders/"] = [
+        {"Id": 20, "Name": "Problem Set", "Attachments": ["malformed attachment"]}
+    ]
+    second = ingest_metadata(fake_client, vault, fake_client.school)
+
+    current = next(
+        row
+        for row in json.loads(map_path.read_text(encoding="utf-8"))["topics"]
+        if row["source_id"] == "20-900001"
+    )
+    assert current["missing_since"] is None
+    assert current["withdrawn_at"] is None
+    assert "assignments: A2LError" in second.errors
+
+
+def test_cached_toc_with_malformed_utf8_is_reported_as_a_metadata_gap(tmp_path: Path) -> None:
+    course_dir = tmp_path / "Term" / "COURSE101"
+    destination = course_dir / "_meta" / "toc.json"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"{\xff")
+
+    with pytest.raises(A2LError, match="toc.json"):
+        ingest_module._read_toc_modules(course_dir)
 
 
 def test_assignment_richtext_is_sanitized_and_attachments_use_file_pipeline(
@@ -457,6 +724,82 @@ def test_discussion_pseudonyms_are_vault_local_stable_and_permission_restricted(
     ingest_files(fake_client, other_vault, fake_client.school, include_discussions=True)
     other_discussion = next(other_root.rglob("discussions.json")).read_text(encoding="utf-8")
     assert other_discussion != first
+
+
+def test_malformed_discussion_topics_preserve_previous_capture(tmp_path: Path) -> None:
+    forum = {
+        "ForumId": 50001,
+        "Name": "General Discussion",
+        "Topics": [{"Posts": [{"PostId": 1, "Body": {"Text": "Keep me"}}]}],
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "Discussion link", kind="Link"))},
+        responses={"/discussions/forums/": [forum]},
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+
+    course_dir = next(tmp_path.rglob("content_map.json")).parent.parent
+    discussion_path = course_dir / "_meta" / "discussions.json"
+    original_bytes = discussion_path.read_bytes()
+
+    fake_client.responses["/discussions/forums/"] = [
+        {"ForumId": 50001, "Name": "General Discussion", "Topics": ["malformed topic"]}
+    ]
+    report = ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+
+    assert discussion_path.read_bytes() == original_bytes
+    assert "discussions: A2LError" in report.errors
+
+
+def test_complete_discussion_refresh_merges_removed_posts_and_forums(tmp_path: Path) -> None:
+    first_forum = {
+        "ForumId": 50001,
+        "Name": "General Discussion",
+        "Topics": [
+            {
+                "Posts": [
+                    {"PostId": 1, "Body": {"Text": "Keep this post"}},
+                    {"PostId": 2, "Body": {"Text": "This one is still present"}},
+                ]
+            }
+        ],
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "Discussion link", kind="Link"))},
+        responses={"/discussions/forums/": [first_forum]},
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+    ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+
+    course_dir = next(tmp_path.rglob("content_map.json")).parent.parent
+    discussion_path = course_dir / "_meta" / "discussions.json"
+
+    fake_client.responses["/discussions/forums/"] = [
+        {
+            "ForumId": 50001,
+            "Name": "General Discussion",
+            "Topics": [{"Posts": [{"PostId": 2, "Body": {"Text": "This one is still present"}}]}],
+        }
+    ]
+    ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+    rows = json.loads(discussion_path.read_text(encoding="utf-8"))
+    posts = rows[0]["posts"]
+    assert {post["id"] for post in posts} == {1, 2}
+    removed = next(post for post in posts if post["id"] == 1)
+    assert removed["missing_since"] is not None
+    assert removed["withdrawn_at"] is None
+
+    fake_client.responses["/discussions/forums/"] = []
+    ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+    ingest_files(fake_client, vault, fake_client.school, include_discussions=True)
+    rows = json.loads(discussion_path.read_text(encoding="utf-8"))
+    assert rows[0]["withdrawn_at"] is not None
+    assert {post["id"] for post in rows[0]["posts"]} == {1, 2}
 
 
 def test_discussion_pseudonym_collision_gets_deterministic_disambiguators(

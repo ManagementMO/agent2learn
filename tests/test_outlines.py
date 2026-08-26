@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any
 import pytest
 from ingest_support import FakeClient, course
 
+from agent2learn import outlines as outlines_module
 from agent2learn.ingest import MetadataReport, ingest_metadata
 from agent2learn.outlines import (
     CDPOutlineBrowser,
@@ -155,6 +157,33 @@ def test_declared_outline_host_is_query_free_and_pdf_is_twinned(tmp_path: Path) 
     assert (vault.root / Path(*entry.derived["markdown"].path.split("/"))).is_file()
 
 
+def test_rendered_canonical_url_is_normalized_before_metadata_is_persisted(tmp_path: Path) -> None:
+    class ReviewSchool(UWaterloo):
+        base_url = "https://learn.example.test"
+
+        def outline_hosts(self) -> list[str]:
+            return ["outline.example.test"]
+
+    school = ReviewSchool()
+    vault, metadata = _metadata(tmp_path)
+    metadata = _retarget(metadata, "https://outline.example.test/syllabus.pdf")
+    browser = FakeOutlineBrowser(
+        OutlinePage(
+            html="<html><body>PDF wrapper</body></html>",
+            canonical_url="https://outline.example.test/syllabus.pdf?signature=SECRET#fragment",
+            pdf=b"%PDF-synthetic-outline",
+        )
+    )
+
+    result = ingest_outlines(browser, vault, school, metadata)
+
+    assert result.rendered == 1
+    outline_metadata = next(vault.root.rglob("outlines.json")).read_text(encoding="utf-8")
+    assert "https://outline.example.test/syllabus.pdf" in outline_metadata
+    assert "SECRET" not in outline_metadata
+    assert "#fragment" not in outline_metadata
+
+
 @pytest.mark.parametrize(
     ("canonical_url", "subresources", "top_level_requests", "popups", "html"),
     [
@@ -259,6 +288,45 @@ def test_outline_timeout_is_a_gap_and_target_is_closed(tmp_path: Path) -> None:
     assert result.unavailable == 1
     assert result.errors == ("outline: TimeoutError",)
     assert browser.closed == 1
+
+
+def test_outline_target_cleanup_failure_is_reported_and_stops_following_targets(
+    tmp_path: Path,
+) -> None:
+    vault, metadata = _metadata(tmp_path)
+    metadata = _retarget(metadata, "https://learn.example.test/outline.html")
+
+    class FailingCloseBrowser(FakeOutlineBrowser):
+        def close_target(self) -> None:
+            raise RuntimeError("synthetic close failure")
+
+    browser = FailingCloseBrowser(
+        OutlinePage(
+            html="<html><body>outline</body></html>",
+            canonical_url="https://learn.example.test/outline.html",
+        )
+    )
+    school = type("ReviewSchool", (UWaterloo,), {"base_url": "https://learn.example.test"})()
+
+    result = ingest_outlines(browser, vault, school, metadata)
+
+    assert result.rendered == 1
+    assert result.errors == ("outline: target cleanup failed (RuntimeError)",)
+    rows = json.loads(
+        (metadata.courses[0].directory / "_meta" / "outlines.json").read_text(encoding="utf-8")
+    )
+    assert rows[0]["cleanup_error"] == "target could not be closed"
+
+
+def test_outline_mapping_rejects_malformed_request_audit() -> None:
+    with pytest.raises(ValueError, match="subresources"):
+        outlines_module._coerce_page(
+            {
+                "html": "<html><body>outline</body></html>",
+                "canonical_url": "https://learn.example.test/outline.html",
+                "subresources": [123],
+            }
+        )
 
 
 class FakeCDP:

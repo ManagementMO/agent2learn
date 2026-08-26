@@ -85,36 +85,45 @@ def ingest_outlines(
     errors: list[str] = []
     for course_metadata in metadata.courses:
         status_rows: list[dict[str, object]] = []
+        stop_after_cleanup_failure = False
         for topic in _outline_topics(course_metadata.topics):
             url = _topic_outline_url(topic, school)
             if url is None:
                 unavailable += 1
                 status_rows.append(_status(topic, "outline_unavailable", "unsafe URL"))
                 continue
+            status: dict[str, object]
             try:
                 page = _render(browser, url, school)
-                _validate_page(page, school)
+                page = _validate_page(page, school)
                 source_path, markdown_path = _install_outline(
                     vault, school, course_metadata, topic, page
                 )
             except Exception as exc:
                 unavailable += 1
                 errors.append(f"outline: {type(exc).__name__}")
-                status_rows.append(_status(topic, "outline_unavailable", type(exc).__name__))
-                continue
+                status = _status(topic, "outline_unavailable", type(exc).__name__)
             else:
                 rendered += 1
-                status_rows.append(
-                    {
-                        "source_key": topic.source_key,
-                        "url": page.canonical_url,
-                        "status": "rendered",
-                        "source_path": source_path,
-                        "path": markdown_path,
-                    }
-                )
+                status = {
+                    "source_key": topic.source_key,
+                    "url": page.canonical_url,
+                    "status": "rendered",
+                    "source_path": source_path,
+                    "path": markdown_path,
+                }
             finally:
-                _close_target(browser)
+                close_error = _close_target(browser)
+            if close_error is not None:
+                errors.append(f"outline: target cleanup failed ({close_error})")
+                status["cleanup_error"] = "target could not be closed"
+                stop_after_cleanup_failure = True
+            status_rows.append(status)
+            if stop_after_cleanup_failure:
+                # Continuing would render another outline in a target whose previous page was not
+                # closed. Stop after recording the current result so browser state cannot bleed
+                # into the next course or become a false citation.
+                break
         _write_json(course_metadata.directory / "_meta" / "outlines.json", status_rows)
         rendered_paths = [
             vault.root / path
@@ -122,6 +131,8 @@ def ingest_outlines(
             if row.get("status") == "rendered" and isinstance((path := row.get("path")), str)
         ]
         aipolicy.surface_course_ai_policy(course_metadata.directory, rendered_paths)
+        if stop_after_cleanup_failure:
+            break
 
     return OutlineReport(rendered=rendered, unavailable=unavailable, errors=tuple(errors))
 
@@ -212,20 +223,23 @@ def _coerce_page(value: OutlinePage | Mapping[str, object]) -> OutlinePage:
         html=body,
         canonical_url=canonical_url,
         pdf=pdf,
-        subresources=_string_tuple(value.get("subresources")),
-        top_level_requests=_string_tuple(value.get("top_level_requests")),
-        popups=_string_tuple(value.get("popups")),
+        subresources=_string_tuple(value.get("subresources"), "subresources"),
+        top_level_requests=_string_tuple(value.get("top_level_requests"), "top_level_requests"),
+        popups=_string_tuple(value.get("popups"), "popups"),
     )
 
 
-def _string_tuple(value: object) -> tuple[str, ...]:
-    if not isinstance(value, (list, tuple)):
+def _string_tuple(value: object, label: str) -> tuple[str, ...]:
+    if value is None:
         return ()
-    return tuple(item for item in value if isinstance(item, str))
+    if not isinstance(value, (list, tuple)) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"browser returned invalid {label}")
+    return tuple(value)
 
 
-def _validate_page(page: OutlinePage, school: School) -> None:
-    if _normalize_allowed_url(page.canonical_url, school) is None:
+def _validate_page(page: OutlinePage, school: School) -> OutlinePage:
+    canonical_url = _normalize_allowed_url(page.canonical_url, school)
+    if canonical_url is None:
         raise ValueError("outline redirected to an undeclared origin")
     requests = (*page.subresources, *page.top_level_requests)
     if any(_normalize_allowed_url(value, school) is None for value in requests):
@@ -236,6 +250,9 @@ def _validate_page(page: OutlinePage, school: School) -> None:
         raise ValueError("outline reached the sign-in wall")
     if not page.html.strip() and page.pdf is None:
         raise ValueError("outline render was empty")
+    # Persist the normalized URL, not the browser's raw location, because a same-origin redirect
+    # can still carry signed query strings or fragments that are not part of the citation.
+    return replace(page, canonical_url=canonical_url)
 
 
 def _install_outline(
@@ -258,7 +275,7 @@ def _install_outline(
     markdown_bytes = _outline_markdown(topic.title, page)
     if prior is not None and source_hash != prior.sha256:
         preserved = vault.preserve_revision(key=topic.source_key, changed_at=clock.now())
-        if preserved is None and vault.materialized(prior).exists():
+        if preserved is None and paths.long_path(vault.materialized(prior)).exists():
             raise ValueError("current outline source could not be preserved")
 
     _install_bytes(source_destination, source_bytes)
@@ -300,7 +317,7 @@ def _source_destination(
     candidate = _content_directory(metadata.directory, ("Outlines",)) / (
         f"{paths.safe_name(topic.title)}{suffix}"
     )
-    return paths.unique_path(paths.long_path(candidate))
+    return paths.unique_path(candidate)
 
 
 def _markdown_destination(vault: Vault, source: Path, prior: ManifestEntry | None) -> Path:
@@ -339,8 +356,8 @@ def _install_bytes(destination: Path, data: bytes) -> None:
     # Outline bytes are generated locally and cheap to recreate.  The generated-writer cleanup
     # semantics are therefore intentional; downloaded course .part files use ingest's
     # atomic_install_temp path and survive a failed install.
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    paths.atomic_write_bytes(paths.long_path(destination), data)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+    paths.atomic_write_bytes(destination, data)
 
 
 def _update_topic_map(
@@ -379,11 +396,12 @@ def _status(topic: TopicRecord, status: str, reason: str) -> dict[str, object]:
     return {"source_key": topic.source_key, "status": status, "reason": reason}
 
 
-def _close_target(browser: OutlineBrowser) -> None:
+def _close_target(browser: OutlineBrowser) -> str | None:
     try:
         browser.close_target()
-    except Exception:
-        return
+    except Exception as exc:
+        return type(exc).__name__
+    return None
 
 
 def _now() -> str:
@@ -391,12 +409,12 @@ def _now() -> str:
 
 
 def _write_json(destination: Path, payload: object) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
     text = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n"
     )
-    paths.atomic_write_text(paths.long_path(destination), text)
+    paths.atomic_write_text(destination, text)
 
 
 class CDPOutlineBrowser:
