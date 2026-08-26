@@ -461,6 +461,38 @@ RATE_LIMITED_BODY = """<!DOCTYPE html>
 # --------------------------------------------------------------------------------------
 # Deterministic binary fixtures
 # --------------------------------------------------------------------------------------
+# A representative *digital* PDF: both pages carry a real text layer comfortably above the
+# default 80-words-per-page OCR threshold.
+#
+# This matters for portability, not realism. A thin page falls back to Tesseract, which is
+# an optional external binary — present on a developer laptop, absent on a stock CI runner.
+# The golden vault would then record a conversion gap on CI and a real twin locally, and the
+# cross-platform test would be measuring the environment instead of the code. The OCR and
+# mixed-page paths are covered by unit tests in test_convert.py, which stub the backend and
+# need no system dependency.
+LECTURE_PDF_PAGES = (
+    "Introduction to Course Materials. This page exists so the extracted text layer is "
+    "comfortably above the default threshold of eighty whitespace delimited words per page. "
+    "The converter treats a page with fewer words than that as effectively empty and hands "
+    "it to optical character recognition instead. A genuine lecture slide deck exported "
+    "from a word processor or a presentation tool carries a text layer of roughly this "
+    "density, so this fixture models the common case rather than the exceptional one. The "
+    "words here are deliberately ordinary and carry no meaning that any test should depend "
+    "upon. What is being verified is that extraction produces identical bytes on Windows, "
+    "macOS, and Linux, and that the resulting markdown twin can be cited by line number "
+    "from a grounding pack without any ambiguity at all.",
+    "Second Page of Course Materials. The document has two pages so that page markers, "
+    "page ordering, and per page coverage accounting are all exercised by the golden vault "
+    "rather than merely asserted somewhere in prose. Page ordering is a real hazard: a "
+    "converter that emits pages in dictionary order rather than document order would still "
+    "produce plausible looking markdown, and only a byte comparison against a committed "
+    "hash would notice the difference. This page therefore repeats the same unremarkable "
+    "density of ordinary words. Nothing in this text should ever be treated as course "
+    "content, and no test should assert on any particular sentence appearing here beyond "
+    "its presence and its position within the document.",
+)
+
+
 def build_pdf(pages: list[str]) -> bytes:
     """A minimal, valid, reproducible PDF.
 
@@ -658,9 +690,7 @@ def generate() -> dict[str, str]:
     written["api/nonjson/malformed_body.txt"] = MALFORMED_BODY.encode("utf-8")
     written["api/nonjson/rate_limited.html"] = RATE_LIMITED_BODY.encode("utf-8")
 
-    written["files/lecture01.pdf"] = build_pdf(
-        ["Example lecture page one.", "Example lecture page two."]
-    )
+    written["files/lecture01.pdf"] = build_pdf(list(LECTURE_PDF_PAGES))
     written["files/analysis.ipynb"] = build_notebook().encode("utf-8")
     written["files/notes.Rmd"] = RMD_SOURCE.encode("utf-8")
 

@@ -1831,12 +1831,25 @@ def _content_directory(course_dir: Path, module_path: Sequence[str]) -> Path:
     return directory
 
 
+def _extension(name: str) -> str:
+    """Return a usable extension, treating a bare trailing dot as no extension.
+
+    Python 3.14 changed ``PurePath.suffix``: ``'Reading list.'`` now reports ``'.'`` where
+    earlier versions report ``''``. Taken at face value that lone dot looks like an
+    extension, so a topic titled with a trailing dot keeps no real extension and the file
+    lands with none at all — a different vault on 3.14 than on 3.11. A single dot is not an
+    extension on any version, so it is normalized away here rather than at each call site.
+    """
+    suffix = PurePosixPath(name).suffix
+    return suffix if len(suffix) > 1 else ""
+
+
 def _topic_filename(topic: TopicRecord) -> str:
     title = topic.title.strip() or "untitled"
     title_path = PurePosixPath(title).name
     url_name = PurePosixPath(urlsplit(topic.url_path or "").path).name
-    title_suffix = PurePosixPath(title_path).suffix
-    suffix = title_suffix or PurePosixPath(url_name).suffix
+    title_suffix = _extension(title_path)
+    suffix = title_suffix or _extension(url_name)
     base = title_path if title_suffix else f"{title_path}{suffix}"
     return paths.safe_name(base)
 
@@ -1858,7 +1871,9 @@ def _canonical_name(path: Path) -> str:
 
 
 def _split_name(name: str) -> tuple[str, str]:
-    suffix = PurePosixPath(name).suffix
+    # ``_extension`` rather than ``.suffix``: a collision suffix must be inserted at the
+    # same place on every Python version (see the 3.14 note there).
+    suffix = _extension(name)
     return (name[: -len(suffix)], suffix) if suffix else (name, "")
 
 

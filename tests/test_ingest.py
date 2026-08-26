@@ -621,3 +621,40 @@ def test_download_route_candidates_fall_through_in_documented_order(tmp_path: Pa
     assert len(calls) == 3
     assert "/topics/files/download/1/DirectFileTopicDownload" in calls[0]
     assert "/content/topics/1/file" in calls[1]
+
+
+def test_trailing_dot_title_keeps_its_extension_on_every_python_version() -> None:
+    """Python 3.14 reports '.' as the suffix of 'Reading list.'; 3.11 reports ''.
+
+    Taken literally the lone dot looks like an extension, so the URL's real extension is
+    never applied and the file lands with none at all. That produced a different vault on
+    3.14 than on 3.11 — caught by the golden tree, invisible to every unit test here.
+    """
+    record = ingest_module.TopicRecord(
+        source_key="uwaterloo:1:topic:2",
+        source_id="2",
+        topic_id=2,
+        course_org_unit_id=1,
+        course_code="C",
+        course_name="C",
+        term="1261",
+        title="Reading list.",
+        kind="File",
+        module_path=("Week 1",),
+        module_ids=(9,),
+        view_url="https://learn.example.test/d2l/x",
+        url_path="/content/enforced/1-C/reading.pdf",
+        outline_url=None,
+        external_host=None,
+        etag=None,
+        last_modified=None,
+        is_broken=False,
+    )
+
+    assert ingest_module._topic_filename(record) == "Reading list..pdf"
+
+
+def test_split_name_inserts_a_collision_suffix_before_the_real_extension() -> None:
+    assert ingest_module._split_name("Reading list..pdf") == ("Reading list.", ".pdf")
+    assert ingest_module._split_name("Reading list.") == ("Reading list.", "")
+    assert ingest_module._split_name("plain") == ("plain", "")

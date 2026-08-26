@@ -35,11 +35,30 @@ def test_pdf_conversion_is_deterministic_and_page_marked() -> None:
     assert first.markdown == second.markdown
     assert "<!-- a2l:page 1 -->" in first.markdown
     assert "<!-- a2l:page 2 -->" in first.markdown
-    assert "Example lecture page one." in first.markdown
-    assert "Example lecture page two." in first.markdown
+    assert "Introduction to Course Materials." in first.markdown
+    assert "Second Page of Course Materials." in first.markdown
+    # Page order is document order, not whatever order the backend happens to yield.
+    assert first.markdown.index("Introduction to Course Materials.") < first.markdown.index(
+        "Second Page of Course Materials."
+    )
     assert [page.page for page in first.page_coverage] == [1, 2]
     assert all(page.mode == "markdown" for page in first.page_coverage)
     assert first.warnings == ()
+
+
+def test_the_fixture_pdf_has_a_text_layer_above_the_default_ocr_threshold() -> None:
+    """Both pages must convert without Tesseract, which CI runners do not install.
+
+    A thin page falls back to OCR, so on a machine without Tesseract the converter records
+    a gap instead of a twin. The golden vault would then differ between a laptop and CI for
+    an environmental reason, and the cross-platform test would be measuring the runner
+    rather than the code. OCR behaviour is covered separately with a stubbed backend.
+    """
+    result = convert_source(FILES / "lecture01.pdf", ocr_words_per_page=80)
+
+    assert result.gap is False
+    assert [page.mode for page in result.page_coverage] == ["markdown", "markdown"]
+    assert all(page.words >= 80 for page in result.page_coverage)
 
 
 def test_executed_notebook_output_reaches_twin() -> None:
