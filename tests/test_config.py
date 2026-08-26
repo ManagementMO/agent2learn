@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -152,6 +153,62 @@ def test_config_rejects_invalid_json(isolated_dirs: SimpleNamespace) -> None:
     path.write_text("{not-json", encoding="utf-8")
 
     with pytest.raises(ValueError, match="JSON"):
+        config.load()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="file symlinks require Windows privileges")
+def test_config_rejects_a_symlinked_file(isolated_dirs: SimpleNamespace, tmp_path: Path) -> None:
+    path = config.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside-config.json"
+    outside.write_text('{"submit_enabled": true}\n', encoding="utf-8")
+    path.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlink"):
+        config.load()
+
+    assert outside.read_text(encoding="utf-8") == '{"submit_enabled": true}\n'
+
+
+def test_config_rejects_malformed_utf8_as_invalid_json(isolated_dirs: SimpleNamespace) -> None:
+    path = config.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"{\xff")
+
+    with pytest.raises(ValueError, match="JSON"):
+        config.load()
+
+
+def test_config_does_not_treat_an_unreadable_file_as_defaults(
+    isolated_dirs: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = config.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"submit_enabled": true}', encoding="utf-8")
+
+    def denied(*args: object, **kwargs: object) -> object:
+        raise PermissionError("config denied")
+
+    monkeypatch.setattr(config, "open", denied, raising=False)
+
+    with pytest.raises(ValueError, match="unreadable"):
+        config.load()
+
+
+def test_config_does_not_treat_a_denied_file_probe_as_absent(
+    isolated_dirs: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = config.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"submit_enabled": true}', encoding="utf-8")
+
+    def denied_probe(_path: Path) -> Path:
+        raise PermissionError("config denied")
+
+    monkeypatch.setattr(config, "config_path", lambda: path)
+    monkeypatch.setattr(config.paths, "long_path", denied_probe)
+
+    with pytest.raises(ValueError, match="unreadable"):
         config.load()
 
 
@@ -340,3 +397,54 @@ def test_verbose_logging_does_not_relax_the_data_allowlist(
         handler.flush()
 
     assert secret not in config.log_path().read_text(encoding="utf-8")
+
+
+def test_log_event_rejects_private_values_in_persisted_fields(isolated_logs: Path) -> None:
+    console.configure_logging()
+
+    with pytest.raises(ValueError):
+        console.log_event("COURSE101")
+    with pytest.raises(ValueError):
+        console.log_event("sync", diagnostic_code="student-123")
+    with pytest.raises(ValueError):
+        console.log_event("sync", status="final-draft.pdf")
+
+    class StudentException(RuntimeError):
+        pass
+
+    console.log_event("sync", exception=StudentException("private"))
+    for handler in console.get_logger().handlers:
+        handler.flush()
+
+    text = config.log_path().read_text(encoding="utf-8")
+    assert "StudentException" not in text
+
+
+def test_logging_opens_the_log_through_the_long_path_boundary(
+    isolated_logs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extended = isolated_logs / "extended" / "a2l.log"
+    opened: list[object] = []
+
+    class FakeHandler:
+        def __init__(self, path: object, **_kwargs: object) -> None:
+            opened.append(path)
+
+        def setLevel(self, _level: int) -> None:
+            return
+
+        def setFormatter(self, _formatter: object) -> None:
+            return
+
+        def addFilter(self, _filter: object) -> None:
+            return
+
+        def close(self) -> None:
+            return
+
+    monkeypatch.setattr(console, "RotatingFileHandler", FakeHandler)
+    monkeypatch.setattr(console.paths, "long_path", lambda _path: extended)
+
+    console.configure_logging()
+
+    assert opened == [os.fspath(extended)]

@@ -6,18 +6,62 @@ import json
 import logging
 import math
 import os
-import re
 import sys
 from logging.handlers import RotatingFileHandler
 from typing import Any, TextIO
 
 from rich.console import Console
 
-from agent2learn import __version__, config
+from agent2learn import __version__, config, paths
 
 _UNICODE_GLYPH = {"ok": "✓", "warn": "⚠", "fail": "✗", "info": "ℹ"}
 _ASCII_GLYPH = {"ok": "[ok]", "warn": "[!]", "fail": "[x]", "info": "[-]"}
-_CODE = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+_ALLOWED_EVENTS = frozenset(
+    {
+        "auth",
+        "auth_checked",
+        "audit",
+        "calendar",
+        "convert",
+        "courses",
+        "diff",
+        "doctor",
+        "fetch",
+        "submit",
+        "sync",
+        "sync_completed",
+        "upgrade",
+    }
+)
+_ALLOWED_DIAGNOSTIC_CODES = frozenset(
+    {
+        "API_UNAVAILABLE",
+        "AUTH_EXPIRED",
+        "CONFIG_INVALID",
+        "CONVERSION_GAP",
+        "DOCTOR_REPORT",
+        "INTEGRITY_GAP",
+        "SUBMISSION_BLOCKED",
+        "SYNC_OK",
+    }
+)
+_ALLOWED_STATUSES = frozenset({"completed", "failure", "skipped", "started", "success", "warning"})
+_SAFE_EXCEPTION_CLASSES = frozenset(
+    {
+        "A2LError",
+        "AuthenticationError",
+        "ConversionError",
+        "DownloadError",
+        "FileNotFoundError",
+        "NotConfigured",
+        "OSError",
+        "PermissionError",
+        "RuntimeError",
+        "SessionExpired",
+        "TimeoutError",
+        "ValueError",
+    }
+)
 _LOGGER_NAME = "agent2learn"
 _HANDLER_MARKER = "_agent2learn_allowlisted_handler"
 _MAX_BYTES = 1_048_576
@@ -76,7 +120,7 @@ def configure_logging(*, verbose: bool = False) -> logging.Logger:
             handler.close()
 
     handler = RotatingFileHandler(
-        os.fspath(config.log_path()),
+        os.fspath(paths.long_path(config.log_path())),
         maxBytes=_MAX_BYTES,
         backupCount=_BACKUP_COUNT,
         encoding="utf-8",
@@ -107,11 +151,13 @@ def log_event(
     """
 
     del context
-    if not _CODE.fullmatch(event):
-        raise ValueError("event must be a short diagnostic code")
+    if event not in _ALLOWED_EVENTS:
+        raise ValueError("event is not an allowlisted diagnostic event")
     payload: dict[str, object] = {"event": event, "package_version": __version__}
     if diagnostic_code is not None:
-        payload["diagnostic_code"] = _validated_code(diagnostic_code, "diagnostic_code")
+        if diagnostic_code not in _ALLOWED_DIAGNOSTIC_CODES:
+            raise ValueError("diagnostic_code is not an allowlisted diagnostic code")
+        payload["diagnostic_code"] = diagnostic_code
     if stage_ms is not None:
         if isinstance(stage_ms, bool) or not isinstance(stage_ms, (int, float)):
             raise ValueError("stage_ms must be a finite non-negative number")
@@ -119,10 +165,15 @@ def log_event(
             raise ValueError("stage_ms must be a finite non-negative number")
         payload["stage_ms"] = stage_ms
     if status is not None:
-        payload["status"] = _validated_code(status, "status")
+        if status not in _ALLOWED_STATUSES:
+            raise ValueError("status is not an allowlisted diagnostic status")
+        payload["status"] = status
     if exception is not None:
-        payload["exception_class"] = (
+        exception_name = (
             exception.__name__ if isinstance(exception, type) else type(exception).__name__
+        )
+        payload["exception_class"] = (
+            exception_name if exception_name in _SAFE_EXCEPTION_CLASSES else "Exception"
         )
 
     logger = get_logger()
@@ -144,12 +195,6 @@ class _AllowlistedFilter(logging.Filter):
         )
         record.args = ()
         return True
-
-
-def _validated_code(value: str, field: str) -> str:
-    if not _CODE.fullmatch(value):
-        raise ValueError(f"{field} must be a short diagnostic code")
-    return value
 
 
 def _is_tty(stream: TextIO) -> bool:

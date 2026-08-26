@@ -78,7 +78,14 @@ def load() -> Config:
     """Load and validate config, returning privacy-safe defaults when it is absent."""
 
     destination = config_path()
-    if not destination.is_file():
+    try:
+        linked = paths.is_link(destination)
+        present = paths.long_path(destination).is_file()
+    except OSError as exc:
+        raise ValueError("config file is unreadable") from exc
+    if linked:
+        raise ValueError("config file must not be a symlink")
+    if not present:
         return Config()
 
     try:
@@ -88,8 +95,13 @@ def load() -> Config:
             newline="",
         ) as handle:
             raw: Any = json.load(handle)
-    except json.JSONDecodeError as exc:
+    except FileNotFoundError:
+        # The file can disappear between is_file() and open(); absence is still the default case.
+        return Config()
+    except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("config file is not valid JSON") from exc
+    except OSError as exc:
+        raise ValueError("config file is unreadable") from exc
 
     if not isinstance(raw, dict):
         raise ValueError("config root must be a JSON object")
@@ -148,7 +160,7 @@ def save(cfg: Config) -> None:
 
 def _directory(value: str | os.PathLike[str]) -> Path:
     directory = Path(value)
-    directory.mkdir(parents=True, exist_ok=True)
+    paths.long_path(directory).mkdir(parents=True, exist_ok=True)
     return directory
 
 
