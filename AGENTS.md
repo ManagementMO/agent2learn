@@ -28,10 +28,16 @@ architecture.
 ## Current state — 2026-08-25
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 11 are complete as automated implementations.** Task 9's real-browser
-  same-device validation remains a release gate. Resume implementation at **Task 12
-  (`index.py`, `aipolicy.py`, `snapshot.py`)**, after the calibrated API, authentication,
-  metadata-first ingest, outline, and conversion boundaries established in Tasks 8–11.
+- **Tasks 0 through 13 are complete as automated implementations.** Task 9's real-browser
+  same-device validation remains a release gate. Resume implementation at **Task 14
+  (`doctor.py`)**, the first task of Milestone 4 (Onboarding).
+- **The golden vault now exists and is the repository's regression tripwire.**
+  `tests/fixtures/golden_vault.json` pins 45 files by SHA-256 after one full
+  ingest → download → convert → index → snapshot → audit run against the synthetic API.
+  **Never regenerate it to make an unexplained diff green** — a changed hash is either an
+  output change you can state a reason for, or a regression that was just caught.
+  Regenerate deliberately with `A2L_REGENERATE_GOLDEN=1 uv run pytest tests/test_golden_vault.py`,
+  then confirm the same map on all three operating systems.
   - **Task 0** — packaging, licence, safety baseline. `pyproject.toml` declares the full runtime
     stack; `uv.lock` is committed; `a2l --version` works; Apache-2.0 is proven present in the built
     wheel and sdist as a PEP 639 `License-Expression`.
@@ -68,13 +74,32 @@ architecture.
   - **Task 11** — backend-isolated PDF conversion with pinned pdf-oxide, explicit external-Tesseract
     OCR gaps, named PDFium fallback, deterministic notebook/HTML/archive renderers, hash-linked
     derived metadata with threshold/page coverage, and local-twin history preservation.
+  - **Task 12** — deterministic course index, provenance-checked `content_map.json`, AI-policy
+    surfacing, and sync snapshots.
+  - **Task 13** — `clock.py`, `audit.py`, and the golden-vault test.
+    - **`clock.py` is the single wall-clock seam for anything that reaches the vault.** Vault
+      writers must call `clock.now()`/`clock.stamp()`; `test_no_forbidden_calls` fails the build
+      on a direct `datetime.now` outside the exempt auth/transport modules. Without one seam a
+      frozen-clock test is impossible and byte parity cannot be asserted.
+    - **`audit.py`** reports coverage honestly: it floors the citable percentage so a partial
+      archive never rounds up to 100%, inventories links by kind without ever offering to fetch
+      them, and lists assignments sharing no distinguishing term with any topic as a prompt to
+      look rather than as a finding.
+    - Two fixture defects surfaced only under an end-to-end run and are fixed: TOC topics carried
+      no `Size`, so a full sync downloaded nothing and produced an empty vault; and the alternate
+      download routes plus Course B's collection endpoints were unregistered, so the server
+      answered 500 — a *transient* status the client correctly retries five times with backoff.
+      Together those cost 351 s per run; a realistic fixture brings it to about 5 s. When adding a
+      route, return what a real instance returns: 404 for a route that does not serve a topic, and
+      200 with an empty collection for a category a course does not use.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.
 - **Verify a new gate by making it fail.** Every safety check added so far was confirmed by
   perturbation — seven fixture mutations, a notices-drift injection, a deliberately-broken offline
-  guard. Three defects in these tasks were hidden *behind a passing job*, so a green badge is not
-  evidence on its own.
+  guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
+  and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
+  passing job*, so a green badge is not evidence on its own.
 - Known open items, none blocking: Task 9's live same-device auth still needs pass/fail records on
   Windows, macOS, and Linux; `mypy` covers `src/` only (`tests/` and `tools/` have unresolved
   annotations); there is no coverage measurement yet; three Dependabot PRs are blocked because

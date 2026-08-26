@@ -14,13 +14,12 @@ import re
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from agent2learn import aipolicy, paths
+from agent2learn import aipolicy, clock, paths
 from agent2learn import index as course_index
 from agent2learn.ingest import (
     CourseMetadata,
@@ -258,7 +257,7 @@ def _install_outline(
     markdown_destination = _markdown_destination(vault, source_destination, prior)
     markdown_bytes = _outline_markdown(topic.title, page)
     if prior is not None and source_hash != prior.sha256:
-        preserved = vault.preserve_revision(key=topic.source_key, changed_at=datetime.now(UTC))
+        preserved = vault.preserve_revision(key=topic.source_key, changed_at=clock.now())
         if preserved is None and vault.materialized(prior).exists():
             raise ValueError("current outline source could not be preserved")
 
@@ -388,7 +387,7 @@ def _close_target(browser: OutlineBrowser) -> None:
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return clock.stamp()
 
 
 def _write_json(destination: Path, payload: object) -> None:

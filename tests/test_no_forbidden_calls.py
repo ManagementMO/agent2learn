@@ -1,4 +1,4 @@
-"""Keep filesystem naming and atomic replacement centralized in ``paths.py``."""
+"""Keep filesystem naming, atomic replacement, and the wall clock centralized."""
 
 from __future__ import annotations
 
@@ -29,6 +29,30 @@ def test_forbidden_filesystem_primitives_are_only_called_from_paths() -> None:
                 continue
             called = _dotted_name(node.func)
             assert called not in forbidden, f"{called} escaped paths.py in {source_path}"
+
+
+def test_vault_writers_read_the_clock_only_through_the_shared_seam() -> None:
+    """Vault bytes must be reproducible, so writers may not read the wall clock directly.
+
+    ``clock.py`` is the seam a test freezes.  The authentication, transport, and session
+    modules are exempt because they time out logins, back off retries, and age sessions —
+    none of which reaches vault content.
+    """
+
+    exempt = {"clock.py", "cdp.py", "paste.py", "session.py", "api.py", "calibrate.py"}
+
+    for source_path in SRC.rglob("*.py"):
+        if source_path.name in exempt:
+            continue
+        tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            called = _dotted_name(node.func)
+            assert called not in {"datetime.now", "datetime.utcnow", "time.time"}, (
+                f"{called} in {source_path.name} makes vault output unreproducible; "
+                f"call clock.now() or clock.stamp() instead"
+            )
 
 
 def test_collision_helpers_do_not_use_exists_as_the_collision_check() -> None:

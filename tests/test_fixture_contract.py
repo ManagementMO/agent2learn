@@ -137,7 +137,9 @@ SCHEMAS: dict[str, dict[str, set[str]]] = {
 }
 
 MODULE_KEYS = {"ModuleId", "Title", "Modules", "Topics"}
-TOPIC_KEYS = {"TopicId", "Title", "TypeIdentifier", "Url", "LastModifiedDate", "IsBroken"}
+# ``Size`` is optional: D2L reports it for most file topics and omits it for some, and a
+# topic of unknown length stays metadata_only until an explicit one-file fetch.
+TOPIC_KEYS = {"TopicId", "Title", "TypeIdentifier", "Url", "LastModifiedDate", "IsBroken", "Size"}
 
 
 def load(path: Path) -> Any:

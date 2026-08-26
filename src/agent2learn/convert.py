@@ -20,7 +20,6 @@ import shutil
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
@@ -32,8 +31,8 @@ import pytesseract  # type: ignore[import-untyped]
 from pdf_oxide import PdfDocument
 from PIL import Image
 
+from agent2learn import clock, paths
 from agent2learn import index as course_index
-from agent2learn import paths
 from agent2learn.errors import A2LError
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
@@ -579,7 +578,7 @@ def convert_vault(
         if prior_artifact is not None:
             prior_path = _artifact_path(vault, prior_artifact)
             if prior_path.is_file() and _hash_file(prior_path)[0] != prior_artifact.sha256:
-                vault.preserve_revision(key, changed_at=datetime.now(UTC))
+                vault.preserve_revision(key, changed_at=clock.now())
                 local_modification = True
         destination.parent.mkdir(parents=True, exist_ok=True)
         paths.atomic_write_text(paths.long_path(destination), result.markdown)
@@ -1133,7 +1132,7 @@ def _update_content_map(vault: Vault, key: str, **updates: object) -> None:
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return clock.stamp()
 
 
 __all__ = [

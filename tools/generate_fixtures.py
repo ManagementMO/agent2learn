@@ -133,8 +133,24 @@ def myenrollments_page2() -> object:
     }
 
 
-def _topic(tid: int, title: str, url: str, *, kind: str = "File", modified: str = T0) -> dict:
-    return {
+def _topic(
+    tid: int,
+    title: str,
+    url: str,
+    *,
+    kind: str = "File",
+    modified: str = T0,
+    size: int | None = 878,
+) -> dict:
+    """One TOC topic.
+
+    ``Size`` matters more than it looks: a topic whose length is unknown stays
+    ``metadata_only`` until an explicit one-file fetch, so a fixture that omits it produces
+    an empty vault on a full sync. Real D2L reports a size for file topics, and the served
+    body length is used here so the fixture stays internally consistent. ``size=None``
+    models the genuine case where D2L omits it.
+    """
+    topic = {
         "TopicId": tid,
         "Title": title,
         "TypeIdentifier": kind,
@@ -142,6 +158,9 @@ def _topic(tid: int, title: str, url: str, *, kind: str = "File", modified: str 
         "LastModifiedDate": modified,
         "IsBroken": False,
     }
+    if size is not None:
+        topic["Size"] = size
+    return topic
 
 
 def content_toc_a() -> object:
@@ -175,6 +194,7 @@ def content_toc_a() -> object:
                                 "Notebook",
                                 _content_url(COURSE_A_OU, "analysis.ipynb"),
                                 modified=T1,
+                                size=1690,
                             )
                         ],
                     }
@@ -197,18 +217,21 @@ def content_toc_a() -> object:
                         "Publisher eText",
                         "https://example-vitalsource.invalid/book/synthetic-0001",
                         kind="Link",
+                        size=None,
                     ),
                     _topic(
                         800009,
                         "External Tool",
                         "https://example-lti.invalid/launch/synthetic-0001",
                         kind="lti",
+                        size=None,
                     ),
                     _topic(
                         800010,
                         "Quicklink",
                         "https://quicklink.d2l.invalid/d2l/le/content/synthetic-0001",
                         kind="Link",
+                        size=None,
                     ),
                     # Archive + Rmd + plain HTML, for the converter paths.
                     _topic(
@@ -216,8 +239,24 @@ def content_toc_a() -> object:
                         "Site Archive",
                         _content_url(COURSE_A_OU, "site.html.zip"),
                         modified=T2,
+                        size=472,
                     ),
-                    _topic(800012, "R Notes", _content_url(COURSE_A_OU, "notes.Rmd"), modified=T2),
+                    _topic(
+                        800012,
+                        "R Notes",
+                        _content_url(COURSE_A_OU, "notes.Rmd"),
+                        modified=T2,
+                        size=159,
+                    ),
+                    # D2L omits Size for some topics. One of unknown length must stay
+                    # metadata_only until an explicit one-file fetch, so the golden tree
+                    # proves it by the absence of a file alongside its content_map row.
+                    _topic(
+                        800013,
+                        "Unsized Handout",
+                        _content_url(COURSE_A_OU, "unsized.pdf"),
+                        size=None,
+                    ),
                 ],
             },
             {

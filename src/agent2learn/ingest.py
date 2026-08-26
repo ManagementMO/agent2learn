@@ -19,7 +19,6 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from hashlib import sha256
 from html import escape
 from html.parser import HTMLParser
@@ -29,7 +28,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from requests import RequestException
 
-from agent2learn import api, paths, snapshot
+from agent2learn import api, clock, paths, snapshot
 from agent2learn import index as course_index
 from agent2learn.api import Client, DownloadError, DownloadResult
 from agent2learn.calibrate import CourseRef, calibrate, load_calibration
@@ -1073,7 +1072,7 @@ def _materialize_assignments(
             assignment_directory = _unique_reserved(candidate, reserved)
             source_destination = assignment_directory / "instructions.html"
         if prior is not None and prior.sha256 != source_hash:
-            preserved = vault.preserve_revision(key, changed_at=datetime.now(UTC))
+            preserved = vault.preserve_revision(key, changed_at=clock.now())
             if preserved is None and vault.materialized(prior).exists():
                 raise A2LError("assignment instructions could not be preserved")
         source_destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1374,7 +1373,7 @@ def _ingest_one_topic(
         if actual_size <= 0 or result.sha256 != actual_hash or result.size != actual_size:
             raise DownloadError("download integrity validation failed")
         if prior is not None and actual_hash != prior.sha256:
-            preserved = vault.preserve_revision(key, changed_at=datetime.now(UTC))
+            preserved = vault.preserve_revision(key, changed_at=clock.now())
             if preserved is None and vault.materialized(prior).exists():
                 raise A2LError("current source could not be preserved; refusing replacement")
 
@@ -2102,7 +2101,7 @@ def _sanitize_html_text(value: str) -> str:
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return clock.stamp()
 
 
 def _date_key(value: object) -> str:

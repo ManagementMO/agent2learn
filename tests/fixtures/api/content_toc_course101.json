@@ -8,6 +8,7 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Size": 878,
           "Title": "Lecture Slides",
           "TopicId": 800001,
           "TypeIdentifier": "File",
@@ -16,6 +17,7 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Size": 878,
           "Title": "Reading list.",
           "TopicId": 800002,
           "TypeIdentifier": "File",
@@ -24,6 +26,7 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Size": 878,
           "Title": "Café Notes.pdf",
           "TopicId": 800003,
           "TypeIdentifier": "File",
@@ -42,6 +45,7 @@
             {
               "IsBroken": false,
               "LastModifiedDate": "2026-01-12T14:00:00.000Z",
+              "Size": 1690,
               "Title": "Notebook",
               "TopicId": 800004,
               "TypeIdentifier": "File",
@@ -61,6 +65,7 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Size": 878,
           "Title": "Lab Notes",
           "TopicId": 800005,
           "TypeIdentifier": "File",
@@ -69,6 +74,7 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Size": 878,
           "Title": "lab notes",
           "TopicId": 800006,
           "TypeIdentifier": "File",
@@ -77,6 +83,7 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Size": 878,
           "Title": "Long title xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
           "TopicId": 800007,
           "TypeIdentifier": "File",
@@ -109,6 +116,7 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-19T14:00:00.000Z",
+          "Size": 472,
           "Title": "Site Archive",
           "TopicId": 800011,
           "TypeIdentifier": "File",
@@ -117,10 +125,19 @@
         {
           "IsBroken": false,
           "LastModifiedDate": "2026-01-19T14:00:00.000Z",
+          "Size": 159,
           "Title": "R Notes",
           "TopicId": 800012,
           "TypeIdentifier": "File",
           "Url": "/content/enforced/111111-COURSE101/notes.Rmd"
+        },
+        {
+          "IsBroken": false,
+          "LastModifiedDate": "2026-01-05T14:00:00.000Z",
+          "Title": "Unsized Handout",
+          "TopicId": 800013,
+          "TypeIdentifier": "File",
+          "Url": "/content/enforced/111111-COURSE101/unsized.pdf"
         }
       ]
     },

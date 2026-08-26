@@ -1740,7 +1740,7 @@ Steps:
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_golden_vault.py` — **the single most valuable test in the repo**:
+- [x] **Step 1:** Write `tests/test_golden_vault.py` — **the single most valuable test in the repo**:
       ```python
       def test_vault_is_byte_identical_across_platforms(tmp_path, synthetic_api, frozen_clock):
           run_full_pipeline(tmp_path, synthetic_api, clock=frozen_clock)
@@ -1759,7 +1759,7 @@ Steps:
       containing markdown attachments, stream output, dataframe-like `text/plain`, and an error.
       Assert the golden tree covers every case and the generated twins preserve the expected
       evidence.
-- [ ] **Step 2:** Inject a frozen UTC clock and deterministic fixture ordering, run on Linux against
+- [x] **Step 2:** Inject a frozen UTC clock and deterministic fixture ordering, run on Linux against
       the Task 1 `synthetic_api` fixture, generate `golden_vault.json`, and commit it. Then **run on
       Windows and macOS in CI and fix the implementation until all three agree.** The golden map
       covers filenames, markdown/JSON bytes, line endings, manifest structure, and INDEX content;
@@ -1767,10 +1767,10 @@ Steps:
       PDF/backend/notebook output regressions: any converter-version or renderer change generates
       candidates on all three OSes, requires an explained byte diff, and lands only when all three
       hash maps agree.
-- [ ] **Step 3:** Implement `audit.py` — content coverage, submission-only assignments with best-guess
+- [x] **Step 3:** Implement `audit.py` — content coverage, submission-only assignments with best-guess
       content matches, conversion gaps, link inventory by kind, media, quiz counts. Write
       `.a2l/AUDIT.md`.
-- [ ] **Step 4:** Commit.
+- [x] **Step 4:** Commit.
       ```
       git commit -m "feat: structural audit and a golden-vault test that pins cross-platform parity"
       ```
