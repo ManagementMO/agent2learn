@@ -1,5 +1,32 @@
-# These are the two detector-fingerprint findings from the already-pushed a36cf2f commit.
-# The generated hashes are not credentials; keep this exact and commit-scoped so new findings
+# These are detector-fingerprint findings from already-pushed detect-secrets baselines. The
+# generated SHA-1 values are not credentials; keep this exact and commit-scoped so new findings
 # remain visible to the default gitleaks rules.
 a36cf2f6996ea8deeee95e677e8690a6006d7ebd:.secrets.baseline:generic-api-key:140
 a36cf2f6996ea8deeee95e677e8690a6006d7ebd:.secrets.baseline:generic-api-key:147
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:140
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:147
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:154
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:161
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:168
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:175
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:189
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:196
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:203
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:210
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:217
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:224
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:238
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:245
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:252
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:259
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:266
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:273
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:280
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:287
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:294
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:301
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:308
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:322
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:329
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:336
+294f01f833cd6ffcb254290f2dcd1fa48225c759:.secrets.baseline:generic-api-key:343
