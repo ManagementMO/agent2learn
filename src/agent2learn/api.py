@@ -14,13 +14,14 @@ import os
 import random
 import re
 import shutil
+import stat
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
@@ -103,7 +104,10 @@ class Client:
             if _is_login_response(response):
                 raise SessionExpired("session expired · run: a2l auth")
             response.raise_for_status()
-            return response.json()
+            try:
+                return response.json()
+            except ValueError as exc:
+                raise DownloadError("response was not valid JSON") from exc
         finally:
             response.close()
 
@@ -129,7 +133,7 @@ class Client:
         ):
             raise ValueError("max_bytes must be a positive integer or None")
         _validate_part_path(temp)
-        temp.parent.mkdir(parents=True, exist_ok=True)
+        paths.long_path(temp.parent).mkdir(parents=True, exist_ok=True)
 
         request_headers: dict[str, str] = {}
         if prior is not None:
@@ -191,7 +195,7 @@ class Client:
             size = 0
             chunks_since_disk_check = 0
             html_probe = bytearray()
-            with open(os.fspath(paths.long_path(temp)), "wb") as handle:
+            with _open_download_part(temp) as handle:
                 try:
                     for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                         if not chunk:
@@ -261,7 +265,8 @@ class Client:
         if headers:
             merged_headers.update(headers)
 
-        retryable = method == "GET" and not mutating
+        request_is_mutating = mutating or method in {"POST", "PUT", "PATCH", "DELETE"}
+        retryable = method == "GET" and not request_is_mutating
         attempt = 1
         redirects = 0
         backoff = BACKOFF_BASE
@@ -285,7 +290,7 @@ class Client:
                 response.close()
                 if not location:
                     raise DownloadError("redirect response has no Location")
-                if mutating:
+                if request_is_mutating:
                     # Never replay a submission body automatically.  The caller must inspect the
                     # redirect and decide explicitly; this avoids a silent second POST to D2L.
                     raise EgressBlocked("mutating request redirect requires caller decision")
@@ -374,7 +379,7 @@ def _content_length(response: Response) -> int | None:
 
 
 def _ensure_disk_space(path: Path, required: int) -> None:
-    usage = shutil.disk_usage(path.parent)
+    usage = shutil.disk_usage(os.fspath(paths.long_path(path.parent)))
     if usage.free < FREE_DISK_RESERVE + required:
         raise DiskSpaceExhausted("free disk space would cross the configured reserve")
 
@@ -417,14 +422,61 @@ def _validate_part_path(temp: Path) -> None:
         raise TypeError("temp must be a pathlib.Path")
     if not temp.name.endswith(".part"):
         raise ValueError("download temp must be a sibling .part path")
-    if temp.exists() and temp.is_dir():
-        raise ValueError("download temp must be a file path")
+    try:
+        file_stat = os.lstat(os.fspath(paths.long_path(temp)))
+    except FileNotFoundError:
+        return
+    if paths.is_link(temp) or stat.S_ISLNK(file_stat.st_mode):
+        raise ValueError("download temp must not be a symlink")
+    if not stat.S_ISREG(file_stat.st_mode):
+        raise ValueError("download temp must be a regular file")
+    if getattr(file_stat, "st_nlink", 1) != 1:
+        raise ValueError("download temp must not be a hard link")
+
+
+def _open_download_part(temp: Path) -> BinaryIO:
+    """Open a unique part without following a replacement symlink or hard link."""
+    raw_path = os.fspath(paths.long_path(temp))
+    try:
+        prior_stat = os.lstat(raw_path)
+    except FileNotFoundError:
+        prior_stat = None
+
+    flags = os.O_WRONLY | os.O_CREAT
+    if prior_stat is None:
+        flags |= os.O_EXCL
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    try:
+        file_descriptor = os.open(raw_path, flags | no_follow, 0o600)
+    except FileExistsError:
+        # A caller may have reserved the sibling with mkstemp().  Re-check its identity after
+        # the race rather than truncating an object that appeared under the requested name.
+        prior_stat = os.lstat(raw_path)
+        if paths.is_link(temp) or not stat.S_ISREG(prior_stat.st_mode):
+            raise ValueError("download temp must be a regular file") from None
+        file_descriptor = os.open(raw_path, os.O_WRONLY | no_follow)
+
+    try:
+        opened_stat = os.fstat(file_descriptor)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            raise ValueError("download temp must be a regular file")
+        if getattr(opened_stat, "st_nlink", 1) != 1:
+            raise ValueError("download temp must not be a hard link")
+        if prior_stat is not None and (
+            opened_stat.st_dev != prior_stat.st_dev or opened_stat.st_ino != prior_stat.st_ino
+        ):
+            raise ValueError("download temp changed while it was being opened")
+        os.ftruncate(file_descriptor, 0)
+        return os.fdopen(file_descriptor, "wb")
+    except BaseException:
+        os.close(file_descriptor)
+        raise
 
 
 def _remove_part(temp: Path) -> None:
     try:
         os.unlink(os.fspath(paths.long_path(temp)))
-    except FileNotFoundError:
+    except OSError:
         return
 
 

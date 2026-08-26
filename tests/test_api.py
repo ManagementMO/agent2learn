@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,6 +85,16 @@ def test_get_json_login_html_raises_session_expired(
         _client(synthetic_api).get_json("/expired")
 
 
+def test_get_json_malformed_json_is_a_bounded_download_error(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    synthetic_api.expect_malformed_json("/broken")
+    monkeypatch.setattr(api.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(api.DownloadError, match="valid JSON"):
+        _client(synthetic_api).get_json("/broken")
+
+
 def test_get_json_retries_429_and_honours_retry_after(
     synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -135,6 +146,45 @@ def test_zero_byte_download_leaves_no_part(
         _client(synthetic_api).download(synthetic_api.base_url + "/empty", part)
 
     assert not part.exists()
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks requires elevated Windows privileges"
+)
+def test_download_rejects_a_symlinked_part_before_writing_through_it(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    victim = tmp_path / "victim.pdf"
+    victim.write_bytes(b"original")
+    part = tmp_path / "victim.pdf.part"
+    part.symlink_to(victim)
+    monkeypatch.setattr(api.time, "sleep", lambda _seconds: None)
+    synthetic_api.server.expect_request("/symlink").respond_with_data(
+        b"replacement", content_type="application/pdf"
+    )
+
+    with pytest.raises(ValueError, match="symlink"):
+        _client(synthetic_api).download(synthetic_api.base_url + "/symlink", part)
+
+    assert victim.read_bytes() == b"original"
+
+
+def test_download_rejects_a_hardlinked_part_before_writing_through_it(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    victim = tmp_path / "victim.pdf"
+    victim.write_bytes(b"original")
+    part = tmp_path / "victim.pdf.part"
+    os.link(victim, part)
+    monkeypatch.setattr(api.time, "sleep", lambda _seconds: None)
+    synthetic_api.server.expect_request("/hardlink").respond_with_data(
+        b"replacement", content_type="application/pdf"
+    )
+
+    with pytest.raises(ValueError, match="hard link"):
+        _client(synthetic_api).download(synthetic_api.base_url + "/hardlink", part)
+
+    assert victim.read_bytes() == b"original"
 
 
 def test_valid_download_hashes_stream_and_fsyncs(
@@ -457,6 +507,31 @@ def test_mutating_redirect_is_not_followed_or_reposted(
     assert calls[0]["url"].endswith("/submission")
 
 
+def test_post_redirect_is_not_followed_even_without_mutating_hint(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+    client = _client(synthetic_api)
+
+    def request(**kwargs: Any) -> requests.Response:
+        calls.append(kwargs)
+        response = requests.Response()
+        response.status_code = 302
+        response.url = kwargs["url"]
+        response.headers["Location"] = "/submission-target"
+        response._content = b""
+        response._content_consumed = True
+        return response
+
+    monkeypatch.setattr(client._transport, "request", request)
+
+    with pytest.raises(api.EgressBlocked, match="mutating request redirect"):
+        client._request("POST", synthetic_api.base_url + "/submission", stream=False)
+
+    assert len(calls) == 1
+    assert calls[0]["method"] == "POST"
+
+
 def test_external_url_is_rejected_before_any_request(
     synthetic_api: SyntheticAPI, tmp_path: Path
 ) -> None:
@@ -562,6 +637,16 @@ def test_unreadable_calibration_requires_auth(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(config, "state_dir", lambda: tmp_path)
+
+    with pytest.raises(NotConfigured, match="a2l auth"):
+        load_calibration()
+
+
+def test_malformed_utf8_calibration_requires_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(config, "state_dir", lambda: tmp_path)
+    (tmp_path / "calibration.json").write_bytes(b"{\xff")
 
     with pytest.raises(NotConfigured, match="a2l auth"):
         load_calibration()

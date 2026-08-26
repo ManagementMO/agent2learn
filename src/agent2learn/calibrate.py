@@ -83,7 +83,7 @@ def load_calibration() -> Calibration:
             raw: Any = json.load(handle)
     except FileNotFoundError as exc:
         raise NotConfigured("calibration unavailable · run: a2l auth") from exc
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise NotConfigured("calibration is unreadable · run: a2l auth") from exc
     try:
         return _decode(raw)
@@ -215,7 +215,8 @@ def _previous_template() -> str | None:
     try:
         with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
             raw: Any = json.load(handle)
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
+    except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+        # This is only an optional route hint; a corrupt hint must not block fresh calibration.
         return None
     if not isinstance(raw, dict):
         return None
