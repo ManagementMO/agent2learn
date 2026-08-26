@@ -73,6 +73,7 @@ class CourseAudit:
     quizzes: int = 0
     quizzes_with_due_dates: int = 0
     assignments: int = 0
+    metadata_gaps: tuple[str, ...] = ()
     unmatched_assignments: tuple[AssignmentMatch, ...] = ()
 
     @property
@@ -86,7 +87,9 @@ class CourseAudit:
 def audit_vault(vault: Vault) -> list[CourseAudit]:
     """Compute a per-course structural audit from the manifest and content maps."""
     results: list[CourseAudit] = []
-    for map_path in sorted(vault.root.rglob("content_map.json")):
+    for map_path in sorted(
+        path for path in paths.walk(vault.root) if path.name == "content_map.json"
+    ):
         course_dir = map_path.parent.parent
         rows = course_index.read_content_map(course_dir)["topics"]
         if not isinstance(rows, list):
@@ -128,9 +131,10 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
         if title:
             titles.append((title, _terms(title)))
 
-    assignments = _read_json_list(course_dir / "_meta" / "assignments.json")
-    quizzes = _read_json_list(course_dir / "_meta" / "quizzes.json")
+    assignments, assignments_gap = _read_json_list(course_dir / "_meta" / "assignments.json")
+    quizzes, quizzes_gap = _read_json_list(course_dir / "_meta" / "quizzes.json")
     unmatched = _unmatched_assignments(assignments, titles)
+    metadata_gaps = tuple(gap for gap in (assignments_gap, quizzes_gap) if gap is not None)
 
     first = next((row for row in rows if isinstance(row, Mapping)), {})
     return CourseAudit(
@@ -145,6 +149,7 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
         quizzes=len(quizzes),
         quizzes_with_due_dates=sum(1 for row in quizzes if row.get("due_date")),
         assignments=len(assignments),
+        metadata_gaps=metadata_gaps,
         unmatched_assignments=unmatched,
     )
 
@@ -213,15 +218,20 @@ def _suffix(value: str) -> str:
     return f".{extension.casefold()}" if dot else ""
 
 
-def _read_json_list(destination: Path) -> list[Mapping[str, object]]:
+def _read_json_list(destination: Path) -> tuple[list[Mapping[str, object]], str | None]:
     try:
         with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
             raw = json.load(handle)
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return []
+    except FileNotFoundError:
+        return [], None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return [], f"{destination.name} is unreadable"
     if not isinstance(raw, list):
-        return []
-    return [row for row in raw if isinstance(row, Mapping)]
+        return [], f"{destination.name} has an invalid root"
+    rows = [row for row in raw if isinstance(row, Mapping)]
+    if len(rows) != len(raw):
+        return rows, f"{destination.name} contains invalid item(s)"
+    return rows, None
 
 
 def _optional_text(value: object) -> str | None:
@@ -269,6 +279,19 @@ def _render(audits: Sequence[CourseAudit], stamp: str) -> str:
             for state, count in gaps:
                 lines.append(f"| `{state}` | {count} | {_GAP_LABELS.get(state, 'unclassified')} |")
             lines.append("")
+
+        if audit.metadata_gaps:
+            lines.extend(
+                [
+                    "### Metadata gaps",
+                    "",
+                    "The local metadata projection could not be read completely; inventory "
+                    "counts below may be incomplete.",
+                    "",
+                    *[f"- {gap}" for gap in audit.metadata_gaps],
+                    "",
+                ]
+            )
 
         if audit.links:
             lines.extend(["### Links not fetched", "", "| Kind | Count |", "| --- | --- |"])

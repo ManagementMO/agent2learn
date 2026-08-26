@@ -170,6 +170,21 @@ def test_generic_coursework_words_alone_never_count_as_a_match(tmp_path: Path) -
     assert [item.title for item in result.unmatched_assignments] == ["Assignment Part 1"]
 
 
+def test_unreadable_metadata_is_reported_instead_of_counted_as_empty(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    course = _course(vault.root)
+    course_index.write_content_map(course, [_row(1, "Lecture", "markdown_ready")])
+    (course / "_meta" / "assignments.json").write_text('{"items": []}', encoding="utf-8")
+
+    (result,) = audit.audit_vault(vault)
+    report = audit.write_audit(vault, timestamp="2026-08-25T12:00:00Z").read_text(encoding="utf-8")
+
+    assert result.assignments == 0
+    assert result.metadata_gaps == ("assignments.json has an invalid root",)
+    assert "Metadata gaps" in report
+    assert "assignments.json has an invalid root" in report
+
+
 def test_report_is_byte_identical_for_the_same_vault_and_timestamp(tmp_path: Path) -> None:
     vault = _vault(tmp_path)
     course = _course(vault.root)
