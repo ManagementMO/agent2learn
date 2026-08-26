@@ -11,10 +11,11 @@ Use this skill when the user asks to refresh a LEARN vault, bring course materia
 
 ## Sync Choices
 
-1. Use `a2l sync --priority` when the user wants the fastest update for active deadlines, announcements, assignment prompts, outlines, and recently relevant course material.
-2. Use `a2l sync --all` when the user asks to refresh everything Agent2Learn is allowed to fetch from the configured courses.
-3. Add `--include-media` only when the user explicitly wants media downloads and understands the larger disk and time cost.
-4. After sync, read the generated `AUDIT.md` before saying coverage is complete. It reports citable coverage, conversion gaps, link stubs, and material that is known locally only as metadata.
+1. Before running any sync command, verify the command exists with `a2l --help` or `a2l sync --help`. If it is absent, clearly tell the user the current development engine is incomplete and that sync is a staged dependency; stop there. Do not invent a substitute or run a different command.
+2. Use `a2l sync --priority` when the user wants the fastest update for active deadlines, announcements, assignment prompts, outlines, and recently relevant course material.
+3. Use `a2l sync --all` when the user asks to refresh everything Agent2Learn is allowed to fetch from the configured courses.
+4. Add `--include-media` only when the user explicitly wants media downloads and understands the larger disk and time cost.
+5. After sync, read the generated `AUDIT.md` before saying coverage is complete. It reports citable coverage, conversion gaps, link stubs, and material that is known locally only as metadata.
 
 ## Exit 75
 

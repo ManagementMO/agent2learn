@@ -30,6 +30,8 @@ and direct the user to the course outline; never treat unavailable as permission
 
 ## Checking Drafts
 
+Before running `a2l check`, verify the command exists with `a2l --help` or `a2l check --help`. If it is absent, clearly tell the user the current development engine is incomplete and that check is a staged dependency; stop there. Do not invent a substitute or run a different command.
+
 Use `a2l check <draft-file> [--course CODE] [--assignment QUERY]` when the user wants to compare a draft with the local course vault. Present it as an Experimental lexical evidence scan, not as proof, grading, contradiction detection, or academic-policy compliance.
 
 Read `a2l check` results as retrieval evidence:

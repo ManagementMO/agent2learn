@@ -104,9 +104,7 @@ def test_detection_uses_existing_marker_directories_without_creating_them(tmp_pa
     project.joinpath(".agents").mkdir()
     home.joinpath(".codex").mkdir()
 
-    project_destinations = skills.detect_destinations(
-        scope="project", project=project, home=home
-    )
+    project_destinations = skills.detect_destinations(scope="project", project=project, home=home)
     global_destinations = skills.detect_destinations(scope="global", project=project, home=home)
 
     assert [(d.path.relative_to(project).as_posix(), d.agents) for d in project_destinations] == [
@@ -170,6 +168,7 @@ def test_project_install_copies_by_default_writes_metadata_and_deduplicates_shar
             "skill": slug,
             "source": "ManagementMO/agent2learn",
             "source_sha256": skills.source_hash(source / slug),
+            "files": ["SKILL.md"],
         }
 
 
@@ -222,21 +221,145 @@ def test_force_refreshes_only_recognized_agent2learn_skill_directories(tmp_path:
     )
 
     assert result.destinations[0].status == "updated"
-    assert not destination.joinpath("a2l-setup", "local-note.txt").exists()
+    assert destination.joinpath("a2l-setup", "local-note.txt").read_text(encoding="utf-8") == (
+        "remove me\n"
+    )
     assert (
-        destination.joinpath("custom-skill", "SKILL.md").read_text(encoding="utf-8")
-        == "keep me\n"
+        destination.joinpath("custom-skill", "SKILL.md").read_text(encoding="utf-8") == "keep me\n"
     )
 
 
-def test_unrecognized_slug_conflict_is_not_overwritten_even_with_force(tmp_path: Path) -> None:
+def test_sidecarless_exact_canonical_copy_is_current_without_arbitrary_metadata(
+    tmp_path: Path,
+) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    project = tmp_path / "vault"
+    destination = project / ".agents" / "skills" / "a2l-setup"
+    project.joinpath(".agents").mkdir(parents=True)
+    destination.mkdir(parents=True)
+    destination.joinpath("SKILL.md").write_text(
+        source.joinpath("a2l-setup", "SKILL.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = skills.install(
+        scope="project",
+        project=project,
+        home=tmp_path / "home",
+        source_root=source,
+        confirm=lambda preview: True,
+    )
+
+    assert dict(result.destinations[0].skills)["a2l-setup"] == "unchanged"
+    assert not destination.joinpath(".agent2learn.json").exists()
+
+
+def test_unrecognized_slug_conflict_is_left_alone_even_with_force(tmp_path: Path) -> None:
     source = _synthetic_source(tmp_path / "source")
     project = tmp_path / "vault"
     destination = project / ".agents" / "skills" / "a2l-setup"
     destination.mkdir(parents=True)
     destination.joinpath("SKILL.md").write_text("unrelated setup skill\n", encoding="utf-8")
 
-    with pytest.raises(skills.SkillsInstallError, match="unrecognized existing skill"):
+    result = skills.install(
+        scope="project",
+        project=project,
+        home=tmp_path / "home",
+        source_root=source,
+        force=True,
+        confirm=lambda preview: True,
+    )
+
+    assert dict(result.destinations[0].skills)["a2l-setup"] == "conflict"
+    assert destination.joinpath("SKILL.md").read_text(encoding="utf-8") == "unrelated setup skill\n"
+    assert not destination.joinpath(".agent2learn.json").exists()
+
+
+def test_symlinked_project_marker_cannot_escape_the_vault(tmp_path: Path) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    project = tmp_path / "vault"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    project.joinpath(".agents").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(skills.SkillsInstallError, match="no detected agent skill destinations"):
+        skills.install(
+            scope="project",
+            project=project,
+            home=tmp_path / "home",
+            source_root=source,
+            confirm=lambda preview: True,
+        )
+
+    assert not outside.joinpath("skills").exists()
+
+
+def test_force_preview_shows_managed_updates_and_preserved_local_files(tmp_path: Path) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    project = tmp_path / "vault"
+    destination = project / ".agents" / "skills"
+    project.joinpath(".agents").mkdir(parents=True)
+    skills.install(
+        scope="project",
+        project=project,
+        home=tmp_path / "home",
+        source_root=source,
+        confirm=lambda preview: True,
+    )
+    destination.joinpath("a2l-setup", "local-note.txt").write_text("keep me\n", encoding="utf-8")
+    source.joinpath("a2l-setup", "SKILL.md").write_text(
+        source.joinpath("a2l-setup", "SKILL.md").read_text(encoding="utf-8")
+        + "\nRefreshed body.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    previews: list[str] = []
+
+    skills.install(
+        scope="project",
+        project=project,
+        home=tmp_path / "home",
+        source_root=source,
+        force=True,
+        confirm=lambda preview: previews.append(preview) or False,
+    )
+
+    assert "a2l-setup/SKILL.md: update managed file" in previews[0]
+    assert "a2l-setup/local-note.txt: preserve local file" in previews[0]
+
+
+def test_force_refresh_copy_failure_leaves_prior_managed_content_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    project = tmp_path / "vault"
+    destination = project / ".agents" / "skills" / "a2l-setup"
+    project.joinpath(".agents").mkdir(parents=True)
+    skills.install(
+        scope="project",
+        project=project,
+        home=tmp_path / "home",
+        source_root=source,
+        confirm=lambda preview: True,
+    )
+    original = destination.joinpath("SKILL.md").read_text(encoding="utf-8")
+    source.joinpath("a2l-setup", "SKILL.md").write_text(
+        original + "\nRefreshed body.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    real_atomic_write_bytes = skills.paths.atomic_write_bytes
+
+    def fail_on_skill_write(path: Path, data: bytes, *, retries: int = 5) -> None:
+        if path.name == "SKILL.md":
+            raise OSError("simulated copy failure")
+        real_atomic_write_bytes(path, data, retries=retries)
+
+    monkeypatch.setattr(skills.paths, "atomic_write_bytes", fail_on_skill_write)
+
+    with pytest.raises(OSError, match="simulated copy failure"):
         skills.install(
             scope="project",
             project=project,
@@ -246,7 +369,7 @@ def test_unrecognized_slug_conflict_is_not_overwritten_even_with_force(tmp_path:
             confirm=lambda preview: True,
         )
 
-    assert destination.joinpath("SKILL.md").read_text(encoding="utf-8") == "unrelated setup skill\n"
+    assert destination.joinpath("SKILL.md").read_text(encoding="utf-8") == original
 
 
 def test_default_project_is_configured_vault_not_process_cwd(
@@ -311,6 +434,12 @@ def test_frontmatter_validation_rejects_bad_names_descriptions_and_missing_versi
     assert skills.validate_frontmatter("a2l-study", "short", "") == [
         "metadata.version must be a non-empty string"
     ]
+    assert skills.validate_frontmatter("a2l-study", "short", "current") == [
+        "metadata.version must be a valid package version"
+    ]
+    assert skills.validate_frontmatter("a2l-study", "short", "0.2.0") == [
+        "metadata.version must match agent2learn 0.1.0"
+    ]
 
 
 def test_doctor_reports_missing_current_and_stale_skill_installations(
@@ -346,7 +475,55 @@ def test_doctor_reports_missing_current_and_stale_skill_installations(
     assert "stale" in stale.detail
 
 
+def test_doctor_reports_ambiguous_same_slug_skill_conflicts_truthfully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    vault = _make_vault(tmp_path / "vault")
+    vault.root.joinpath(".agents").mkdir()
+    monkeypatch.setattr(skills, "source_root", lambda: source)
+
+    skills.install(
+        scope="project",
+        project=vault.root,
+        home=tmp_path / "home",
+        source_root=source,
+        confirm=lambda preview: True,
+    )
+    conflict = vault.root / ".agents" / "skills" / "a2l-study"
+    conflict.joinpath(".agent2learn.json").unlink()
+    conflict.joinpath("SKILL.md").write_text("another skill using this slug\n", encoding="utf-8")
+
+    check = _skills_check(vault)
+
+    assert check.status == "warn"
+    assert "1 conflict skill(s)" in check.detail
+    assert "0 missing skill(s)" in check.detail
+
+
 def test_required_ai_policy_rule_is_exact() -> None:
     body = Path("skills/a2l-coursework/SKILL.md").read_text(encoding="utf-8")
 
     assert AI_POLICY_RULE in body
+
+
+def test_future_command_skills_guard_against_the_current_development_cli() -> None:
+    help_result = CliRunner().invoke(app, ["--help"])
+    assert help_result.exit_code == 0
+    assert " sync " not in help_result.output
+    assert " check " not in help_result.output
+
+    errors = skills.validate_skill_behavior_contracts(
+        Path.cwd(), available_commands={"auth", "courses", "doctor", "fetch", "skills"}
+    )
+
+    assert errors == []
+
+
+def test_ci_wires_live_skills_schema_npx_and_upstream_mapping_checks() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "Live skills.sh schema validation" in workflow
+    assert "npx --yes ajv-cli validate" in workflow
+    assert "npx --yes skills add ManagementMO/agent2learn --list" in workflow
+    assert "tools/check_skills_registry.py --network" in workflow

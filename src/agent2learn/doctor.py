@@ -503,19 +503,23 @@ def _skills(cfg: config_module.Config) -> list[Check]:
     current = 0
     stale = 0
     missing = 0
+    conflicts = 0
     for destination in destinations:
         for _, status in destination.skills:
             if status == "unchanged":
                 current += 1
             elif status == "updated":
                 stale += 1
+            elif status == "conflict":
+                conflicts += 1
             else:
                 missing += 1
 
-    if stale or missing:
+    if stale or missing or conflicts:
         detail = (
             f"{len(destinations)} destination(s), {current} current skill(s), "
-            f"{stale} stale skill(s), {missing} missing skill(s)"
+            f"{stale} stale skill(s), {missing} missing skill(s), "
+            f"{conflicts} conflict skill(s) left alone"
         )
         return [Check("Skills", "skills.installed", "warn", detail, "run: a2l skills install")]
     return [

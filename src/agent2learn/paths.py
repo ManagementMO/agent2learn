@@ -197,6 +197,31 @@ def ensure_dir(directory: Path) -> None:
     long_path(directory).mkdir(parents=True, exist_ok=True)
 
 
+def temporary_directory(parent: Path, *, prefix: str) -> Path:
+    """Create a sibling temporary directory at a syscall boundary."""
+
+    ensure_dir(parent)
+    raw_path = tempfile.mkdtemp(prefix=prefix, dir=os.fspath(long_path(parent)))
+    return plain_path(Path(raw_path))
+
+
+def has_link_component(path: Path) -> bool:
+    """Return whether any existing component of ``path`` is a symlink/reparse point."""
+
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    parts = absolute.parts
+    if not parts:
+        return False
+    candidate = Path(parts[0])
+    for part in parts[1:]:
+        if is_link(candidate):
+            return True
+        if not long_path(candidate).exists():
+            return False
+        candidate = candidate / part
+    return is_link(candidate)
+
+
 def symlink_dir(source: Path, destination: Path) -> None:
     """Create an opt-in directory symlink at a syscall boundary."""
 
@@ -252,6 +277,26 @@ def atomic_install_temp(destination: Path, temporary: Path, *, retries: int = 5)
     _fsync_file(temporary)
     _tighten_permissions(temporary)
     _replace_with_retries(temporary, destination, retries)
+
+
+def replace_tree(destination: Path, staged: Path, *, retries: int = 5) -> None:
+    """Atomically move a staged tree into place and restore the old tree on failure."""
+
+    _validate_retries(retries)
+    if staged.parent.resolve() != destination.parent.resolve():
+        raise ValueError("staged tree must be a sibling of destination")
+    backup = _backup_path(destination)
+    had_destination = long_path(destination).exists() or is_link(destination)
+    if had_destination:
+        _replace_with_retries(destination, backup, retries)
+    try:
+        _replace_with_retries(staged, destination, retries)
+    except OSError:
+        if had_destination and not long_path(destination).exists():
+            _replace_with_retries(backup, destination, retries)
+        raise
+    if had_destination:
+        remove_tree(backup, ignore_errors=True)
 
 
 def rel_posix(path: Path, root: Path) -> str:
@@ -327,6 +372,14 @@ def _create_temporary(destination: Path, *, suffix: str) -> Path:
     )
     os.close(file_descriptor)
     return plain_path(Path(raw_path))
+
+
+def _backup_path(destination: Path) -> Path:
+    for index in range(1, 100_000):
+        backup = destination.parent / f".{destination.name}.backup.{index}"
+        if not long_path(backup).exists() and not is_link(backup):
+            return backup
+    raise RuntimeError("could not allocate a backup path")
 
 
 def plain_path(path: Path) -> Path:
@@ -429,14 +482,17 @@ __all__ = [
     "atomic_write_text",
     "collides",
     "ensure_dir",
+    "has_link_component",
     "is_link",
     "long_path",
     "plain_path",
     "remove_tree",
+    "replace_tree",
     "rel_posix",
     "walk",
     "reveal",
     "safe_name",
     "symlink_dir",
+    "temporary_directory",
     "unique_path",
 ]
