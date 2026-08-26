@@ -34,6 +34,7 @@ import requests
 from agent2learn import __version__, console, paths
 from agent2learn import config as config_module
 from agent2learn import session as session_module
+from agent2learn import skills as skills_module
 from agent2learn.auth import cdp
 from agent2learn.errors import A2LError, SessionExpired
 from agent2learn.index import read_content_map
@@ -135,7 +136,7 @@ def run_checks(
     checks.extend(_safe_group("Filesystem", "fs.unavailable", lambda: _filesystem(cfg, vault)))
     checks.extend(_safe_group("Session", "session.unavailable", lambda: _session(client)))
     checks.extend(_safe_group("Optional tools", "tools.unavailable", _optional_tools))
-    checks.extend(_safe_group("Skills", "skills.unavailable", _skills))
+    checks.extend(_safe_group("Skills", "skills.unavailable", lambda: _skills(cfg)))
     checks.extend(_safe_group("Vault", "vault.unavailable", lambda: _vault(vault)))
     return checks
 
@@ -486,15 +487,43 @@ def _optional_tools() -> list[Check]:
     ]
 
 
-def _skills() -> list[Check]:
-    # Skills arrive in Task 15. Reporting "not installed" is truthful now and becomes a real
-    # count without changing the check identifier, so a support report stays comparable.
+def _skills(cfg: config_module.Config) -> list[Check]:
+    destinations = skills_module.current_installations(project=cfg.vault)
+    if not destinations:
+        return [
+            Check(
+                "Skills",
+                "skills.installed",
+                "warn",
+                "no detected Agent2Learn skill destination",
+                "run: a2l skills install",
+            )
+        ]
+
+    current = 0
+    stale = 0
+    missing = 0
+    for destination in destinations:
+        for _, status in destination.skills:
+            if status == "unchanged":
+                current += 1
+            elif status == "updated":
+                stale += 1
+            else:
+                missing += 1
+
+    if stale or missing:
+        detail = (
+            f"{len(destinations)} destination(s), {current} current skill(s), "
+            f"{stale} stale skill(s), {missing} missing skill(s)"
+        )
+        return [Check("Skills", "skills.installed", "warn", detail, "run: a2l skills install")]
     return [
         Check(
             "Skills",
             "skills.installed",
-            "warn",
-            "skill diagnostics are unavailable until the skills command is installed",
+            "ok",
+            f"{len(destinations)} destination(s), {current} current Agent2Learn skill(s)",
         )
     ]
 

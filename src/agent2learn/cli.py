@@ -12,12 +12,14 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from agent2learn import __version__, config, paths
 from agent2learn import doctor as doctor_module
 from agent2learn import session as session_store
+from agent2learn import skills as skills_module
 from agent2learn.api import Client
 from agent2learn.auth import authenticate
 from agent2learn.auth import clear_profile as remove_profile
@@ -34,6 +36,13 @@ app = typer.Typer(
     add_completion=True,
     no_args_is_help=True,
 )
+
+skills_app = typer.Typer(
+    name="skills",
+    help="Install or refresh Agent2Learn's canonical agent skills.",
+    no_args_is_help=True,
+)
+app.add_typer(skills_app, name="skills")
 
 
 def _version_callback(value: bool) -> None:
@@ -201,6 +210,71 @@ def fetch(
         typer.echo("source fetched, but no verified citation twin is available", err=True)
         raise typer.Exit(code=1)
     typer.echo(f"verified citation: {citation}")
+
+
+@skills_app.command("install")
+def skills_install(
+    global_install: Annotated[
+        bool,
+        typer.Option(
+            "--global",
+            help="Install into detected user-level agent skill directories.",
+        ),
+    ] = False,
+    project: Annotated[
+        Path | None,
+        typer.Option(
+            "--project",
+            help="Install into detected project-local agent skill directories under PATH.",
+        ),
+    ] = None,
+    link: Annotated[
+        bool,
+        typer.Option(
+            "--link",
+            help="Symlink to the canonical source instead of copying skill directories.",
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Refresh recognized Agent2Learn skill directories after previewing the change.",
+        ),
+    ] = False,
+) -> None:
+    """Install or refresh the four canonical Agent2Learn skills."""
+
+    if global_install and project is not None:
+        raise typer.BadParameter("--global and --project are mutually exclusive")
+    try:
+        skills_module.ensure_interactive_scope(
+            explicit_project=project is not None,
+            global_install=global_install,
+            stdin_is_tty=sys.stdin.isatty(),
+        )
+        resolved_project = Path.cwd() if global_install else skills_module.resolve_project(project)
+        scope: skills_module.Scope = "global" if global_install else "project"
+
+        def confirm(preview: str) -> bool:
+            typer.echo(preview, nl=False)
+            return typer.confirm("Install Agent2Learn skills?", default=False)
+
+        result = skills_module.install(
+            scope=scope,
+            project=resolved_project,
+            force=force,
+            link=link,
+            confirm=confirm,
+        )
+    except skills_module.SkillsInstallError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from None
+
+    if result.cancelled:
+        typer.echo("skills install cancelled")
+        raise typer.Exit(code=1)
+    typer.echo("skills installed")
 
 
 @app.command()

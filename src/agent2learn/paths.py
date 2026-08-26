@@ -191,6 +191,24 @@ def reveal(path: Path) -> None:
         return
 
 
+def ensure_dir(directory: Path) -> None:
+    """Create a directory tree at a syscall boundary."""
+
+    long_path(directory).mkdir(parents=True, exist_ok=True)
+
+
+def symlink_dir(source: Path, destination: Path) -> None:
+    """Create an opt-in directory symlink at a syscall boundary."""
+
+    ensure_dir(destination.parent)
+    os.symlink(
+        os.fspath(long_path(source)),
+        os.fspath(long_path(destination)),
+        target_is_directory=True,
+    )
+    _fsync_directory(destination.parent)
+
+
 def atomic_write_text(destination: Path, text: str, *, retries: int = 5) -> None:
     """Write UTF-8 LF text and atomically install it at ``destination``."""
     _validate_retries(retries)
@@ -410,6 +428,7 @@ __all__ = [
     "atomic_write_bytes",
     "atomic_write_text",
     "collides",
+    "ensure_dir",
     "is_link",
     "long_path",
     "plain_path",
@@ -418,5 +437,6 @@ __all__ = [
     "walk",
     "reveal",
     "safe_name",
+    "symlink_dir",
     "unique_path",
 ]

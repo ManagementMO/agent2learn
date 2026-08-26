@@ -1,0 +1,16 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Agent2Learn",
+      "description": "Skills for setting up, syncing, studying from, and doing coursework with a cited local Agent2Learn vault.",
+      "skills": [
+        "a2l-setup",
+        "a2l-sync",
+        "a2l-study",
+        "a2l-coursework"
+      ]
+    }
+  ]
+}

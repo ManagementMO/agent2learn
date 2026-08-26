@@ -76,6 +76,10 @@ python_version = "3.11"
 strict = true
 warn_unreachable = true
 
+[tool.uv.build-backend]
+data = { data = "skills" }
+source-include = ["skills.sh.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
