@@ -4,8 +4,16 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
 from agent2learn import ingest
-from agent2learn.index import reconcile_content_map, write_course_index, write_submission_readme
+from agent2learn.errors import A2LError
+from agent2learn.index import (
+    read_content_map,
+    reconcile_content_map,
+    write_course_index,
+    write_submission_readme,
+)
 from agent2learn.schools.uwaterloo import UWaterloo
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
@@ -76,6 +84,29 @@ def test_content_map_resolves_only_the_current_hash_verified_manifest_twin(tmp_p
     assert resolved[1]["availability"] == "metadata_only"
     assert resolved[1]["path"] is None
     assert resolved[1]["next_action"] == "a2l fetch 2"
+
+
+def test_content_map_reports_malformed_utf8_as_a2l_error(tmp_path: Path) -> None:
+    course = tmp_path / "Term" / "COURSE_1"
+    metadata = course / "_meta"
+    metadata.mkdir(parents=True)
+    (metadata / "content_map.json").write_bytes(b"{\xff")
+
+    with pytest.raises(A2LError, match="content_map.json is unreadable"):
+        read_content_map(course)
+
+
+def test_content_map_does_not_silently_drop_invalid_topic_items(tmp_path: Path) -> None:
+    course = tmp_path / "Term" / "COURSE_1"
+    metadata = course / "_meta"
+    metadata.mkdir(parents=True)
+    (metadata / "content_map.json").write_text(
+        '{"schema_version": 1, "topics": [{"source_key": "ok"}, "lost row"]}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(A2LError, match="invalid topic"):
+        read_content_map(course)
 
 
 def test_content_map_represents_each_coverage_state_without_offering_external_fetch(

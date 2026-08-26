@@ -33,22 +33,36 @@ def read_content_map(course_dir: Path) -> dict[str, object]:
             raw: Any = json.load(handle)
     except FileNotFoundError:
         return {"schema_version": CONTENT_MAP_VERSION, "topics": []}
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise A2LError("content_map.json is unreadable") from exc
     if not isinstance(raw, dict) or raw.get("schema_version") != CONTENT_MAP_VERSION:
         raise A2LError("content_map.json has an unsupported schema")
     topics = raw.get("topics")
     if not isinstance(topics, list):
         raise A2LError("content_map.json topics must be an array")
-    return {"schema_version": CONTENT_MAP_VERSION, "topics": topics}
+    validated: list[dict[str, object]] = []
+    for topic in topics:
+        if not isinstance(topic, Mapping):
+            raise A2LError("content_map.json contains an invalid topic")
+        row = dict(topic)
+        _validate_topic_identity(row)
+        validated.append(row)
+    return {"schema_version": CONTENT_MAP_VERSION, "topics": validated}
 
 
 def write_content_map(course_dir: Path, rows: Sequence[object]) -> None:
     """Atomically write a canonical, stable-ID-sorted content map."""
+    validated: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise A2LError("content_map contains an invalid topic")
+        value = dict(row)
+        _validate_topic_identity(value)
+        validated.append(value)
     payload = {
         "schema_version": CONTENT_MAP_VERSION,
         "topics": sorted(
-            (dict(row) for row in rows if isinstance(row, Mapping)),
+            validated,
             key=lambda row: str(row.get("source_key", "")),
         ),
     }
@@ -69,10 +83,11 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
         key=lambda row: str(row.get("source_key", "")),
     ):
         row = dict(raw)
-        source_key = row.get("source_key")
-        source_id = row.get("source_id")
-        if not isinstance(source_key, str) or not isinstance(source_id, str):
-            raise A2LError("content_map contains an invalid topic identity")
+        _validate_topic_identity(row)
+        source_key = row["source_key"]
+        source_id = row["source_id"]
+        assert isinstance(source_key, str)
+        assert isinstance(source_id, str)
         if row.get("availability") == "external_link":
             row.update(
                 {"source_path": None, "path": None, "next_action": "open the LEARN link manually"}
@@ -194,7 +209,7 @@ def write_course_index(
             "",
         ]
     )
-    paths.atomic_write_text(paths.long_path(course_dir / "INDEX.md"), "\n".join(lines))
+    paths.atomic_write_text(course_dir / "INDEX.md", "\n".join(lines))
 
 
 def write_submission_readme(
@@ -228,7 +243,7 @@ def write_submission_readme(
     else:
         lines.append("- No matching course content recorded.")
     lines.append("")
-    paths.atomic_write_text(paths.long_path(assignment_dir / "README.md"), "\n".join(lines))
+    paths.atomic_write_text(assignment_dir / "README.md", "\n".join(lines))
 
 
 def _entry_bytes_are_current(vault: Vault, entry: ManifestEntry) -> bool:
@@ -261,9 +276,22 @@ def _course_relative_link(value: str, course_dir: Path) -> str:
 
 
 def _write_json(destination: Path, payload: object) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
     text = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n"
     )
-    paths.atomic_write_text(paths.long_path(destination), text)
+    paths.atomic_write_text(destination, text)
+
+
+def _validate_topic_identity(row: Mapping[str, object]) -> None:
+    source_key = row.get("source_key")
+    source_id = row.get("source_id")
+    if (
+        not isinstance(source_key, str)
+        or not source_key
+        or not isinstance(source_id, str)
+        or not source_id
+        or source_key.rsplit(":", 1)[-1] != source_id
+    ):
+        raise A2LError("content_map contains an invalid topic identity")

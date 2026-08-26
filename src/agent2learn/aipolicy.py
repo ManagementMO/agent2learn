@@ -105,9 +105,9 @@ def _unavailable() -> dict[str, object]:
 
 def _write_record(course_dir: Path, record: dict[str, object]) -> None:
     destination = course_dir / "_meta" / "ai_policy.json"
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
     paths.atomic_write_text(
-        paths.long_path(destination),
+        destination,
         json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n",
     )
@@ -172,4 +172,4 @@ def _surface_index_line(course_dir: Path, record: dict[str, object]) -> None:
             "",
         ]
     )
-    paths.atomic_write_text(paths.long_path(index), "\n".join(cleaned))
+    paths.atomic_write_text(index, "\n".join(cleaned))
