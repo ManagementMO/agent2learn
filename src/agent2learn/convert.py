@@ -342,7 +342,7 @@ def convert_source(
 
     del content_type  # Server metadata is advisory; local bytes and the extension decide dispatch.
     source = Path(source)
-    if not source.is_file():
+    if not paths.long_path(source).is_file():
         raise ConversionError(f"source is not a regular file: {source.name}")
     kind = _classify_source(source)
     if kind == "pdf":
@@ -360,7 +360,8 @@ def convert_source(
         return _convert_html_file(source)
     if kind == "text":
         try:
-            text = source.read_text(encoding="utf-8")
+            with open(os.fspath(paths.long_path(source)), encoding="utf-8", newline="") as handle:
+                text = handle.read()
         except (OSError, UnicodeError) as exc:
             raise ConversionError(f"text source could not be read: {source.name}") from exc
         return ConversionResult(
@@ -447,7 +448,7 @@ def convert_html_zip(source: Path) -> ConversionResult:
     """Extract only a safe main HTML member from a bounded archive in memory."""
 
     try:
-        with zipfile.ZipFile(source) as archive:
+        with zipfile.ZipFile(os.fspath(paths.long_path(source))) as archive:
             infos = archive.infolist()
             html_info = _validate_archive(infos)
             if html_info is None:
@@ -486,7 +487,7 @@ def convert_vault(
     errors: list[str] = []
     for key, entry in sorted(entries.items()):
         source = vault.materialized(entry)
-        if not source.is_file():
+        if not paths.long_path(source).is_file():
             gaps += 1
             message = f"{key}: source is missing"
             errors.append(message)
@@ -511,8 +512,26 @@ def convert_vault(
             continue
 
         artifact = entry.derived.get("markdown")
-        expected_tool, expected_version = _expected_tool(source, selected_backend)
-        expected_threshold = ocr_words_per_page if _classify_source(source) == "pdf" else None
+        try:
+            source_kind = _classify_source(source)
+            expected_tool, expected_version = _expected_tool_for_kind(source_kind, selected_backend)
+        except Exception as exc:
+            gaps += 1
+            message = f"{key}: {type(exc).__name__}"
+            errors.append(message)
+            _update_content_map(
+                vault,
+                key,
+                availability="integrity_gap",
+                source_path=entry.path,
+                path=None,
+                sha256=entry.sha256,
+                source_sha256=entry.sha256,
+                size=entry.size,
+                next_action=message,
+            )
+            continue
+        expected_threshold = ocr_words_per_page if source_kind == "pdf" else None
         if artifact is not None and _artifact_is_current(
             vault,
             artifact,
@@ -577,12 +596,13 @@ def convert_vault(
         local_modification = False
         if prior_artifact is not None:
             prior_path = _artifact_path(vault, prior_artifact)
-            if prior_path.is_file() and _hash_file(prior_path)[0] != prior_artifact.sha256:
+            if paths.long_path(prior_path).is_file() and _hash_file(prior_path)[0] != (
+                prior_artifact.sha256
+            ):
                 vault.preserve_revision(key, changed_at=clock.now())
                 local_modification = True
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        paths.atomic_write_text(paths.long_path(destination), result.markdown)
-        source_kind = _classify_source(source)
+        paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+        paths.atomic_write_text(destination, result.markdown)
         derived = DerivedArtifact(
             path=paths.rel_posix(destination, vault.root),
             sha256=_hash_file(destination)[0],
@@ -623,7 +643,8 @@ def convert_vault(
 
 def _convert_html_file(source: Path) -> ConversionResult:
     try:
-        text = source.read_text(encoding="utf-8")
+        with open(os.fspath(paths.long_path(source)), encoding="utf-8", newline="") as handle:
+            text = handle.read()
     except (OSError, UnicodeError) as exc:
         raise ConversionError(f"HTML source could not be read: {source.name}") from exc
     return _html_result(text)
@@ -680,7 +701,8 @@ def _classify_source(source: Path) -> str:
     suffixes = [suffix.casefold() for suffix in source.suffixes]
     suffix = source.suffix.casefold()
     try:
-        magic = source.read_bytes()[:16]
+        with open(os.fspath(paths.long_path(source)), "rb") as handle:
+            magic = handle.read(16)
     except OSError as exc:
         raise ConversionError(f"source could not be inspected: {source.name}") from exc
     if magic.startswith(b"%PDF"):
@@ -693,11 +715,12 @@ def _classify_source(source: Path) -> str:
         return "office" if _looks_like_office(source, suffix) else "unsupported"
     if suffix in {".doc", ".ppt", ".xls"}:
         return "office" if magic.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1") else "unsupported"
-    if zipfile.is_zipfile(source):
+    archive_path = os.fspath(paths.long_path(source))
+    if zipfile.is_zipfile(archive_path):
         if suffix == ".zip" and ".html" in suffixes:
             return "html_zip"
         try:
-            with zipfile.ZipFile(source) as archive:
+            with zipfile.ZipFile(archive_path) as archive:
                 if any(_is_html_name(info.filename) for info in archive.infolist()):
                     return "html_zip"
         except (OSError, zipfile.BadZipFile):
@@ -713,7 +736,8 @@ def _classify_source(source: Path) -> str:
 
 def _looks_like_notebook(source: Path) -> bool:
     try:
-        raw = json.loads(source.read_text(encoding="utf-8"))
+        with open(os.fspath(paths.long_path(source)), encoding="utf-8", newline="") as handle:
+            raw = json.load(handle)
     except (OSError, UnicodeError, json.JSONDecodeError):
         return False
     return isinstance(raw, dict) and isinstance(raw.get("cells"), list)
@@ -726,7 +750,7 @@ def _looks_like_office(source: Path, suffix: str) -> bool:
         ".xlsx": "xl/workbook.xml",
     }[suffix]
     try:
-        with zipfile.ZipFile(source) as archive:
+        with zipfile.ZipFile(os.fspath(paths.long_path(source))) as archive:
             names = set(archive.namelist())
     except (OSError, zipfile.BadZipFile):
         return False
@@ -1025,7 +1049,9 @@ def _configure_tesseract(language: str) -> bool:
         if program_files:
             candidates.append(Path(program_files) / "Tesseract-OCR" / "tesseract.exe")
         candidates.append(Path.home() / "AppData" / "Local" / "Tesseract-OCR" / "tesseract.exe")
-    executable = next((candidate for candidate in candidates if candidate.is_file()), None)
+    executable = next(
+        (candidate for candidate in candidates if paths.long_path(candidate).is_file()), None
+    )
     if executable is None:
         return False
     pytesseract.pytesseract.tesseract_cmd = os.fspath(executable)
@@ -1049,7 +1075,10 @@ def _package_version(distribution: str, default: str) -> str:
 
 
 def _expected_tool(source: Path, backend: ConverterBackend) -> tuple[str, str]:
-    kind = _classify_source(source)
+    return _expected_tool_for_kind(_classify_source(source), backend)
+
+
+def _expected_tool_for_kind(kind: str, backend: ConverterBackend) -> tuple[str, str]:
     if kind == "pdf":
         return backend.name, backend.version
     if kind == "notebook":
@@ -1079,7 +1108,7 @@ def _artifact_is_current(
     ):
         return False
     path = _artifact_path(vault, artifact)
-    return path.is_file() and _hash_file(path)[0] == artifact.sha256
+    return paths.long_path(path).is_file() and _hash_file(path)[0] == artifact.sha256
 
 
 def _artifact_path(vault: Vault, artifact: DerivedArtifact) -> Path:
@@ -1106,13 +1135,15 @@ def _hash_file(source: Path) -> tuple[str, int]:
             while chunk := handle.read(1024 * 1024):
                 digest.update(chunk)
                 size += len(chunk)
-    except (FileNotFoundError, IsADirectoryError):
+    except (FileNotFoundError, IsADirectoryError, OSError):
         return "", -1
     return digest.hexdigest(), size
 
 
 def _update_content_map(vault: Vault, key: str, **updates: object) -> None:
-    for destination in sorted(vault.root.rglob("content_map.json")):
+    for destination in sorted(
+        path for path in paths.walk(vault.root) if path.name == "content_map.json"
+    ):
         try:
             raw = course_index.read_content_map(destination.parent.parent)
         except (A2LError, UnicodeError):

@@ -61,6 +61,57 @@ def test_the_fixture_pdf_has_a_text_layer_above_the_default_ocr_threshold() -> N
     assert all(page.words >= 80 for page in result.page_coverage)
 
 
+def test_source_classifier_reads_only_a_bounded_magic_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "large.pdf"
+    source.write_bytes(b"%PDF-1.7" + b"x" * 1024)
+
+    def forbidden(_self: Path) -> bytes:
+        raise AssertionError("classifier read the entire source")
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden)
+
+    assert convert._classify_source(source) == "pdf"
+
+
+def test_archive_classifier_uses_the_long_path_for_zipfile_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "site.html.zip"
+    extended = tmp_path / "extended" / source.name
+    extended.parent.mkdir()
+    with zipfile.ZipFile(extended, "w") as archive:
+        archive.writestr("index.html", "<html><body>archive</body></html>")
+
+    def fake_long_path(path: Path) -> Path:
+        return extended if path == source else path
+
+    monkeypatch.setattr(convert.paths, "long_path", fake_long_path)
+
+    assert convert._classify_source(source) == "html_zip"
+
+
+def test_tesseract_probe_uses_the_long_path_boundary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable = tmp_path / "tesseract"
+    executable.write_bytes(b"synthetic executable")
+    seen: list[Path] = []
+
+    monkeypatch.setattr(convert.shutil, "which", lambda _name: str(executable))
+
+    def fake_long_path(path: Path) -> Path:
+        seen.append(path)
+        return executable
+
+    monkeypatch.setattr(convert.paths, "long_path", fake_long_path)
+    monkeypatch.setattr(convert.pytesseract, "get_languages", lambda config: [])
+
+    assert convert._configure_tesseract("eng") is False
+    assert seen == [executable]
+
+
 def test_executed_notebook_output_reaches_twin() -> None:
     result = convert_source(FILES / "analysis.ipynb")
 
@@ -277,6 +328,37 @@ def test_convert_vault_installs_hash_linked_twin_and_is_idempotent(tmp_path: Pat
     assert artifact.derived["markdown"].source_sha256 == entry.sha256
     assert artifact.derived["markdown"].ocr_words_per_page == 80
     assert artifact.derived["markdown"].page_coverage[0]["page"] == 1
+
+
+def test_source_classification_failure_is_a_scoped_conversion_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = Vault(tmp_path / "vault")
+    source = vault.root / "Winter 2026" / "COURSE101" / "content" / "notes.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("local notes", encoding="utf-8")
+    entry = ManifestEntry(
+        path="Winter 2026/COURSE101/content/notes.md",
+        sha256=_sha256(source.read_bytes()),
+        source_id="1",
+        etag=None,
+        last_modified=None,
+        size=source.stat().st_size,
+        fetched_at="2026-08-25T12:00:00Z",
+    )
+    vault.mark("uwaterloo:111111:topic:1", entry)
+    vault.save_manifest()
+
+    def reject_classification(_source: Path) -> str:
+        raise ConversionError("source inspection failed")
+
+    monkeypatch.setattr(convert, "_classify_source", reject_classification)
+
+    report = convert_vault(vault, backend=_Backend(), fallback=_Backend())
+
+    assert report.converted == 0
+    assert report.gaps == 1
+    assert report.errors == ("uwaterloo:111111:topic:1: ConversionError",)
 
 
 def test_changing_pdf_threshold_invalidates_the_derived_twin(tmp_path: Path) -> None:
