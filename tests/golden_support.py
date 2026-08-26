@@ -8,8 +8,9 @@ Determinism is the whole point, so three sources of variation are pinned:
 
 * **the clock** — frozen through ``agent2learn.clock``, the single seam every vault writer
   uses (enforced by ``test_no_forbidden_calls``);
-* **the converter** — a fixed backend identity, because a real ``pdf-oxide`` version bump
-  legitimately changes twin bytes and must be an explained diff, not a silent one;
+* **the converter** — the real backend at the locked version. ``pdf-oxide`` is exact-pinned
+  in ``pyproject.toml``, so a bump is a deliberate edit that *should* require regenerating
+  this map with an explained diff, exactly as ``AGENTS.md`` requires;
 * **jitter** — the download stagger is removed so runs do not differ in wall time.
 
 Anything still varying after that is a real portability defect, which is exactly what the
@@ -100,25 +101,6 @@ class GoldenSession:
         return requests.cookies.RequestsCookieJar()
 
 
-class FixedIdentityBackend:
-    """Wrap the real converter but report a pinned version.
-
-    A ``pdf-oxide`` upgrade genuinely changes twin bytes, and the plan requires that to be
-    an explained, three-platform diff.  Pinning the reported identity here keeps the golden
-    map stable against a dependency bump while leaving the actual extraction real, so a
-    regression in *our* code still fails the test.
-    """
-
-    name = "pdf-oxide"
-    version = "golden"
-
-    def __init__(self) -> None:
-        self._inner = convert.PdfOxideBackend()
-
-    def convert_pdf(self, source: Path, *, ocr_words_per_page: int) -> Any:
-        return self._inner.convert_pdf(source, ocr_words_per_page=ocr_words_per_page)
-
-
 @pytest.fixture
 def frozen_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[datetime]:
     """Freeze the shared clock seam so every generated timestamp is reproducible."""
@@ -153,7 +135,7 @@ def run_full_pipeline(
 
     ingest.ingest_metadata(client, vault, school)
     ingest.ingest_files(client, vault, school, scope="all", include_media=include_media)
-    convert.convert_vault(vault, backend=FixedIdentityBackend())
+    convert.convert_vault(vault)
     audit_module.write_audit(vault)
     return vault
 

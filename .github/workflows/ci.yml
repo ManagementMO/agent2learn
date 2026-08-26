@@ -113,17 +113,28 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The golden vault pins byte-for-byte output at the LOCKED dependency set. This job
+      # deliberately re-resolves outside the lock, and the manifest records a tool_version
+      # for every converter, so a different nbformat or markitdown legitimately produces
+      # different bytes. Asserting parity across library versions would be a category
+      # error, so only that one comparison is deselected — the rest of the golden suite
+      # (within-run determinism, adversarial coverage, LF endings, no backslash in links)
+      # is version-independent and still runs here.
       - name: Resolve newest allowed versions (no lock)
         run: uv sync --upgrade --all-extras --dev
 
       - name: Tests against newest allowed versions
-        run: uv run pytest -q
+        run: >-
+          uv run pytest -q
+          --deselect tests/test_golden_vault.py::test_vault_is_byte_identical_across_platforms
 
       - name: Resolve lowest allowed versions (no lock)
         run: uv sync --upgrade --resolution lowest-direct --all-extras --dev
 
       - name: Tests against lowest allowed versions
-        run: uv run pytest -q
+        run: >-
+          uv run pytest -q
+          --deselect tests/test_golden_vault.py::test_vault_is_byte_identical_across_platforms
 
       - name: Audit for known vulnerabilities
         run: |
