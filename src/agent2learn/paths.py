@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import unicodedata
+from collections.abc import Iterator
 from pathlib import Path
 
 WINDOWS = sys.platform == "win32"
@@ -65,7 +66,13 @@ def safe_name(name: str, *, maxlen: int | None = None) -> str:
 
 
 def long_path(path: Path) -> Path:
-    """Return a Windows extended-length path when the resolved path needs one."""
+    """Return a Windows extended-length path without following symlinks.
+
+    ``resolve()`` is deliberately not used here.  It follows a symlink before the caller
+    reaches the syscall, which can turn a safe identity check or an atomic replacement into an
+    operation on the symlink target.  ``abspath`` normalizes the lexical path and preserves the
+    final component as the object the caller actually named.
+    """
     if not WINDOWS:
         return path
 
@@ -73,26 +80,79 @@ def long_path(path: Path) -> Path:
     if raw.startswith(_WINDOWS_EXTENDED_PREFIX):
         return path
 
-    resolved = path.resolve()
-    resolved_raw = os.fspath(resolved)
-    if resolved_raw.startswith(_WINDOWS_EXTENDED_PREFIX):
-        return resolved
-    if len(resolved_raw) <= 240:
+    absolute_raw = os.path.abspath(raw)
+    if absolute_raw.startswith(_WINDOWS_EXTENDED_PREFIX):
+        return Path(absolute_raw)
+    if len(absolute_raw) <= 240:
         return path
-    if resolved_raw.startswith(r"\\"):
-        return Path(_WINDOWS_UNC_PREFIX + resolved_raw[2:])
-    return Path(_WINDOWS_EXTENDED_PREFIX + resolved_raw)
+    if absolute_raw.startswith(r"\\"):
+        return Path(_WINDOWS_UNC_PREFIX + absolute_raw[2:])
+    return Path(_WINDOWS_EXTENDED_PREFIX + absolute_raw)
+
+
+def is_link(path: Path) -> bool:
+    """Return whether ``path`` is a symlink or Windows reparse-point link."""
+    candidate = long_path(path)
+    try:
+        if candidate.is_symlink():
+            return True
+        file_stat = os.lstat(os.fspath(candidate))
+    except FileNotFoundError:
+        return False
+    return bool(getattr(file_stat, "st_file_attributes", 0) & 0x400)
 
 
 def collides(destination: Path) -> bool:
     """Return whether a normalized, case-folded sibling already has this name."""
     try:
-        entries = tuple(destination.parent.iterdir())
+        with os.scandir(os.fspath(long_path(destination.parent))) as iterator:
+            entries = tuple(entry.name for entry in iterator)
     except FileNotFoundError:
         return False
 
     wanted = _canonical_component(destination.name)
-    return any(_canonical_component(entry.name) == wanted for entry in entries)
+    return any(_canonical_component(entry) == wanted for entry in entries)
+
+
+def walk(root: Path) -> Iterator[Path]:
+    """Yield ordinary paths from a tree while applying ``long_path`` at each scan boundary."""
+
+    def visit(directory: Path) -> Iterator[Path]:
+        with os.scandir(os.fspath(long_path(directory))) as iterator:
+            for entry in iterator:
+                child = directory / entry.name
+                yield child
+                if not is_link(child) and entry.is_dir(follow_symlinks=False):
+                    yield from visit(child)
+
+    yield from visit(root)
+
+
+def remove_tree(root: Path, *, ignore_errors: bool = False) -> None:
+    """Remove a tree while applying ``long_path`` to each filesystem operation."""
+    try:
+        if is_link(root):
+            _remove_link(root)
+            return
+        if not long_path(root).is_dir():
+            os.unlink(os.fspath(long_path(root)))
+            return
+        candidates = list(walk(root))
+        for candidate in sorted(
+            candidates,
+            key=lambda value: len(value.relative_to(root).parts),
+            reverse=True,
+        ):
+            if is_link(candidate):
+                _remove_link(candidate)
+            elif not long_path(candidate).is_dir():
+                os.unlink(os.fspath(long_path(candidate)))
+            else:
+                os.rmdir(os.fspath(long_path(candidate)))
+        os.rmdir(os.fspath(long_path(root)))
+    except OSError:
+        if not ignore_errors:
+            raise
 
 
 def unique_path(destination: Path) -> Path:
@@ -248,10 +308,11 @@ def _create_temporary(destination: Path, *, suffix: str) -> Path:
         dir=os.fspath(long_path(destination.parent)),
     )
     os.close(file_descriptor)
-    return _plain_path(Path(raw_path))
+    return plain_path(Path(raw_path))
 
 
-def _plain_path(path: Path) -> Path:
+def plain_path(path: Path) -> Path:
+    """Remove an inherited Windows extended prefix before a path returns to application code."""
     if not WINDOWS:
         return path
     raw = os.fspath(path)
@@ -314,18 +375,31 @@ def _validate_part_file(destination: Path, temporary: Path) -> None:
         raise ValueError("temporary file must be a sibling of destination")
     if not temporary.name.endswith(".part"):
         raise ValueError("temporary download must end with .part")
-    if temporary.is_symlink():
+    try:
+        file_stat = os.lstat(os.fspath(long_path(temporary)))
+    except FileNotFoundError:
+        raise
+    if is_link(temporary) or stat.S_ISLNK(file_stat.st_mode):
         raise ValueError("temporary download must not be a symlink")
-    file_stat = temporary.stat()
     if not stat.S_ISREG(file_stat.st_mode):
         raise ValueError("temporary download must be a regular file")
+    if getattr(file_stat, "st_nlink", 1) != 1:
+        raise ValueError("temporary download must not be a hard link")
 
 
 def _remove_quietly(path: Path) -> None:
     try:
         os.unlink(os.fspath(long_path(path)))
-    except FileNotFoundError:
+    except OSError:
         return
+
+
+def _remove_link(path: Path) -> None:
+    """Remove a link itself, using directory removal for Windows junctions."""
+    if WINDOWS and long_path(path).is_dir():
+        os.rmdir(os.fspath(long_path(path)))
+    else:
+        os.unlink(os.fspath(long_path(path)))
 
 
 __all__ = [
@@ -336,8 +410,12 @@ __all__ = [
     "atomic_write_bytes",
     "atomic_write_text",
     "collides",
+    "is_link",
     "long_path",
+    "plain_path",
+    "remove_tree",
     "rel_posix",
+    "walk",
     "reveal",
     "safe_name",
     "unique_path",

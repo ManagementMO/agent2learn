@@ -151,6 +151,59 @@ def test_long_path_does_not_rewrite_an_already_prefixed_path() -> None:
     assert paths.long_path(destination) == destination
 
 
+def test_long_path_does_not_follow_a_symlink_to_measure_the_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path
+    for index in range(8):
+        target /= f"target-{index}-" + "x" * 30
+        target.mkdir()
+    link = tmp_path / "short-link"
+    link.symlink_to(target, target_is_directory=True)
+    monkeypatch.setattr(paths, "WINDOWS", True)
+
+    assert paths.long_path(link) == link
+
+
+def test_plain_path_strips_an_inherited_windows_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(paths, "WINDOWS", True)
+
+    assert paths.plain_path(Path(r"\\?\C:\vault\.source.part")) == Path(r"C:\vault\.source.part")
+
+
+def test_link_metadata_errors_are_not_treated_as_a_safe_regular_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "candidate"
+
+    def fail_lstat(_path: str) -> os.stat_result:
+        raise PermissionError("metadata unavailable")
+
+    monkeypatch.setattr(paths.os, "lstat", fail_lstat)
+
+    with pytest.raises(PermissionError, match="metadata unavailable"):
+        paths.is_link(target)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="directory symlinks require Windows privileges")
+def test_remove_tree_unlinks_a_directory_symlink_without_touching_its_target(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "outside-link").symlink_to(outside, target_is_directory=True)
+
+    paths.remove_tree(root)
+
+    assert not root.exists()
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
 def test_collides_is_case_insensitive_on_every_platform(tmp_path: Path) -> None:
     existing = tmp_path / "Lab1.pdf"
     existing.write_text("fixture", encoding="utf-8")
@@ -361,6 +414,24 @@ def test_failed_install_preserves_the_downloaded_part_file(
 
     assert part.read_bytes() == original_bytes
     assert not destination.exists()
+
+
+def test_atomic_write_cleanup_failure_does_not_mask_the_primary_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    destination = tmp_path / "manifest.json"
+
+    def fail_replace(*args: object, **kwargs: object) -> None:
+        raise OSError("primary replacement failure")
+
+    def fail_cleanup(*args: object, **kwargs: object) -> None:
+        raise PermissionError("secondary cleanup failure")
+
+    monkeypatch.setattr(paths.os, "replace", fail_replace)
+    monkeypatch.setattr(paths.os, "unlink", fail_cleanup)
+
+    with pytest.raises(OSError, match="primary replacement failure"):
+        paths.atomic_write_text(destination, "new")
 
 
 def test_fsync_file_uses_a_windows_compatible_handle(
