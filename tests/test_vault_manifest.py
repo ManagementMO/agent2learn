@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from agent2learn import paths
+from agent2learn import vault as vault_module
 from agent2learn.errors import A2LError
 from agent2learn.vault import (
     MIGRATIONS,
@@ -53,6 +55,7 @@ def _write_manifest(root: Path, entries: dict[str, object], *, schema_version: i
         )
         + "\n",
     )
+    paths.atomic_write_text(state / "VERSION", f"{schema_version}\n")
 
 
 def test_manifest_entries_are_structured_and_relative(tmp_path: Path) -> None:
@@ -200,11 +203,41 @@ def test_manifest_rejects_non_object_and_unknown_schema(tmp_path: Path) -> None:
     state = tmp_path / ".a2l"
     state.mkdir()
     paths.atomic_write_text(state / "manifest.json", "[]\n")
+    paths.atomic_write_text(state / "VERSION", "1\n")
     with pytest.raises(A2LError, match="object"):
         Vault(tmp_path).manifest()
 
     _write_manifest(tmp_path, {}, schema_version=99)
     with pytest.raises(A2LError, match="schema"):
+        Vault(tmp_path).manifest()
+
+
+def test_manifest_reports_malformed_utf8_as_a2l_error(tmp_path: Path) -> None:
+    state = tmp_path / ".a2l"
+    state.mkdir()
+    (state / "manifest.json").write_bytes(b"{\xff")
+    paths.atomic_write_text(state / "VERSION", "1\n")
+
+    with pytest.raises(A2LError, match="manifest is not valid JSON"):
+        Vault(tmp_path).manifest()
+
+
+def test_manifest_reports_filesystem_read_failure_as_a2l_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / ".a2l"
+    state.mkdir()
+    (state / "manifest.json").write_text("{}\n", encoding="utf-8")
+    paths.atomic_write_text(state / "VERSION", "1\n")
+
+    def denied(*args: object, **kwargs: object) -> object:
+        if args and str(args[0]).endswith("manifest.json"):
+            raise PermissionError("manifest denied")
+        return builtins.open(*args, **kwargs)
+
+    monkeypatch.setattr(vault_module, "open", denied, raising=False)
+
+    with pytest.raises(A2LError, match="manifest is unreadable"):
         Vault(tmp_path).manifest()
 
 
@@ -399,6 +432,36 @@ def test_schema_current_version_is_created_and_newer_version_is_read_only_refusa
         vault.save_manifest()
 
 
+def test_schema_does_not_invent_version_for_existing_state(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, {KEY: _entry().__dict__})
+    version_path = tmp_path / ".a2l" / "VERSION"
+    version_path.unlink()
+    manifest_path = tmp_path / ".a2l" / "manifest.json"
+    original_manifest = manifest_path.read_bytes()
+
+    with pytest.raises(A2LError, match="VERSION is missing"):
+        check_schema(Vault(tmp_path))
+
+    assert not version_path.exists()
+    assert manifest_path.read_bytes() == original_manifest
+
+
+@pytest.mark.skipif(os.name == "nt", reason="file symlinks require Windows privileges")
+def test_schema_refuses_a_symlinked_version(tmp_path: Path) -> None:
+    vault = Vault(tmp_path)
+    check_schema(vault)
+    version_path = tmp_path / ".a2l" / "VERSION"
+    outside = tmp_path / "outside-version"
+    outside.write_text("99\n", encoding="utf-8")
+    version_path.unlink()
+    version_path.symlink_to(outside)
+
+    with pytest.raises(A2LError, match="VERSION.*symlink"):
+        check_schema(vault)
+
+    assert outside.read_text(encoding="utf-8") == "99\n"
+
+
 def test_schema_older_version_requires_a_registered_migration(tmp_path: Path) -> None:
     vault = Vault(tmp_path)
     (tmp_path / ".a2l").mkdir()
@@ -460,6 +523,97 @@ def test_failed_schema_migration_preserves_original_version_and_manifest(
 
     assert (tmp_path / ".a2l" / "VERSION").read_text(encoding="utf-8") == "0\n"
     assert manifest_path.read_bytes() == original_manifest
+
+
+def test_schema_migration_stages_under_the_long_path_boundary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_manifest(tmp_path, {KEY: _entry().__dict__})
+    state = tmp_path / ".a2l"
+    paths.atomic_write_text(state / "VERSION", "0\n")
+    extended_parent = tmp_path / "extended-parent"
+    extended_parent.mkdir()
+    real_mkdtemp = vault_module.tempfile.mkdtemp
+    staging_dirs: list[str | None] = []
+
+    def fake_long_path(path: Path) -> Path:
+        return extended_parent if path == state.parent else path
+
+    def capture_mkdtemp(*, prefix: str, dir: str | None = None) -> str:
+        staging_dirs.append(dir)
+        return real_mkdtemp(prefix=prefix, dir=dir)
+
+    monkeypatch.setattr(paths, "long_path", fake_long_path)
+    monkeypatch.setattr(vault_module.tempfile, "mkdtemp", capture_mkdtemp)
+    monkeypatch.setitem(MIGRATIONS, 0, lambda _vault: None)
+
+    check_schema(Vault(tmp_path))
+
+    assert staging_dirs == [os.fspath(extended_parent)]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="directory symlinks require Windows privileges")
+def test_schema_backup_does_not_follow_a_dangling_backup_symlink(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_manifest(tmp_path, {KEY: _entry().__dict__})
+    state = tmp_path / ".a2l"
+    paths.atomic_write_text(state / "VERSION", "0\n")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / ".a2l-backup-v0").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setitem(MIGRATIONS, 0, lambda _vault: None)
+
+    check_schema(Vault(tmp_path))
+
+    assert not (outside / "VERSION").exists()
+    assert (tmp_path / ".a2l-backup-v0").is_symlink()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="directory symlinks require Windows privileges")
+def test_vault_refuses_a_symlinked_state_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside-state"
+    outside.mkdir()
+    (tmp_path / ".a2l").symlink_to(outside, target_is_directory=True)
+
+    assert Vault.is_vault(tmp_path) is False
+    with pytest.raises(A2LError, match="symlink"):
+        check_schema(Vault(tmp_path))
+    assert not (outside / "VERSION").exists()
+
+
+def test_remove_state_path_uses_long_path_for_unlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "state" / "obsolete.json"
+    target.parent.mkdir()
+    target.write_bytes(b"obsolete")
+    extended = tmp_path / "extended" / "obsolete.json"
+    calls: list[str] = []
+
+    monkeypatch.setattr(paths, "long_path", lambda path: extended)
+    monkeypatch.setattr(vault_module.os, "unlink", lambda raw: calls.append(raw))
+
+    vault_module._remove_state_path(target)
+
+    assert calls == [os.fspath(extended)]
+
+
+def test_claim_refuses_when_git_status_cannot_be_established(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree = tmp_path / "other-project"
+    (worktree / ".git").mkdir(parents=True)
+
+    def unavailable(*args: object, **kwargs: object) -> object:
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(vault_module.subprocess, "run", unavailable)
+
+    with pytest.raises(A2LError, match="Git"):
+        Vault.claim(worktree / "vault")
+
+    assert not (worktree / "vault").exists()
 
 
 def test_semesters_and_vault_markers_are_conservative(tmp_path: Path) -> None:

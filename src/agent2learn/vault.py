@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -95,9 +95,10 @@ class Vault:
     def state(self) -> Path:
         """Return the vault-scoped state directory."""
 
-        if self._state_override is not None:
-            return self._state_override
-        return self.root / ".a2l"
+        state = self._state_override if self._state_override is not None else self.root / ".a2l"
+        if paths.is_link(state):
+            raise A2LError("vault state directory must not be a symlink")
+        return state
 
     def history_bucket(self, source_key: str) -> Path:
         """Return and create the opaque history bucket for a canonical source key."""
@@ -105,7 +106,7 @@ class Vault:
         _validate_source_key(source_key)
         check_schema(self)
         bucket = self.state() / "history" / sha256(source_key.encode("utf-8")).hexdigest()
-        bucket.mkdir(parents=True, exist_ok=True)
+        paths.long_path(bucket).mkdir(parents=True, exist_ok=True)
         return bucket
 
     def manifest(self) -> dict[str, ManifestEntry]:
@@ -116,12 +117,13 @@ class Vault:
             return dict(self._entries)
 
         destination = self.state() / "manifest.json"
-        if not destination.is_file():
+        if paths.is_link(destination):
+            raise A2LError("manifest must not be a symlink")
+        raw = _read_json_object(destination, "manifest")
+        if raw is None:
             self._entries = {}
             self._loaded = True
             return {}
-
-        raw = _read_json_object(destination, "manifest")
         schema_version = raw.get("schema_version")
         if isinstance(schema_version, bool) or not isinstance(schema_version, int):
             raise A2LError("manifest schema_version must be an integer")
@@ -197,7 +199,7 @@ class Vault:
                 expected_sha256=current.sha256,
                 expected_size=current.size,
             ):
-                shutil.rmtree(revision_source)
+                paths.remove_tree(revision_source)
                 return None
 
             derived_metadata: dict[str, dict[str, object]] = {}
@@ -256,7 +258,7 @@ class Vault:
             paths.atomic_write_text(revision_source / "revision.json", _canonical_json(metadata))
             return saved_source
         except BaseException:
-            shutil.rmtree(revision_source, ignore_errors=True)
+            paths.remove_tree(revision_source, ignore_errors=True)
             raise
 
     def save_manifest(self) -> None:
@@ -278,23 +280,32 @@ class Vault:
     def semesters(self) -> list[Path]:
         """Return direct child term directories that carry semester metadata."""
 
-        if not self.root.is_dir():
+        if not paths.long_path(self.root).is_dir():
             return []
-        return sorted(
-            (
-                child
-                for child in self.root.iterdir()
-                if child.is_dir() and (child / "_SEMESTER_METADATA.json").is_file()
-            ),
-            key=lambda path: path.name,
-        )
+        children: list[Path] = []
+        with os.scandir(os.fspath(paths.long_path(self.root))) as iterator:
+            for entry in iterator:
+                child = self.root / entry.name
+                if entry.is_dir(follow_symlinks=False) and _regular_file_exists(
+                    child / "_SEMESTER_METADATA.json", "semester metadata"
+                ):
+                    children.append(child)
+        return sorted(children, key=lambda path: path.name)
 
     @staticmethod
     def is_vault(p: Path) -> bool:
         """Return whether ``p`` has an Agent2Learn marker."""
 
         candidate = Path(p)
-        return (candidate / ".a2l").is_dir() or (candidate / "_SEMESTER_METADATA.json").is_file()
+        state = candidate / ".a2l"
+        if paths.is_link(state):
+            return False
+        if paths.long_path(state).is_dir():
+            return True
+        try:
+            return _regular_file_exists(candidate / "_SEMESTER_METADATA.json", "semester metadata")
+        except A2LError:
+            return False
 
     @classmethod
     def claim(cls, p: Path) -> Path:
@@ -311,13 +322,13 @@ class Vault:
                 return candidate
             if not _occupied(candidate):
                 try:
-                    candidate.mkdir(parents=True, exist_ok=False)
+                    paths.long_path(candidate).mkdir(parents=True, exist_ok=False)
                 except FileExistsError:
                     candidate = requested.with_name(f"{requested.name}-{suffix}")
                     suffix += 1
                     continue
                 _write_vault_gitignore(candidate)
-                (candidate / ".a2l").mkdir()
+                paths.long_path(candidate / ".a2l").mkdir()
                 check_schema(cls(candidate))
                 return candidate
             candidate = requested.with_name(f"{requested.name}-{suffix}")
@@ -340,9 +351,16 @@ def check_schema(v: Vault) -> None:
         return
 
     state = v.state()
-    state.mkdir(parents=True, exist_ok=True)
+    paths.long_path(state).mkdir(parents=True, exist_ok=True)
     version_path = state / "VERSION"
-    if not version_path.is_file():
+    if not _regular_file_exists(version_path, "vault VERSION"):
+        try:
+            with os.scandir(os.fspath(paths.long_path(state))) as iterator:
+                has_other_state = any(entry.name != "VERSION" for entry in iterator)
+        except OSError as exc:
+            raise A2LError("vault VERSION is unreadable") from exc
+        if has_other_state:
+            raise A2LError("vault VERSION is missing from an existing vault state")
         paths.atomic_write_text(version_path, f"{SCHEMA_VERSION}\n")
         return
 
@@ -362,10 +380,17 @@ def check_schema(v: Vault) -> None:
         )
 
     backup = _backup_state(state, version)
-    staging_root = Path(tempfile.mkdtemp(prefix=".a2l-migration-", dir=os.fspath(state.parent)))
+    staging_root = paths.plain_path(
+        Path(
+            tempfile.mkdtemp(
+                prefix=".a2l-migration-",
+                dir=os.fspath(paths.long_path(state.parent)),
+            )
+        )
+    )
     staged_state = staging_root / ".a2l"
     try:
-        shutil.copytree(state, staged_state, symlinks=True)
+        _copy_tree(state, staged_state)
         staged_vault = Vault(v.root)
         staged_vault._state_override = staged_state
         staged_vault._schema_migration_active = True
@@ -384,7 +409,7 @@ def check_schema(v: Vault) -> None:
         paths.atomic_write_text(staged_state / "VERSION", f"{SCHEMA_VERSION}\n")
         _install_migrated_state(state, staged_state, backup)
     finally:
-        shutil.rmtree(staging_root, ignore_errors=True)
+        paths.remove_tree(staging_root, ignore_errors=True)
 
 
 def _entry_from_json(key: str, raw: object) -> ManifestEntry:
@@ -673,22 +698,42 @@ def _as_page_coverage(value: object) -> tuple[Mapping[str, object], ...]:
     return tuple(normalized)
 
 
-def _read_json_object(destination: Path, label: str) -> dict[str, object]:
+def _read_json_object(destination: Path, label: str) -> dict[str, object] | None:
     try:
         with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
             raw: Any = json.load(handle)
     except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError as exc:
-        raise A2LError(f"{label} is not valid JSON") from exc
+        return None
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        message = (
+            f"{label} is unreadable" if isinstance(exc, OSError) else f"{label} is not valid JSON"
+        )
+        raise A2LError(message) from exc
     if not isinstance(raw, dict):
         raise A2LError(f"{label} root must be an object")
     return cast(dict[str, object], raw)
 
 
 def _read_text(destination: Path) -> str:
-    with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
-        return handle.read()
+    try:
+        with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
+            return handle.read()
+    except (OSError, UnicodeError) as exc:
+        raise A2LError("vault VERSION is unreadable") from exc
+
+
+def _regular_file_exists(path: Path, label: str) -> bool:
+    try:
+        file_stat = os.lstat(os.fspath(paths.long_path(path)))
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise A2LError(f"{label} is unreadable") from exc
+    if paths.is_link(path) or stat.S_ISLNK(file_stat.st_mode):
+        raise A2LError(f"{label} must not be a symlink")
+    if not stat.S_ISREG(file_stat.st_mode):
+        raise A2LError(f"{label} must be a regular file")
+    return True
 
 
 def _canonical_json(payload: object) -> str:
@@ -720,14 +765,14 @@ def _copy_verified(
 ) -> bool:
     """Stream a source into a sibling ``.part`` and atomically install it if valid."""
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
     file_descriptor, raw_temporary = tempfile.mkstemp(
         prefix=f".{destination.name}.",
         suffix=".part",
         dir=os.fspath(paths.long_path(destination.parent)),
     )
     os.close(file_descriptor)
-    temporary = Path(raw_temporary)
+    temporary = paths.plain_path(Path(raw_temporary))
     digest = sha256()
     size = 0
     try:
@@ -752,7 +797,9 @@ def _copy_verified(
     except (FileNotFoundError, IsADirectoryError):
         return False
     finally:
-        with suppress(FileNotFoundError):
+        # This temporary is a generated local backup copy and is cheap to recreate; unlike an
+        # ingest download .part, cleanup after an install failure is intentional here.
+        with suppress(OSError):
             os.unlink(os.fspath(paths.long_path(temporary)))
 
 
@@ -761,21 +808,51 @@ def _allocate_revision_directory(bucket: Path, timestamp: str) -> Path:
         suffix = "" if number == 1 else f"_{number}"
         candidate = bucket / f"{timestamp}{suffix}"
         try:
-            candidate.mkdir(parents=False, exist_ok=False)
+            paths.long_path(candidate).mkdir(parents=False, exist_ok=False)
         except FileExistsError:
             continue
         return candidate
     raise A2LError("could not allocate a collision-safe revision directory")
 
 
+def _copy_tree(source: Path, destination: Path) -> None:
+    """Copy a tree while applying the long-path boundary to each individual operation."""
+    if paths.is_link(source):
+        raise A2LError("schema state cannot contain symlinks")
+    if paths.is_link(destination):
+        raise A2LError("schema staging destination cannot be a symlink")
+    paths.long_path(destination).mkdir(parents=True, exist_ok=True)
+    for candidate in paths.walk(source):
+        relative = candidate.relative_to(source)
+        target = destination / relative
+        if paths.is_link(candidate):
+            raise A2LError("schema state cannot contain symlinks")
+        if paths.long_path(candidate).is_dir():
+            paths.long_path(target).mkdir(parents=True, exist_ok=True)
+            continue
+        if not paths.long_path(candidate).is_file():
+            raise A2LError("schema state contains an unsupported filesystem entry")
+        paths.long_path(target.parent).mkdir(parents=True, exist_ok=True)
+        with (
+            open(os.fspath(paths.long_path(candidate)), "rb") as source_handle,
+            open(os.fspath(paths.long_path(target)), "wb") as destination_handle,
+        ):
+            while chunk := source_handle.read(_COPY_CHUNK_SIZE):
+                destination_handle.write(chunk)
+
+
 def _backup_state(state: Path, version: int) -> Path:
     base = state.parent / f".a2l-backup-v{version}"
     candidate = base
     number = 2
-    while candidate.exists():
+    while _occupied(candidate):
         candidate = state.parent / f".a2l-backup-v{version}-{number}"
         number += 1
-    shutil.copytree(state, candidate, symlinks=True)
+    try:
+        _copy_tree(state, candidate)
+    except BaseException:
+        paths.remove_tree(candidate, ignore_errors=True)
+        raise
     return candidate
 
 
@@ -804,7 +881,7 @@ def _synchronize_state(source: Path, destination: Path) -> None:
 
     for relative in sorted(source_directories, key=_shallowest_first):
         directory = destination / _relative_path(relative)
-        directory.mkdir(parents=True, exist_ok=True)
+        paths.long_path(directory).mkdir(parents=True, exist_ok=True)
 
     for relative in sorted(source_files - {"VERSION"}):
         source_file = source / _relative_path(relative)
@@ -821,13 +898,13 @@ def _synchronize_state(source: Path, destination: Path) -> None:
 def _state_tree(root: Path) -> tuple[set[str], set[str]]:
     files: set[str] = set()
     directories: set[str] = set()
-    for candidate in root.rglob("*"):
-        if candidate.is_symlink():
+    for candidate in paths.walk(root):
+        if paths.is_link(candidate):
             raise A2LError("schema state cannot contain symlinks")
         relative = candidate.relative_to(root).as_posix()
-        if candidate.is_file():
+        if paths.long_path(candidate).is_file():
             files.add(relative)
-        elif candidate.is_dir():
+        elif paths.long_path(candidate).is_dir():
             directories.add(relative)
         else:
             raise A2LError("schema state contains an unsupported filesystem entry")
@@ -847,14 +924,14 @@ def _shallowest_first(relative: str) -> tuple[int, str]:
 
 
 def _remove_state_path(path: Path) -> None:
-    if path.is_dir():
-        shutil.rmtree(path)
+    if paths.long_path(path).is_dir() and not paths.is_link(path):
+        paths.remove_tree(path)
     else:
-        path.unlink()
+        os.unlink(os.fspath(paths.long_path(path)))
 
 
 def _same_file(first: Path, second: Path) -> bool:
-    if not first.is_file() or not second.is_file():
+    if not paths.long_path(first).is_file() or not paths.long_path(second).is_file():
         return False
     return _hash_file(first) == _hash_file(second)
 
@@ -865,7 +942,7 @@ def _read_bytes(source: Path) -> bytes:
 
 
 def _occupied(path: Path) -> bool:
-    return path.exists() or path.is_symlink()
+    return paths.long_path(path).exists() or paths.is_link(path)
 
 
 def _write_vault_gitignore(root: Path) -> None:
@@ -911,28 +988,41 @@ def _agent2learn_source_root() -> Path | None:
     repository_root = _git_root(package_root)
     if repository_root is None:
         return None
-    if (repository_root / "pyproject.toml").is_file() and (
-        repository_root / "src" / "agent2learn"
-    ).is_dir():
+    if (
+        paths.long_path(repository_root / "pyproject.toml").is_file()
+        and paths.long_path(repository_root / "src" / "agent2learn").is_dir()
+    ):
         return repository_root
     return None
 
 
 def _git_root(path: Path) -> Path | None:
-    probe = path if path.is_dir() else path.parent
+    probe = path if paths.long_path(path).is_dir() else path.parent
     try:
         result = subprocess.run(
-            ["git", "-C", os.fspath(probe), "rev-parse", "--show-toplevel"],
+            [
+                "git",
+                "-C",
+                os.fspath(paths.long_path(probe)),
+                "rev-parse",
+                "--show-toplevel",
+            ],
             check=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
         )
-    except OSError:
-        return None
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise A2LError("could not establish Git worktree status") from exc
     if result.returncode != 0 or not result.stdout.strip():
-        return None
-    return Path(result.stdout.strip()).resolve()
+        stderr = getattr(result, "stderr", "")
+        if isinstance(stderr, str) and "not a git repository" in stderr.casefold():
+            return None
+        raise A2LError("could not establish Git worktree status")
+    try:
+        return Path(result.stdout.strip()).resolve()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise A2LError("could not establish Git worktree status") from exc
 
 
 __all__ = [
