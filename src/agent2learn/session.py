@@ -27,6 +27,9 @@ _KEYRING_USERNAME = "session"
 _SESSION_FILENAME = "session.json"
 _SCHEMA_KEYS = frozenset({"base_url", "cookies", "harvested_at", "user_id", "xsrf"})
 _COOKIE_KEYS = frozenset({"domain", "name", "path", "secure", "value"})
+_ALLOWED_COOKIE_NAMES = frozenset(
+    {"d2lsessionval", "d2lsecuresessionval", "xsrf-token", "xsrf_token", "d2lxsrf-token"}
+)
 _last_backend: str | None = None
 
 
@@ -73,7 +76,9 @@ class Session:
         scoped: list[SessionCookie] = []
         for cookie in self.cookies:
             _validate_cookie(cookie)
-            if _cookie_belongs_to_host(cookie.domain, host):
+            if cookie.name.casefold() in _ALLOWED_COOKIE_NAMES and _cookie_belongs_to_host(
+                cookie.domain, host
+            ):
                 scoped.append(cookie)
         self.cookies = tuple(scoped)
 
@@ -89,7 +94,9 @@ class Session:
         host = _base_host(self.base_url)
         for cookie in self.cookies:
             _validate_cookie(cookie)
-            if not _cookie_belongs_to_host(cookie.domain, host):
+            if cookie.name.casefold() not in _ALLOWED_COOKIE_NAMES or not _cookie_belongs_to_host(
+                cookie.domain, host
+            ):
                 continue
             jar.set(
                 cookie.name,
@@ -162,7 +169,10 @@ def clear() -> None:
 
     global _last_backend
     _delete_keyring_quietly()
-    _remove_file_quietly(_session_path())
+    # An explicit clear must not claim success while a file-backed session remains on disk.  The
+    # keyring is best-effort because its backend is outside our control, but a failed local unlink
+    # is actionable and must reach the caller.
+    _remove_file(_session_path())
     _last_backend = None
 
 
@@ -310,24 +320,34 @@ def _session_path() -> Path:
 
 
 def _read_file() -> str | None:
+    path = _session_path()
+    if paths.is_link(path):
+        raise ValueError("stored session must not be a symlink")
     try:
-        with open(
-            os.fspath(paths.long_path(_session_path())), encoding="utf-8", newline=""
-        ) as handle:
+        with open(os.fspath(paths.long_path(path)), encoding="utf-8", newline="") as handle:
             return handle.read()
     except FileNotFoundError:
         return None
+    except UnicodeError as exc:
+        raise ValueError("stored session is not valid JSON") from exc
 
 
 def _file_is_present() -> bool:
     try:
-        os.stat(os.fspath(paths.long_path(_session_path())))
+        os.lstat(os.fspath(paths.long_path(_session_path())))
     except FileNotFoundError:
         return False
     return True
 
 
 def _remove_file_quietly(path: Path) -> None:
+    try:
+        os.unlink(os.fspath(paths.long_path(path)))
+    except OSError:
+        return
+
+
+def _remove_file(path: Path) -> None:
     try:
         os.unlink(os.fspath(paths.long_path(path)))
     except FileNotFoundError:

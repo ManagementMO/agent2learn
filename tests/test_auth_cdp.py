@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -112,7 +113,7 @@ def test_new_browser_uses_persistent_loopback_profile_and_ephemeral_port(
     endpoint = cdp.DebugEndpoint(43123, "ws://127.0.0.1:43123/devtools/browser/synthetic")
     monkeypatch.setattr(cdp, "locate_browser", lambda: executable)
     monkeypatch.setattr(cdp.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(cdp, "_read_valid_endpoint", lambda _path: endpoint)
+    monkeypatch.setattr(cdp, "_read_valid_endpoint", lambda _path, **_kwargs: endpoint)
     monkeypatch.setattr(cdp, "POLL_SECONDS", 0)
 
     actual, owner, owned = cdp._acquire_endpoint(profile)
@@ -131,6 +132,42 @@ def test_new_browser_uses_persistent_loopback_profile_and_ephemeral_port(
     assert calls[0][1]["stdin"] is cdp.subprocess.DEVNULL
 
 
+def test_owned_browser_is_terminated_when_endpoint_acquisition_times_out(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    profile = tmp_path / "browser-profile"
+    profile.mkdir()
+    executable = tmp_path / "chrome"
+    executable.write_bytes(b"synthetic executable")
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.terminated = False
+            self.wait_calls = 0
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            self.wait_calls += 1
+            return 0
+
+    process = FakeProcess()
+    monkeypatch.setattr(cdp, "locate_browser", lambda: executable)
+    monkeypatch.setattr(cdp.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(cdp, "ENDPOINT_WAIT_SECONDS", 0)
+
+    with pytest.raises(AuthenticationError, match="DevTools endpoint"):
+        cdp._acquire_endpoint(profile)
+
+    assert process.terminated is True
+    assert process.wait_calls == 1
+
+
 def test_existing_valid_endpoint_is_reused_without_launching(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -139,7 +176,7 @@ def test_existing_valid_endpoint_is_reused_without_launching(
     active = profile / "DevToolsActivePort"
     active.write_text("43123\n/devtools/browser/synthetic\n")
     endpoint = cdp.DebugEndpoint(43123, "ws://127.0.0.1:43123/devtools/browser/synthetic")
-    monkeypatch.setattr(cdp, "_read_valid_endpoint", lambda _path: endpoint)
+    monkeypatch.setattr(cdp, "_read_valid_endpoint", lambda _path, **_kwargs: endpoint)
 
     def fail_launch(**_kwargs: object) -> None:
         raise AssertionError("a valid dedicated endpoint must be reused")
@@ -150,6 +187,104 @@ def test_existing_valid_endpoint_is_reused_without_launching(
     assert actual == endpoint
     assert owner is None
     assert owned is False
+
+
+def test_owned_browser_is_terminated_when_cdp_close_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    endpoint = cdp.DebugEndpoint(43123, "ws://127.0.0.1:43123/devtools/browser/synthetic")
+
+    class FakeConnection:
+        def __init__(self, _url: str) -> None:
+            pass
+
+        def call(self, _method: str) -> dict[str, object]:
+            raise AuthenticationError("synthetic CDP failure")
+
+        def close(self) -> None:
+            return
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.terminated = False
+            self.wait_calls = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            self.wait_calls += 1
+            if not self.terminated:
+                raise cdp.subprocess.TimeoutExpired("browser", 1)
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+    process = FakeProcess()
+    monkeypatch.setattr(cdp, "_CDPConnection", FakeConnection)
+
+    cdp._close_owned_browser(endpoint, process)  # type: ignore[arg-type]
+
+    assert process.terminated is True
+    assert process.wait_calls == 2
+
+
+def test_existing_endpoint_requires_the_expected_profile_process(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    profile = tmp_path / "browser-profile"
+    profile.mkdir()
+    active = profile / "DevToolsActivePort"
+    active.write_text("43123\n/devtools/browser/synthetic\n")
+    monkeypatch.setattr(
+        cdp,
+        "_get_json",
+        lambda _port, _route: {
+            "Browser": "Google Chrome/136.0",
+            "webSocketDebuggerUrl": "ws://127.0.0.1:43123/devtools/browser/synthetic",
+        },
+    )
+    monkeypatch.setattr(
+        cdp,
+        "_running_process_commands",
+        lambda: [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome "
+            "--user-data-dir=/other-profile --remote-debugging-port=0"
+        ],
+    )
+
+    with pytest.raises(AuthenticationError, match="profile"):
+        cdp._read_valid_endpoint(active, profile=profile)
+
+
+def test_profile_process_matching_rejects_lookalike_profile_and_port_values(
+    tmp_path: Path,
+) -> None:
+    profile = tmp_path / "browser-profile"
+    lookalike_profile = (
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome "
+        f"--user-data-dir={profile}-evil --remote-debugging-port=431230"
+    )
+    lookalike_port = (
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome "
+        f"--user-data-dir={profile} --remote-debugging-port=431230"
+    )
+
+    assert not cdp._command_matches_profile(lookalike_profile, profile, 43123)
+    assert not cdp._command_matches_profile(lookalike_port, profile, 43123)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="directory symlinks require Windows privileges")
+def test_acquire_endpoint_refuses_a_symlinked_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside-profile"
+    outside.mkdir()
+    profile = tmp_path / "browser-profile"
+    profile.symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(cdp, "locate_browser", lambda: Path("chrome"))
+
+    with pytest.raises(AuthenticationError, match="symlink"):
+        cdp._acquire_endpoint(profile)
 
 
 def test_verify_uses_discovered_versions_and_returns_only_stable_identifier(
@@ -220,6 +355,20 @@ def test_clear_profile_refuses_non_tty_without_deleting_profile(
 
     assert cleared == [True]
     assert profile.is_dir()
+
+
+def test_clear_profile_reports_a_saved_session_removal_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+
+    def refuse_clear() -> None:
+        raise PermissionError("synthetic refusal")
+
+    monkeypatch.setattr(auth.session, "clear", refuse_clear)
+
+    with pytest.raises(AuthenticationError, match="saved API session could not be cleared"):
+        auth.clear_profile()
 
 
 def test_clear_profile_requires_yes_and_removes_only_dedicated_directory(

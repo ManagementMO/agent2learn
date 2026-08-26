@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
 import sys
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 import requests
 
-from agent2learn import __version__, config, session
+from agent2learn import __version__, config, paths, session
 from agent2learn.errors import AuthenticationError
 from agent2learn.schools import School
 
@@ -41,12 +40,17 @@ def authenticate(school: School, *, backend: str = "auto") -> session.Session:
         if normalized_backend == "auto":
             raise AuthenticationError(f"{exc}; fallback: a2l auth --paste") from None
         raise
+    except (OSError, ValueError) as exc:
+        message = "dedicated browser authentication could not access local state"
+        if normalized_backend == "auto":
+            message += "; fallback: a2l auth --paste"
+        raise AuthenticationError(message) from exc
 
     stable_id = _verified_id_from_cdp_result(harvested)
     if stable_id is None:
         raise AuthenticationError("login could not be verified; try: a2l auth --paste")
     verified = _with_user_id(harvested, stable_id)
-    session.store(verified)
+    _store_verified(verified)
     return verified
 
 
@@ -125,17 +129,22 @@ def verify(value: session.Session, school: School) -> str | None:
 def clear_profile() -> None:
     """Clear the exported session and remove only the dedicated browser profile after consent."""
 
-    session.clear()
+    try:
+        session.clear()
+    except OSError as exc:
+        raise AuthenticationError(
+            "saved API session could not be cleared; close it or fix its permissions and retry"
+        ) from exc
     profile = config.data_dir() / "browser-profile"
-    if profile.is_symlink():
+    if paths.is_link(profile):
         raise AuthenticationError(f"refusing to remove symlinked profile: {profile}")
     if _profile_is_locked(profile):
         raise AuthenticationError(
             f"dedicated browser profile is in use; close it normally before removing: {profile}"
         )
-    if not profile.exists():
+    if not paths.long_path(profile).exists():
         return
-    if not profile.is_dir():
+    if not paths.long_path(profile).is_dir():
         raise AuthenticationError(f"dedicated browser profile is not a directory: {profile}")
     if not _tty(sys.stdin) or not _tty(sys.stdout):
         raise AuthenticationError(
@@ -153,7 +162,12 @@ def clear_profile() -> None:
     sys.stderr.write("\n")
     if answer != "yes":
         raise AuthenticationError("profile removal cancelled")
-    shutil.rmtree(profile)
+    try:
+        paths.remove_tree(profile)
+    except OSError as exc:
+        raise AuthenticationError(
+            "dedicated browser profile could not be removed; close it and retry"
+        ) from exc
 
 
 def _authenticate_from_paste(school: School) -> session.Session:
@@ -163,8 +177,18 @@ def _authenticate_from_paste(school: School) -> session.Session:
     if stable_id is None:
         raise AuthenticationError("login could not be verified; try: a2l auth --paste")
     verified = _with_user_id(pending, stable_id)
-    session.store(verified)
+    _store_verified(verified)
     return verified
+
+
+def _store_verified(value: session.Session) -> None:
+    """Translate local session-storage failures into the CLI's stable auth taxonomy."""
+    try:
+        session.store(value)
+    except (OSError, ValueError) as exc:
+        raise AuthenticationError(
+            "verified session could not be saved; check local permissions"
+        ) from exc
 
 
 def _with_user_id(value: session.Session, stable_id: str) -> session.Session:
@@ -230,7 +254,10 @@ def _origin(value: str) -> tuple[str, str, int]:
 
 
 def _profile_is_locked(profile: Path) -> bool:
-    return any((profile / marker).exists() for marker in ("SingletonLock", "SingletonSocket"))
+    return any(
+        paths.long_path(profile / marker).exists()
+        for marker in ("SingletonLock", "SingletonSocket")
+    )
 
 
 def _tty(stream: object) -> bool:

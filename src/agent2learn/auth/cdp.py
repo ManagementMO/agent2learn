@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +20,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 import websocket
 
-from agent2learn import config
+from agent2learn import config, paths
 from agent2learn.errors import AuthenticationError
 from agent2learn.schools import School
 from agent2learn.session import Session
@@ -178,7 +180,8 @@ def authenticate_browser(school: School) -> Session:
     """Harvest a verified session from a validated dedicated Chromium profile."""
 
     profile = config.data_dir() / "browser-profile"
-    profile.mkdir(parents=True, exist_ok=True)
+    _validate_profile_path(profile)
+    paths.long_path(profile).mkdir(parents=True, exist_ok=True)
     endpoint, process, owned = _acquire_endpoint(profile)
     page_connection: _CDPConnection | None = None
     try:
@@ -251,7 +254,7 @@ def locate_browser() -> Path:
                 candidates.append(Path(found))
 
     for candidate in candidates:
-        if candidate.is_file():
+        if paths.long_path(candidate).is_file():
             return candidate
     raise AuthenticationError(
         "Chrome or Edge was not found; install one or use the fallback: a2l auth --paste"
@@ -265,10 +268,13 @@ def profile_path() -> Path:
 
 
 def _acquire_endpoint(profile: Path) -> tuple[DebugEndpoint, subprocess.Popen[bytes] | None, bool]:
+    _validate_profile_path(profile)
     active_port = profile / "DevToolsActivePort"
-    if active_port.exists():
-        return _read_valid_endpoint(active_port), None, False
-    if any((profile / marker).exists() for marker in _LOCK_MARKERS):
+    if paths.is_link(active_port):
+        raise AuthenticationError("DevToolsActivePort must not be a symlink")
+    if paths.long_path(active_port).exists():
+        return _read_valid_endpoint(active_port, profile=profile), None, False
+    if any(paths.long_path(profile / marker).exists() for marker in _LOCK_MARKERS):
         raise AuthenticationError(
             f"dedicated browser profile is locked without a reachable DevTools endpoint: {profile}"
         )
@@ -277,7 +283,7 @@ def _acquire_endpoint(profile: Path) -> tuple[DebugEndpoint, subprocess.Popen[by
     try:
         process = subprocess.Popen(
             [
-                os.fspath(browser),
+                os.fspath(paths.long_path(browser)),
                 "--remote-debugging-address=127.0.0.1",
                 "--remote-debugging-port=0",
                 f"--user-data-dir={profile}",
@@ -293,27 +299,51 @@ def _acquire_endpoint(profile: Path) -> tuple[DebugEndpoint, subprocess.Popen[by
         raise AuthenticationError("could not launch the dedicated Chrome/Edge profile") from exc
 
     deadline = time.monotonic() + ENDPOINT_WAIT_SECONDS
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise AuthenticationError(
-                "the dedicated browser exited before creating DevToolsActivePort; "
-                "use a2l auth --paste"
-            )
-        if active_port.exists():
-            try:
-                return _read_valid_endpoint(active_port), process, True
-            except AuthenticationError:
-                pass
-        time.sleep(POLL_SECONDS)
-    raise AuthenticationError(
-        "the dedicated browser did not expose a reachable loopback DevTools endpoint; "
-        "use a2l auth --paste"
-    )
-
-
-def _read_valid_endpoint(active_port: Path) -> DebugEndpoint:
     try:
-        lines = active_port.read_text(encoding="utf-8").splitlines()
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise AuthenticationError(
+                    "the dedicated browser exited before creating DevToolsActivePort; "
+                    "use a2l auth --paste"
+                )
+            if paths.is_link(active_port):
+                raise AuthenticationError("DevToolsActivePort must not be a symlink")
+            if paths.long_path(active_port).exists():
+                try:
+                    return (
+                        _read_valid_endpoint(active_port, profile=profile, process=process),
+                        process,
+                        True,
+                    )
+                except AuthenticationError:
+                    pass
+            time.sleep(POLL_SECONDS)
+        raise AuthenticationError(
+            "the dedicated browser did not expose a reachable loopback DevTools endpoint; "
+            "use a2l auth --paste"
+        )
+    except BaseException:
+        try:
+            _terminate_owned_process(process)
+        except AuthenticationError as cleanup_error:
+            raise AuthenticationError(
+                "dedicated browser could not be cleaned up after endpoint acquisition failed"
+            ) from cleanup_error
+        raise
+
+
+def _read_valid_endpoint(
+    active_port: Path,
+    *,
+    profile: Path | None = None,
+    process: object | None = None,
+) -> DebugEndpoint:
+    if profile is None:
+        raise AuthenticationError("DevTools endpoint cannot be used without a dedicated profile")
+    _validate_profile_path(profile)
+    try:
+        with open(os.fspath(paths.long_path(active_port)), encoding="utf-8", newline="") as handle:
+            lines = handle.read().splitlines()
         port = int(lines[0])
     except (OSError, ValueError, IndexError) as exc:
         raise AuthenticationError(
@@ -335,7 +365,90 @@ def _read_valid_endpoint(active_port: Path) -> DebugEndpoint:
         raise AuthenticationError("DevTools endpoint is not the expected Chrome/Edge process")
     if not isinstance(websocket_url, str) or not _loopback_url(websocket_url, port):
         raise AuthenticationError("DevTools endpoint is not a validated loopback browser endpoint")
+    if process is None and not _process_owns_profile(profile, port):
+        raise AuthenticationError("DevTools endpoint is not owned by the dedicated profile")
     return DebugEndpoint(port=port, browser_websocket_url=websocket_url)
+
+
+def _validate_profile_path(profile: Path) -> None:
+    if paths.is_link(profile):
+        raise AuthenticationError("dedicated browser profile must not be a symlink")
+    if paths.long_path(profile).exists() and not paths.long_path(profile).is_dir():
+        raise AuthenticationError("dedicated browser profile is not a directory")
+
+
+def _process_owns_profile(profile: Path, port: int) -> bool:
+    return any(
+        _command_matches_profile(command, profile, port) for command in _running_process_commands()
+    )
+
+
+def _running_process_commands() -> list[str]:
+    if os.name == "nt":
+        executable = shutil.which("powershell") or shutil.which("pwsh")
+        if executable is None:
+            return []
+        command = "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine"
+        args = [executable, "-NoProfile", "-NonInteractive", "-Command", command]
+    else:
+        args = ["ps", "-axo", "args="]
+    try:
+        result = subprocess.run(
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0 or not isinstance(result.stdout, str):
+        return []
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def _command_matches_profile(command: str, profile: Path, port: int) -> bool:
+    lowered = command.casefold()
+    if not any(marker.casefold() in lowered for marker in ("chrome", "chromium", "msedge")):
+        return False
+    normalized_command = command.replace("\\", "/")
+    expected_paths = {os.path.abspath(os.fspath(profile))}
+    with suppress(OSError, RuntimeError):
+        expected_paths.add(os.fspath(profile.resolve()))
+    normalized_expected_paths = {
+        expected.replace("\\", "/").casefold() for expected in expected_paths
+    }
+    profile_matches = any(
+        _has_exact_argument(
+            normalized_command.casefold(),
+            f"--user-data-dir={expected}",
+        )
+        or _has_exact_argument(
+            normalized_command.casefold(),
+            f'--user-data-dir="{expected}"',
+        )
+        for expected in normalized_expected_paths
+    )
+    if not profile_matches:
+        return False
+    remote_match = re.search(r"(?:^|\s)--remote-debugging-port(?:=|\s+)(\d+)(?=\s|$)", lowered)
+    if remote_match is None:
+        return False
+    return int(remote_match.group(1)) in {0, port}
+
+
+def _has_exact_argument(command: str, marker: str) -> bool:
+    """Match an option value without accepting a longer lookalike path/value."""
+    start = 0
+    while (position := command.find(marker, start)) != -1:
+        before_ok = position == 0 or command[position - 1].isspace()
+        end = position + len(marker)
+        after_ok = end == len(command) or command[end].isspace() or command[end] in {'"', "'"}
+        if before_ok and after_ok:
+            return True
+        start = position + 1
+    return False
 
 
 def _wait_for_page(port: int) -> str:
@@ -397,14 +510,44 @@ def _close_owned_browser(endpoint: DebugEndpoint, process: subprocess.Popen[byte
         connection = _CDPConnection(endpoint.browser_websocket_url)
         connection.call("Browser.close")
     except AuthenticationError:
-        return
+        # The DevTools connection can disappear before Browser.close reaches Chromium.  The
+        # process is still ours, so always fall through to the bounded OS-level cleanup below.
+        pass
     finally:
         if connection is not None:
             connection.close()
     try:
         process.wait(timeout=ENDPOINT_WAIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        _terminate_owned_process(process)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AuthenticationError("dedicated browser process status could not be read") from exc
+
+
+def _terminate_owned_process(process: subprocess.Popen[bytes]) -> None:
+    """Bound cleanup for a browser process Agent2Learn launched itself."""
+    with suppress(OSError, subprocess.SubprocessError):
+        process.terminate()
+    try:
+        process.wait(timeout=ENDPOINT_WAIT_SECONDS)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AuthenticationError("dedicated browser process status could not be read") from exc
+
+    try:
+        process.kill()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AuthenticationError(
+            "dedicated browser could not be terminated after session harvest"
+        ) from exc
+    try:
+        process.wait(timeout=ENDPOINT_WAIT_SECONDS)
     except subprocess.TimeoutExpired as exc:
         raise AuthenticationError("dedicated browser did not close after session harvest") from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AuthenticationError("dedicated browser process status could not be read") from exc
 
 
 def _get_json(port: int, route: str) -> dict[str, Any]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -133,6 +134,21 @@ def test_clear_removes_the_file_and_attempts_to_clear_keyring(
     assert session.load() is None
 
 
+def test_clear_surfaces_a_session_file_removal_failure(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    session.store(_sample_session())
+
+    def refuse_unlink(_path: str) -> None:
+        raise PermissionError("synthetic refusal")
+
+    monkeypatch.setattr(session.os, "unlink", refuse_unlink)
+
+    with pytest.raises(PermissionError, match="synthetic refusal"):
+        session.clear()
+
+
 def test_unrelated_domain_cookie_is_never_loaded_or_attached(
     isolated_state: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -153,6 +169,28 @@ def test_unrelated_domain_cookie_is_never_loaded_or_attached(
     ).prepare()
     assert "d2lSessionVal=synthetic-session" in (prepared.headers.get("Cookie") or "")
     assert "unrelated" not in (prepared.headers.get("Cookie") or "")
+
+
+def test_same_host_non_session_cookies_are_removed_at_the_storage_boundary() -> None:
+    original = _sample_session()
+    value = session.Session(
+        base_url=original.base_url,
+        cookies=original.cookies
+        + (
+            session.SessionCookie(
+                name="analytics",
+                value="must-not-travel",
+                domain="learn.example.invalid",
+                path="/",
+                secure=True,
+            ),
+        ),
+        xsrf=original.xsrf,
+        harvested_at=original.harvested_at,
+        user_id=original.user_id,
+    )
+
+    assert [cookie.name for cookie in value.cookies] == ["d2lSessionVal", "XSRF-TOKEN"]
 
 
 def test_session_rejects_an_unconfigured_or_unsafe_base_url() -> None:
@@ -199,3 +237,28 @@ def test_stored_schema_rejects_unknown_fields(
 
     with pytest.raises(ValueError, match="schema"):
         session.load()
+
+
+def test_malformed_utf8_session_file_is_reported_as_invalid(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    (isolated_state / "session.json").write_bytes(b"{\xff")
+
+    with pytest.raises(ValueError, match="valid JSON"):
+        session.load()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="file symlinks require Windows privileges")
+def test_session_rejects_a_symlinked_file(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _keyring_always_fails(monkeypatch)
+    outside = tmp_path / "outside-session.json"
+    outside.write_text("{}\n", encoding="utf-8")
+    (isolated_state / "session.json").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlink"):
+        session.load()
+
+    assert outside.read_text(encoding="utf-8") == "{}\n"
