@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in Agent2Learn does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this.
+
+        **Before you paste anything:** run `a2l doctor --report` and paste that block below.
+        It is built from an allowlist, so it contains your package version, Python version,
+        OS, install method, and which checks passed or failed — and deliberately not your
+        name, student ID, course codes, org-unit IDs, absolute paths, cookies, tokens, or
+        grades.
+
+        Please do not paste raw logs, screenshots of your vault, or course files. They
+        routinely contain material that is not yours to publish, and we do not need them to
+        reproduce a bug.
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Output of `a2l doctor --report`.
+      render: markdown
+      placeholder: |
+        ### Agent2Learn diagnostics
+
+        - version: `0.1.0`
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Describe the behaviour. If you quote an error, remove any file paths first.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `a2l ...`
+        2. ...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have read the diagnostics block above and am willing for it to be public.
+          required: true
+        - label: This report contains no course files, grades, or session material.
+          required: true

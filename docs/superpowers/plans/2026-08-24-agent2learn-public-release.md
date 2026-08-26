@@ -1798,7 +1798,7 @@ def report(checks) -> str          # redacted markdown for a GitHub issue
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_doctor_redaction.py` — **spec-critical**:
+- [x] **Step 1:** Write `tests/test_doctor_redaction.py` — **spec-critical**:
       ```python
       def test_report_leaks_nothing(monkeypatch, tmp_path):
           body = report(run_checks(fixture_with(name="Alex Example",
@@ -1808,8 +1808,8 @@ Steps:
               assert secret not in body
           assert "~" in body                 # home replaced, not deleted
       ```
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement the checks from spec §Doctor. On Windows, read
+- [x] **Step 2:** Run, verify failure.
+- [x] **Step 3:** Implement the checks from spec §Doctor. On Windows, read
       `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled` via `winreg` and report it
       **informationally** — Agent2Learn already handles long paths, so this is never a failure.
       Report the longest vault-relative and absolute paths; above 240 absolute characters, warn that
@@ -1822,16 +1822,16 @@ Steps:
       Detect whether the vault is inside a Git worktree. Fail if session-like files, `.a2l/private`,
       grades, discussions, or submission receipts are tracked; warn if ordinary course source files
       are tracked, because ignore rules are not a copyright/privacy guarantee.
-- [ ] **Step 4:** Implement `render`: grouped checklist, ASCII fallback, and **exactly one**
+- [x] **Step 4:** Implement `render`: grouped checklist, ASCII fallback, and **exactly one**
       suggested next command. Exit codes 0/1/2.
-- [ ] **Step 5:** Implement `report` with allowlisted fields plus the redaction table from the spec.
+- [x] **Step 5:** Implement `report` with allowlisted fields plus the redaction table from the spec.
       Sanitize exception text and log lines before inclusion; names, IDs, courses, grades, absolute
       paths, URL query strings, headers, cookies, and tokens are absent. `--open` shows the exact
       GitHub destination and explains that opening it leaves the device, then builds a pre-filled
       URL (URL-encoded and truncated safely); the user still reviews and submits the issue.
-- [ ] **Step 6:** Create `.github/ISSUE_TEMPLATE/bug_report.yml` with a **required** textarea for the
+- [x] **Step 6:** Create `.github/ISSUE_TEMPLATE/bug_report.yml` with a **required** textarea for the
       report block.
-- [ ] **Step 7:** Tests pass; commit.
+- [x] **Step 7:** Tests pass; commit.
       ```
       git commit -m "feat: a2l doctor with redacted, one-click issue reports"
       ```

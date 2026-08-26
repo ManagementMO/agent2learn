@@ -28,9 +28,9 @@ architecture.
 ## Current state — 2026-08-25
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 13 are complete as automated implementations.** Task 9's real-browser
-  same-device validation remains a release gate. Resume implementation at **Task 14
-  (`doctor.py`)**, the first task of Milestone 4 (Onboarding).
+- **Tasks 0 through 14 are complete as automated implementations.** Task 9's real-browser
+  same-device validation remains a release gate. Resume implementation at **Task 15
+  (`skills.py` and the four skills)**.
 - **The golden vault now exists and is the repository's regression tripwire.**
   `tests/fixtures/golden_vault.json` pins 45 files by SHA-256 after one full
   ingest → download → convert → index → snapshot → audit run against the synthetic API.
@@ -92,6 +92,23 @@ architecture.
       Together those cost 351 s per run; a realistic fixture brings it to about 5 s. When adding a
       route, return what a real instance returns: 404 for a route that does not serve a topic, and
       200 with an empty collection for a category a course does not use.
+  - **Task 14** — `a2l doctor`, and a support report that is safe to paste in public.
+    - **`report()` is an allowlist, not a denylist.** It emits version, Python, OS/arch,
+      install method, and per check only the stable identifier, status, and an optional
+      `public` note the check explicitly opted into. `detail` and `fix` are never emitted:
+      they legitimately carry vault paths and course names. A denylist would only remove the
+      leaks someone anticipated, so every check added later would become a new way to leak.
+    - Redaction is two independent layers — the check redacts, and `report` re-redacts rather
+      than trusting it. Each alone is sufficient, which is why proving the test bites needs
+      **both** removed at once.
+    - `render()` is the opposite audience and may show local paths, and always ends with
+      **exactly one** next command. A diagnostic listing six actions gets none of them done.
+    - Windows `LongPathsEnabled` is read but reported **informationally and never as a
+      failure** — a2l prefixes its own syscalls and works regardless. Above 240 absolute
+      characters the advice is a shorter vault root, not a registry edit.
+    - Git tracking **fails** on session-like files, grades, discussions, or submissions and
+      only **warns** on course sources; ignore rules are not a privacy or copyright
+      guarantee. The index is parsed directly so `doctor` needs no `git` binary.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.

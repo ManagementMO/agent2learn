@@ -14,6 +14,7 @@ from pathlib import Path
 import typer
 
 from agent2learn import __version__, config
+from agent2learn import doctor as doctor_module
 from agent2learn import session as session_store
 from agent2learn.api import Client
 from agent2learn.auth import authenticate
@@ -181,6 +182,38 @@ def fetch(
         typer.echo("source fetched, but no verified citation twin is available", err=True)
         raise typer.Exit(code=1)
     typer.echo(f"verified citation: {citation}")
+
+
+@app.command()
+def doctor(
+    report: bool = typer.Option(
+        False,
+        "--report",
+        help="Print a redacted markdown block that is safe to paste into a public issue.",
+    ),
+    open_issue: bool = typer.Option(
+        False,
+        "--open",
+        help="Show the redacted report and the exact GitHub destination, then offer to open it.",
+    ),
+) -> None:
+    """Diagnose the installation and end with exactly one next command."""
+
+    cfg = config.load()
+    root = Path(cfg.vault)
+    vault = Vault(root) if Vault.is_vault(root) else None
+    checks = doctor_module.run_checks(cfg, vault)
+
+    if open_issue:
+        # Nothing leaves the device here: the body and destination are shown first, the
+        # browser is only launched on an explicit yes, and the user still submits manually.
+        typer.echo(doctor_module.open_notice(checks))
+        if typer.confirm("Open this pre-filled issue in your browser?", default=False):
+            typer.launch(doctor_module.issue_url(checks))
+        raise typer.Exit(code=doctor_module.exit_code(checks))
+
+    typer.echo(doctor_module.report(checks) if report else doctor_module.render(checks))
+    raise typer.Exit(code=doctor_module.exit_code(checks))
 
 
 def _courses_json(courses: list[CourseRef], *, all_terms: bool) -> str:
