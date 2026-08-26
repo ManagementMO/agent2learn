@@ -138,8 +138,42 @@ def test_report_is_built_from_an_allowlist_not_a_denylist(
 
     body = doctor.report(checks)
 
-    assert "leaky.check" in body, "the check identifier is allowlisted and should appear"
+    assert "unknown-check" in body
     for secret in (STUDENT_NAME, STUDENT_ID, COOKIE_VALUE, COURSE_CODE, str(Path.home())):
+        assert secret not in body
+
+
+def test_report_does_not_trust_an_opted_in_public_note(
+    loaded_environment: tuple[object, Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg, vault = loaded_environment
+    monkeypatch.setattr(doctor.session_module, "load", lambda: None)
+    hostile = (
+        "https://learn.example/d2l?token="
+        + COOKIE_VALUE
+        + " Authorization: Bearer "
+        + COOKIE_VALUE
+        + f" {STUDENT_NAME} {STUDENT_ID} {COURSE_CODE} {ORG_UNIT} 87% "
+        + str(Path.home() / "private" / "file.md")
+    )
+
+    hostile_name = f"{COURSE_CODE}.{STUDENT_ID}.{COOKIE_VALUE}"
+    body = doctor.report([doctor.Check("Later", hostile_name, "warn", "safe", public=hostile)])
+
+    assert "unknown-check" in body
+    for secret in (
+        COOKIE_VALUE,
+        STUDENT_NAME,
+        STUDENT_ID,
+        COURSE_CODE,
+        ORG_UNIT,
+        "87%",
+        str(Path.home()),
+        "Authorization",
+        "Bearer",
+        "token=",
+        hostile_name,
+    ):
         assert secret not in body
 
 

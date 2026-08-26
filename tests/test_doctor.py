@@ -10,6 +10,7 @@ import pytest
 
 from agent2learn import config as config_module
 from agent2learn import doctor
+from agent2learn.errors import SessionExpired
 from agent2learn.session import Session, SessionCookie
 from agent2learn.vault import Vault
 
@@ -62,6 +63,19 @@ def _session(*, hours_old: float) -> Session:
     )
 
 
+class _DoctorClient:
+    def __init__(self, responses: dict[str, object]) -> None:
+        self.responses = responses
+        self.calls: list[str] = []
+
+    def get_json(self, path: str) -> object:
+        self.calls.append(path)
+        response = self.responses[path]
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+
 def test_exit_codes_are_zero_one_two() -> None:
     ok = [doctor.Check("Environment", "a", "ok", "fine")]
     warn = [*ok, doctor.Check("Session", "b", "warn", "stale", "run: a2l auth")]
@@ -87,13 +101,14 @@ def test_render_suggests_exactly_one_command_and_prefers_failures() -> None:
     assert "run: a2l sync" not in text
 
 
-def test_render_offers_no_next_command_when_everything_passes() -> None:
+def test_render_uses_the_safe_default_next_command_when_everything_passes() -> None:
     checks = [doctor.Check("Environment", "a", "ok", "fine")]
 
     text = doctor.render(checks)
 
-    assert doctor.next_command(checks) is None
-    assert "Next:" not in text
+    assert doctor.next_command(checks) == "run: a2l sync"
+    assert text.count("Next:") == 1
+    assert "Next: a2l sync" in text
     assert "all clear" in text
 
 
@@ -140,6 +155,66 @@ def test_stale_session_warns_and_fresh_one_does_not(
     monkeypatch.setattr(doctor.session_module, "load", lambda: _session(hours_old=1))
     fresh = doctor.run_checks(_cfg(vault), vault)
     assert next(c for c in fresh if c.name == "session.age").status == "ok"
+
+
+def test_session_checks_probe_api_versions_and_whoami_with_supplied_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    monkeypatch.setattr(doctor.session_module, "load", lambda: _session(hours_old=1))
+    client = _DoctorClient(
+        {
+            "/d2l/api/versions/": [
+                {"ProductCode": "lp", "LatestVersion": "1.62"},
+                {"ProductCode": "le", "LatestVersion": "1.96"},
+            ],
+            "/d2l/api/lp/1.62/users/whoami": {"Identifier": "99999999"},
+        }
+    )
+
+    checks = doctor.run_checks(_cfg(vault), vault, client=client)
+
+    assert client.calls == [
+        "/d2l/api/versions/",
+        "/d2l/api/lp/1.62/users/whoami",
+    ]
+    assert next(c for c in checks if c.name == "session.api_versions").status == "ok"
+    assert next(c for c in checks if c.name == "session.whoami").status == "ok"
+    assert "99999999" not in " ".join(c.detail for c in checks)
+
+
+def test_session_api_failure_is_a_redacted_check_not_an_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    monkeypatch.setattr(doctor.session_module, "load", lambda: _session(hours_old=1))
+    client = _DoctorClient({"/d2l/api/versions/": SessionExpired("cookie-value")})
+
+    checks = doctor.run_checks(_cfg(vault), vault, client=client)
+
+    versions = next(c for c in checks if c.name == "session.api_versions")
+    whoami = next(c for c in checks if c.name == "session.whoami")
+    assert versions.status == "fail"
+    assert whoami.status == "fail"
+    everything = " ".join(f"{c.detail} {c.fix or ''}" for c in checks)
+    assert "cookie-value" not in everything
+
+
+def test_malformed_session_storage_does_not_crash_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+
+    def malformed() -> None:
+        raise ValueError("stored cookie-value is invalid")
+
+    monkeypatch.setattr(doctor.session_module, "load", malformed)
+
+    checks = doctor.run_checks(_cfg(vault), vault)
+
+    present = next(c for c in checks if c.name == "session.present")
+    assert present.status == "fail"
+    assert "cookie-value" not in " ".join(f"{c.detail} {c.fix or ''}" for c in checks)
 
 
 def test_no_check_ever_reports_a_cookie_value(
@@ -201,6 +276,118 @@ def test_vault_coverage_counts_citable_topics_and_gaps(
     assert next(c for c in checks if c.name == "vault.gaps").detail == "1 conversion gap(s)"
 
 
+def test_vault_reports_terms_empty_twins_and_last_sync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    first = vault.root / "Fall 2026" / "COURSE101"
+    second = vault.root / "Winter 2027" / "COURSE202"
+    _content_map(
+        first,
+        [
+            {**_row(1, "markdown_ready"), "path": "Fall 2026/COURSE101/content/one.md"},
+            {**_row(2, "source_only"), "path": None},
+        ],
+    )
+    _content_map(
+        second,
+        [{**_row(3, "markdown_ready"), "path": "Winter 2027/COURSE202/content/two.md"}],
+    )
+    (vault.root / "Fall 2026/COURSE101/content").mkdir(parents=True)
+    (vault.root / "Fall 2026/COURSE101/content/one.md").write_text("", encoding="utf-8")
+    (vault.root / "Winter 2027/COURSE202/content").mkdir(parents=True)
+    (vault.root / "Winter 2027/COURSE202/content/two.md").write_text("ready", encoding="utf-8")
+    (vault.root / ".a2l" / "snapshots").mkdir(parents=True)
+    (vault.root / ".a2l" / "snapshots/20260825T120000Z.json").write_text(
+        json.dumps({"created_at": "2026-08-25T12:00:00Z"}), encoding="utf-8"
+    )
+    monkeypatch.setattr(doctor.session_module, "load", lambda: None)
+
+    checks = doctor.run_checks(_cfg(vault), vault)
+
+    terms = next(c for c in checks if c.name == "vault.terms")
+    empty = next(c for c in checks if c.name == "vault.empty_twins")
+    last_sync = next(c for c in checks if c.name == "vault.last_sync")
+    assert "Fall 2026" in terms.detail and "Winter 2027" in terms.detail
+    assert "1/2" in terms.detail and "1/1" in terms.detail
+    assert "0 conversion gap(s)" in terms.detail
+    assert "1 empty twin(s)" in terms.detail
+    assert empty.status == "warn"
+    assert empty.detail == "1 empty markdown twin(s)"
+    assert last_sync.status == "ok"
+    assert "2026-08-25" in last_sync.detail
+
+
+def test_vault_scan_keeps_valid_terms_when_one_map_is_not_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    bad_map = vault.root / "Fall 2026" / "BROKEN" / "_meta"
+    bad_map.mkdir(parents=True)
+    (bad_map / "content_map.json").write_bytes(b"{\xff")
+    valid_course = vault.root / "Winter 2027" / "COURSE202"
+    _content_map(valid_course, [_row(1, "markdown_ready")])
+    monkeypatch.setattr(doctor.session_module, "load", lambda: None)
+
+    checks = doctor.run_checks(_cfg(vault), vault)
+
+    courses = next(check for check in checks if check.name == "vault.courses")
+    terms = next(check for check in checks if check.name == "vault.terms")
+    assert courses.status == "warn"
+    assert courses.detail == "1 course(s), 1 topic(s), 1 unreadable content map(s)"
+    assert "Winter 2027" in terms.detail
+
+
+def test_vault_scan_discloses_unreadable_content_maps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    bad_map = vault.root / "Fall 2026" / "BROKEN" / "_meta"
+    bad_map.mkdir(parents=True)
+    (bad_map / "content_map.json").write_bytes(b"{\xff")
+    valid_course = vault.root / "Winter 2027" / "COURSE202"
+    _content_map(valid_course, [_row(1, "markdown_ready")])
+    monkeypatch.setattr(doctor.session_module, "load", lambda: None)
+
+    checks = doctor.run_checks(_cfg(vault), vault)
+
+    courses = next(check for check in checks if check.name == "vault.courses")
+    assert courses.status == "warn"
+    assert courses.detail == "1 course(s), 1 topic(s), 1 unreadable content map(s)"
+
+
+def test_last_sync_discloses_unreadable_snapshot_alongside_valid_one(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    snapshots = vault.root / ".a2l" / "snapshots"
+    snapshots.mkdir(parents=True)
+    (snapshots / "valid.json").write_text(
+        json.dumps({"created_at": "2026-08-25T12:00:00Z"}), encoding="utf-8"
+    )
+    (snapshots / "broken.json").write_bytes(b"{\xff")
+
+    check = doctor._last_sync_check(vault)
+
+    assert check.status == "warn"
+    assert check.detail == "last sync 2026-08-25T12:00:00Z; 1 unreadable snapshot(s)"
+
+
+def test_vault_with_only_unreadable_maps_is_not_called_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    bad_map = vault.root / "Fall 2026" / "BROKEN" / "_meta"
+    bad_map.mkdir(parents=True)
+    (bad_map / "content_map.json").write_bytes(b"{\xff")
+    monkeypatch.setattr(doctor.session_module, "load", lambda: None)
+
+    checks = doctor.run_checks(_cfg(vault), vault)
+
+    present = next(check for check in checks if check.name == "vault.present")
+    terms = next(check for check in checks if check.name == "vault.terms")
+    assert present.detail == "vault has no readable courses; 1 unreadable content map(s)"
+    assert terms.detail == "no readable term/course coverage; 1 unreadable content map(s)"
+
+
 def test_tracked_private_files_fail_while_tracked_course_files_only_warn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -222,13 +409,95 @@ def test_tracked_private_files_fail_while_tracked_course_files_only_warn(
     assert clean.status == "ok"
 
 
+@pytest.mark.parametrize(
+    "tracked, expected_status",
+    [
+        ("Fall 2026/C/discussions/post.md", "fail"),
+        ("Fall 2026/C/assignments/Lab instructions/instructions.html", "warn"),
+        ("Fall 2026/C/announcements/announcements.md", "warn"),
+    ],
+)
+def test_git_tracking_classifies_all_private_and_course_material_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tracked: str,
+    expected_status: str,
+) -> None:
+    vault = _vault(tmp_path)
+    monkeypatch.setattr(doctor.session_module, "load", lambda: None)
+    monkeypatch.setattr(doctor, "_inside_git_worktree", lambda root: True)
+    monkeypatch.setattr(doctor, "_tracked_files", lambda root: [tracked])
+
+    check = next(c for c in doctor.run_checks(_cfg(vault), vault) if c.name == "fs.git")
+
+    assert check.status == expected_status
+
+
+def test_malformed_git_index_becomes_a_warning() -> None:
+    raw = b"DIRC\x00\x00\x00\x02\x00\x00\x00\x01"
+    assert doctor._parse_git_index(raw, Path("/"), Path("/")) is None
+
+
+def test_git_tracking_reads_a_linked_worktree_index(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    vault_root = repository / "vault"
+    linked_git = tmp_path / "linked-git"
+    vault_root.mkdir(parents=True)
+    linked_git.mkdir()
+    (repository / ".git").write_text("gitdir: ../linked-git\n", encoding="utf-8")
+
+    name = b"vault/.a2l/private/session.json\x00"
+    entry = b"\x00" * 62 + name
+    entry += b"\x00" * ((-len(entry)) % 8)
+    index = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big") + entry
+    (linked_git / "index").write_bytes(index)
+
+    check = doctor._git_tracking(Vault(vault_root))
+
+    assert check.status == "fail"
+    assert "private file" in check.detail
+
+
+def test_unreadable_git_metadata_is_reported_as_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+
+    def unreadable(_root: Path) -> tuple[Path, Path] | None:
+        raise OSError("synthetic permission failure")
+
+    monkeypatch.setattr(doctor, "_git_metadata", unreadable)
+
+    check = doctor._git_tracking(vault)
+
+    assert check.status == "warn"
+    assert check.detail == "Git metadata is unreadable"
+
+
+def test_longest_path_permission_error_becomes_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "vault"
+    root.mkdir()
+
+    def denied(_root: Path) -> list[Path]:
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(doctor.paths, "walk", denied)
+
+    check = doctor._longest_path(root)
+
+    assert check.status == "warn"
+    assert "unavailable" in check.detail
+
+
 def test_open_notice_names_the_destination_before_anything_leaves_the_device() -> None:
     checks = [doctor.Check("Environment", "env.version", "ok", "agent2learn 0.1.0")]
 
     notice = doctor.open_notice(checks)
 
     assert doctor.ISSUE_URL in notice
-    assert "leaves your device only when you press submit" in notice
+    assert "Opening this page sends the displayed redacted body to GitHub" in notice
     # The exact body is shown first, so consent is informed rather than implied.
     assert doctor.report(checks).strip() in notice
 

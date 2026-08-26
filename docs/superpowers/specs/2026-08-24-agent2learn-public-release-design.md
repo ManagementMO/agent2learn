@@ -332,7 +332,9 @@ on Windows from the same course must be byte-identical in structure, so that `co
 portable and a vault can move between machines.
 
 **`long_path(p: Path) -> Path`** returns `p` unchanged off Windows. On Windows it returns the
-`\\?\`-prefixed form when the resolved path exceeds 240 characters.
+`\\?\`-prefixed form when the normalized absolute path exceeds 240 characters. The normalization
+is lexical and does **not** follow symlinks or junctions: the named filesystem object must remain
+the object a later no-follow check or atomic replacement addresses.
 
 The `\\?\` prefix is sharp-edged and pathlib handles it imperfectly. The contract is therefore
 strict:
@@ -343,8 +345,10 @@ strict:
   `\\?\bar` — a known pathlib behaviour, not a hypothetical.
 - **A prefixed path cannot contain forward slashes, `.`, or `..`.** The prefix bypasses Win32 path
   normalisation and hands the string to the filesystem driver directly.
-- **`resolve()` only strips an existing `\\?\` prefix when the path exists**, so the implementation
-  must check for the prefix explicitly rather than assume `resolve()` produced a clean path.
+- **An existing `\\?\` prefix is checked before normalization**, because high-level path
+  normalization may mishandle it. `long_path()` must never resolve through a symlink merely to
+  measure a target path; link identity checks use no-follow metadata operations at the same
+  syscall boundary.
 
 **`collides(dest: Path) -> bool`** performs an **NFC-normalized, case-folded** existence check on
 every platform. Windows is case-insensitive; macOS APFS is case-insensitive *by default but can be
@@ -653,7 +657,11 @@ reference 429 back-off. Several hundred students syncing the night before a dead
 present as an attack.
 
 Every HTTP operation has explicit connect/read timeouts. Idempotent GETs retry only bounded 429 and
-transient 5xx failures, honoring a capped `Retry-After`; mutating POSTs never retry. Downloads stream
+transient 5xx failures, honoring a capped `Retry-After`; mutating requests never retry or silently
+replay their body. The transport treats the method itself as mutating even when a caller omits the
+hint, and refuses a 301/302/303/307/308 redirect for such a request so the caller must make the
+follow-up decision explicitly. Non-mutating requests may follow only an allowed same-origin
+redirect one hop at a time. Downloads stream
 with actual-byte accounting, verify advertised size when present, and stop before consuming the
 configured reserve of free disk. The default single-file ceiling is 2 GiB. Oversized or
 unknown-length files that cross the ceiling remain `metadata_only` with a clear reason and an exact
@@ -688,7 +696,9 @@ unstructured substring check. Named tests cover direct URLs, redirects, mixed ca
 hosts. The README states this exact boundary: the tool prevents automatic third-party fetching; it
 does not claim that a finite provider list can classify every future link perfectly.
 
-Persisted metadata is a typed projection, never a raw API-response dump. URL fields are normalized
+Persisted metadata is a typed projection, never a raw API-response dump. Malformed JSON, an invalid
+root shape, an invalid stable-ID row, or a malformed nested collection is a surfaced category gap,
+never an empty successful response. URL fields are normalized
 to the minimum first-party route needed by the product. External URL credentials, fragments, query
 strings, LTI launch data, and transient signed values are discarded after in-memory policy
 classification. This keeps a local archive or accidental screenshot from becoming a token archive.
@@ -790,6 +800,11 @@ content topics that get hidden, dropbox folders that close, quizzes that are wit
 - Every writer that consumes a list response first proves that all pages were fetched successfully,
   then performs a **union by stable ID** against what is already on disk. A partial, failed, or
   malformed response can add known items but can never mark an existing item missing.
+- This merge rule applies to grades when explicitly enabled, discussion forums/topics/posts when
+  explicitly enabled, and nested assignment attachments as well as the ordinary announcement,
+  content-topic, dropbox, and quiz collections. An incomplete grade response preserves the prior
+  opt-in snapshot; malformed discussion or attachment nesting records a category gap and cannot
+  replace captured data or mark files missing.
 - An item previously captured and absent from one complete response is retained with
   `"missing_since": <iso>`. Only after it is absent from two consecutive successful complete syncs
   is `"withdrawn_at": <iso>` set and a "no longer posted" note rendered. A reinstated item clears
@@ -845,7 +860,10 @@ versioned mapping from stable source identity to structured entries:
 - `.part` files are never entered into the manifest. An incomplete or interrupted download is
   removed and safely restarted from byte zero; v0.1 does not retain unaudited partial bytes for
   range resumption. If the download completed and only fsync or atomic installation failed, the
-  validated `.part` is retained for the next sync to retry without re-downloading it.
+  validated `.part` is retained for the next sync to retry without re-downloading it. An atomic
+  pending-install marker ties that part to its canonical source, destination, byte count, digest,
+  and remote validator; a part with no validator is revalidated before reuse, and a stale, missing,
+  or tampered marker/part is discarded rather than trusted.
 - Every derived markdown twin records its own hash, the exact source hash, converter name/version,
   creation time, the configured PDF OCR word threshold when applicable, and ordered page-coverage
   modes/word counts. Study, grounding, indexing, and checking treat a twin as trusted course

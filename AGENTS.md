@@ -25,7 +25,7 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-08-25
+## Current state — 2026-08-26
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
 - **Tasks 0 through 14 are complete as automated implementations.** Task 9's real-browser
@@ -94,10 +94,10 @@ architecture.
       200 with an empty collection for a category a course does not use.
   - **Task 14** — `a2l doctor`, and a support report that is safe to paste in public.
     - **`report()` is an allowlist, not a denylist.** It emits version, Python, OS/arch,
-      install method, and per check only the stable identifier, status, and an optional
-      `public` note the check explicitly opted into. `detail` and `fix` are never emitted:
-      they legitimately carry vault paths and course names. A denylist would only remove the
-      leaks someone anticipated, so every check added later would become a new way to leak.
+      install method, and per check only a known stable identifier, known status, and a fixed
+      public note whose check owns the redaction. `detail` and `fix` are never emitted: they
+      legitimately carry vault paths and course names. A denylist would only remove the leaks
+      someone anticipated, so every check added later would become a new way to leak.
     - Redaction is two independent layers — the check redacts, and `report` re-redacts rather
       than trusting it. Each alone is sufficient, which is why proving the test bites needs
       **both** removed at once.
@@ -109,6 +109,16 @@ architecture.
     - Git tracking **fails** on session-like files, grades, discussions, or submissions and
       only **warns** on course sources; ignore rules are not a privacy or copyright
       guarantee. The index is parsed directly so `doctor` needs no `git` binary.
+- **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
+  exception-safety, report-redaction, long-path, and cross-platform edges found after the first
+  green Task 14 CI run. This includes same-origin API probes, malformed-session containment,
+  linked-worktree Git inspection, per-term/empty-twin/last-sync coverage, strict public report
+  fields, truthful `--open` disclosure, allowlisted structured logs, canonical redirect metadata,
+  bounded archive inspection, safe snapshot timestamps, scoped cookies, symlink/hard-link-safe
+  download parts, no-follow link metadata, executable and temporary-file long-path probes, and
+  long-path syscall boundaries across vault writers and migration staging. The regression tests
+  cover the discovered failures; they do not waive Task 9 live validation or any later release
+  gate.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
   `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.

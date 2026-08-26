@@ -52,7 +52,8 @@ Apply to **every** task. A step that violates one of these is wrong even if its 
 4b. **Never call `os.replace` directly.** Use `paths.atomic_write_text`,
     `paths.atomic_write_bytes`, or `paths.atomic_install_temp`, as appropriate. Each helper uses a
     unique sibling temporary file, flushes and fsyncs it, retries transient Windows replacement
-    failures, and cleans up on every failure path.
+    failures. Generated text/byte temporaries are cleaned up on every failure path; a completed
+    download `.part` deliberately survives an fsync or install failure so it can be retried.
 5. **No test may touch the network.** Use fixtures and `pytest-httpserver`.
 6. **No test may write outside `tmp_path`.**
 7. **No secret is ever printed, logged, or committed.** Not in errors, not in `--verbose`, not in
@@ -653,7 +654,7 @@ def rel_posix(p: Path, root: Path) -> str       # forward slashes, always
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_paths.py` with these cases, all failing:
+- [x] **Step 1:** Write `tests/test_paths.py` with these cases, all failing:
       ```python
       import unicodedata
       import pytest
@@ -714,8 +715,8 @@ Steps:
           p = tmp_path / "a" / "b" / "c.md"
           assert rel_posix(p, tmp_path) == "a/b/c.md"
       ```
-- [ ] **Step 2:** Run `uv run pytest tests/test_paths.py -v`. Expected: all fail, `ModuleNotFoundError`.
-- [ ] **Step 3:** Implement `safe_name` in the exact order in spec §C1: **NFC normalise** → replace
+- [x] **Step 2:** Run `uv run pytest tests/test_paths.py -v`. Expected: all fail, `ModuleNotFoundError`.
+- [x] **Step 3:** Implement `safe_name` in the exact order in spec §C1: **NFC normalise** → replace
       reserved characters → replace control characters → collapse whitespace → strip trailing dots
       and spaces → empty fallback → universal 60-character default truncation → repeat trailing
       cleanup → final reserved-name repair. Enforce a positive explicit `maxlen`.
@@ -739,13 +740,17 @@ Steps:
       combining sequence. The final reserved repair must stay within `maxlen`: discard rightmost
       remainder/extension characters first, or replace the final stem character when the stem alone
       fills the budget.
-- [ ] **Step 4:** Implement `long_path`. Off Windows, return `p` unchanged. On Windows:
+- [x] **Step 4:** Implement `long_path`. Off Windows, return `p` unchanged. On Windows, normalize
+      the absolute path lexically without following symlinks or junctions:
       ```python
       def long_path(p: Path) -> Path:
           if not WINDOWS:
               return p
-          s = os.fspath(p.resolve())
-          if s.startswith("\\\\?\\"):        # resolve() only strips the prefix if the path EXISTS
+          raw = os.fspath(p)
+          if raw.startswith("\\\\?\\"):
+              return p
+          s = os.path.abspath(raw)
+          if s.startswith("\\\\?\\"):
               return Path(s)
           if len(s) <= 240:
               return p
@@ -756,20 +761,27 @@ Steps:
       **Call it inline at the syscall and nowhere else.** Its result must never be stored, joined,
       returned to a caller, or compared — pathlib mishandles prefixed paths (`Path(r"\\?\foo",
       r"\\?\bar")` → `\\?\bar`), and a prefixed path may not contain forward slashes, `.`, or `..`.
+      Use a no-follow `lstat`/reparse-point check before destructive or atomic operations, and
+      normalize any `mkstemp()`/`mkdtemp()` return through `paths.plain_path()` before it re-enters
+      application-level path handling. Add Windows coverage for symlink/junction identity and
+      hard-linked download parts in addition to the long local/UNC/prefixed/non-existent cases.
       Add Windows-only tests for a long local path, a long UNC path, an already-prefixed path, and
       a non-existent destination. Agent2Learn's own operations must work regardless of the
       `LongPathsEnabled` registry value.
-- [ ] **Step 5:** Implement `collides` / `unique_path` using an NFC-normalized, case-folded scan of
+- [x] **Step 5:** Implement `collides` / `unique_path` using an NFC-normalized, case-folded scan of
       `dest.parent.iterdir()` rather than `dest.exists()`. Insert `_2`, `_3`, and later suffixes
       before the extension and trim the basename so the final name remains within 60 characters.
-- [ ] **Step 6:** Implement `reveal` — `explorer`, `open`, `xdg-open` by platform; never raise.
-- [ ] **Step 6b:** Implement the three sanctioned atomic primitives. `atomic_write_text` and
+- [x] **Step 6:** Implement `reveal` — `explorer`, `open`, `xdg-open` by platform; never raise.
+- [x] **Step 6b:** Implement the three sanctioned atomic primitives. `atomic_write_text` and
       `atomic_write_bytes` create a collision-resistant unique sibling temporary file, write with
       explicit UTF-8/newline rules where applicable, flush, `os.fsync`, tighten permissions on
       POSIX, and replace. `atomic_install_temp` accepts only a unique sibling `.part` created by the
       download layer, fsyncs it, and installs it the same way. Every helper retries
       `PermissionError` with short exponential backoff (5 attempts, ~10 ms doubling), fsyncs the
-      parent directory where supported, and removes its temporary input on failure.
+      parent directory where supported, and removes generated temporary input on failure.
+      `atomic_install_temp` is intentionally asymmetric: its `.part` is a completed, validated
+      download and survives fsync or replacement failure so the next sync can retry installation
+      without downloading the source again.
       ```python
       def test_atomic_write_retries_permission_error(tmp_path, monkeypatch):
           calls = {"n": 0}
@@ -791,16 +803,16 @@ Steps:
       > it is antivirus or Windows Search transiently holding the file. `manifest.json` is rewritten
       > after every course during a long sync, so without the retry this fails intermittently and
       > unreproducibly.
-- [ ] **Step 7:** Run the tests. Expected: all pass on your machine.
-- [ ] **Step 8:** Write `tests/test_no_forbidden_calls.py` — walk `src/`, fail if any file other
+- [x] **Step 7:** Run the tests. Expected: all pass on your machine.
+- [x] **Step 8:** Write `tests/test_no_forbidden_calls.py` — walk `src/`, fail if any file other
       than `paths.py` contains `os.chmod(`, `os.replace(`, `.exists()` inside a name-collision
       context, or `os.path.join(`. Keep it a simple substring/AST scan; it exists to stop drift, not
       to be clever.
-- [ ] **Step 9:** Commit.
+- [x] **Step 9:** Commit.
       ```
       git commit -m "feat: cross-platform path safety with identical naming on every OS"
       ```
-- [ ] **Step 10:** Push that commit. Confirm green on **all three** OSes — especially the Windows
+- [x] **Step 10:** Push that commit. Confirm green on **all three** OSes — especially the Windows
       length and reserved-name cases — and verify the workflow run SHA.
 
 ---
@@ -834,25 +846,25 @@ class NotConfigured(A2LError): exit_code = 3
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_config.py`: config round-trips including
+- [x] **Step 1:** Write `tests/test_config.py`: config round-trips including
       `include_grades=False` by default; `submit_enabled=False` by default; unknown future keys are
       preserved or rejected according to the documented schema; `save` is atomic (no partial file
       after a simulated crash); `monkeypatch`ing `XDG_CONFIG_HOME` relocates the path on Linux.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement. Use `appauthor=False` — the default produces
+- [x] **Step 2:** Run, verify failure.
+- [x] **Step 3:** Implement. Use `appauthor=False` — the default produces
       `AppData\Local\agent2learn\agent2learn` on Windows. Route all config writes through
       `paths.atomic_write_text`; this module must not call `os.replace` itself.
-- [ ] **Step 4:** Implement `console.GLYPH` — probe `sys.stdout.encoding`; if it cannot encode `"✓"`,
+- [x] **Step 4:** Implement `console.GLYPH` — probe `sys.stdout.encoding`; if it cannot encode `"✓"`,
       use `[ok] [!] [x] [-]`.
-- [ ] **Step 4b:** Configure rotating local logs (five 1 MiB files) through a structured allowlist:
+- [x] **Step 4b:** Configure rotating local logs (five 1 MiB files) through a structured allowlist:
       event/diagnostic code, stage timing, package version, status class, and exception class only.
       Tests inject URLs, headers, bodies, cookies, identities, course labels/IDs, filenames, grades,
       discussions, drafts, and confirmation phrases and prove none reaches normal or verbose logs.
-- [ ] **Step 5:** Run the focused and full tests; commit.
+- [x] **Step 5:** Run the focused and full tests; commit.
       ```
       git commit -m "feat: platform-correct config, console, and error taxonomy"
       ```
-- [ ] **Step 6:** Push the commit and confirm green on all three OSes.
+- [x] **Step 6:** Push the commit and confirm green on all three OSes.
 
 ---
 
@@ -901,7 +913,7 @@ def check_schema(v: Vault) -> None                       # migrate up, or refuse
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_vault_manifest.py`:
+- [x] **Step 1:** Write `tests/test_vault_manifest.py`:
       ```python
       def test_manifest_entries_are_structured_and_relative(tmp_path):
           v = Vault(tmp_path); f = tmp_path / "T" / "C" / "a.pdf"
@@ -977,21 +989,21 @@ Steps:
       requires explicit TTY confirmation; and a claimed vault writes a narrow `.gitignore` covering
       `.a2l/`, grade/discussion paths, and submission receipts without pretending all course files
       are safe to publish.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement a JSON document containing `schema_version` and `entries`. Validate every
+- [x] **Step 2:** Run, verify failure.
+- [x] **Step 3:** Implement a JSON document containing `schema_version` and `entries`. Validate every
       entry on load and before save: stable key/source identity, lowercase 64-character SHA-256,
       non-negative size, timezone-aware timestamp, and a normalized vault-relative POSIX path that
       cannot escape the root. Validate each derived artifact's path/hash/source-hash/tool/version and
       require its `source_sha256` to equal the parent entry. Resolve through `self.root` on every
       read and verify local hashes before treating a source or twin as unchanged/trusted. Do not use
       title or path as source identity.
-- [ ] **Step 3a:** Implement revision preservation. Before changed bytes replace a materialized
+- [x] **Step 3a:** Implement revision preservation. Before changed bytes replace a materialized
       source, atomically copy the prior verified bytes and metadata to
       `.a2l/history/<sha256-of-canonical-source-key>/<UTC timestamp>/`. Store the full source key in
       revision metadata; never use a raw ID/path component as the bucket. Collision-safe timestamp
       directories and hashes make repeated updates non-destructive. A missing or hash-mismatched
       prior file is reported as an integrity gap; it is never invented or silently marked preserved.
-- [ ] **Step 3b:** Implement schema versioning. `.a2l/VERSION` holds an integer, written at `init`
+- [x] **Step 3b:** Implement schema versioning. `.a2l/VERSION` holds an integer, written at `init`
       and checked by every command. Older-vault migrations run against an isolated staged `.a2l/`
       copy; non-`VERSION` state is atomically installed and `VERSION` is written last. A callback
       failure leaves the original VERSION and manifest untouched, and a publish failure restores
@@ -1009,12 +1021,12 @@ Steps:
       > v0.1 ships version `1` and an empty registry. The registry must exist from the first commit —
       > migrations cannot be retrofitted onto vaults already in the wild, and an old binary silently
       > mangling a newer vault is unrecoverable for the user.
-- [ ] **Step 4:** Add malformed-manifest, path-traversal, hash-mismatch, interrupted-history-write,
+- [x] **Step 4:** Add malformed-manifest, path-traversal, hash-mismatch, interrupted-history-write,
       and cross-root portability tests. Run the focused and full suites; commit.
       ```
       git commit -m "feat: revision-safe vault with structured portable manifest"
       ```
-- [ ] **Step 5:** Push the commit and confirm green on all three OSes.
+- [x] **Step 5:** Push the commit and confirm green on all three OSes.
 
 ---
 
@@ -1699,7 +1711,7 @@ Steps:
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_index.py`: `content_map.json` resolves every topic **by topic id
+- [x] **Step 1:** Write `tests/test_index.py`: `content_map.json` resolves every topic **by topic id
       through a hash-verified current derived artifact in the manifest, not by title match or mere
       file existence**; a submission-only dropbox folder gets a README
       cross-linking the matching content; near-empty `instructions.html` stubs are deleted; every
@@ -1707,13 +1719,13 @@ Steps:
       unfetched topic is retained with `source_path: null`, `path: null`, its stable ID, and an exact
       `a2l fetch <id>` hint; a conversion gap keeps `source_path` and a retry action; an external link
       is never offered to fetch. None is called missing.
-- [ ] **Step 2:** Write `tests/test_aipolicy.py`: a rendered outline containing a GenAI clause yields
+- [x] **Step 2:** Write `tests/test_aipolicy.py`: a rendered outline containing a GenAI clause yields
       `status="found"`, verbatim text, and `path.md:line`; a successfully scanned outline with no
       clause yields `not_found_in_scanned_outline`; a missing/failed render yields
       `outline_unavailable`. The last two are never conflated and neither guesses a policy.
-- [ ] **Step 3:** Run, verify failure.
-- [ ] **Step 4:** Implement `index.py` against the approved output schema and golden fixtures.
-- [ ] **Step 5:** Implement `aipolicy.py`. Scan the outline markdown for a heading or paragraph
+- [x] **Step 3:** Run, verify failure.
+- [x] **Step 4:** Implement `index.py` against the approved output schema and golden fixtures.
+- [x] **Step 5:** Implement `aipolicy.py`. Scan the outline markdown for a heading or paragraph
       matching a small keyword set (`generative ai`, `chatgpt`, `artificial intelligence`, `genai`,
       `large language model`). Write `_meta/ai_policy.json` as
       `{"status": str, "text": str|null, "source": str|null}` and one factual line in the course
@@ -1721,11 +1733,11 @@ Steps:
       no-match.
       **Record only. Do not classify as permitted/forbidden, do not score, do not gate anything.**
       The consuming skill decides how to mention it, once.
-- [ ] **Step 6:** Implement `snapshot.py` — after each sync atomically write
+- [x] **Step 6:** Implement `snapshot.py` — after each sync atomically write
       `.a2l/snapshots/<iso>.json` holding topic IDs, due dates, and announcement IDs. Include grade
       values only when `include_grades=True`; never retain a stale grade field after the student
       disables grade sync. This is what `diff` reads.
-- [ ] **Step 7:** Tests pass; commit.
+- [x] **Step 7:** Tests pass; commit.
       ```
       git commit -m "feat: index, content map, ai-policy surfacing, and sync snapshots"
       ```
@@ -1835,6 +1847,18 @@ Steps:
       ```
       git commit -m "feat: a2l doctor with redacted, one-click issue reports"
       ```
+
+**Post-Task 14 hardening completed 2026-08-26.** A repository-wide review found and closed the
+remaining trust-boundary and cross-platform gaps that a green first pass did not expose: report
+check identifiers/statuses are now allowlisted as well as public notes; `doctor` contains malformed
+session and vault data, probes the configured API through the supplied client, understands linked
+worktrees, reports per-term/empty-twin/last-sync coverage, and discloses that `--open` sends the
+prefilled body when the page opens. Earlier-task fixes also cover allowlisted log fields, canonical
+redirect metadata, implicit mutating-method redirect refusal, bounded archive magic reads, scoped
+session cookies, symlinked download parts, durable validated-part retry markers, no-validator part
+revalidation, safe snapshot timestamps/shapes, strict metadata/listing merges, migration rollback,
+and long-path syscall boundaries across writers, migrations, and diagnostics. Each discovered
+behavior has a focused regression test, including red-then-green proofs for the newly added guards.
 
 ---
 

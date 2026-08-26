@@ -3,12 +3,14 @@
 > Your courses, as a vault your agent can actually read.
 
 Agent2Learn is a local-first tool in active development for University of Waterloo students. It
-will turn the material available through a student's own LEARN account into a revision-safe,
+turns the material available through a student's own LEARN account into a revision-safe,
 Markdown-twinned vault that coding agents can navigate and cite.
 
-This documentation-first repository has been initialized for implementation but is **not yet an
-installable product or a v0.1 release**. Work resumes at Task 0 Step 2; there is intentionally no
-`a2l` command until that task implements and tests the approved CLI scaffold.
+The repository contains the tested implementation through Task 14, including the `a2l` command,
+offline synthetic fixtures, cross-platform filesystem handling, revision-safe vault state, bounded
+D2L transport, conversion, indexing, auditing, and redacted diagnostics. It is still **not a v0.1
+package release**: nothing is published to PyPI, Task 9's live same-device validation remains a
+release gate, and implementation resumes at Task 15.
 
 Start here:
 

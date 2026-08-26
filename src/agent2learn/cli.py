@@ -1,19 +1,21 @@
 """Agent2Learn command-line entry point.
 
 Every command is a thin wrapper: argument parsing and presentation live here, all
-behaviour lives in the module that owns it. Nothing in this file talks to the network,
-the filesystem, or a browser directly.
+behaviour lives in the module that owns it. The few local probes needed for command
+confirmation use the shared path boundary; network and browser behaviour stay in their
+owning modules.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import typer
 
-from agent2learn import __version__, config
+from agent2learn import __version__, config, paths
 from agent2learn import doctor as doctor_module
 from agent2learn import session as session_store
 from agent2learn.api import Client
@@ -21,7 +23,7 @@ from agent2learn.auth import authenticate
 from agent2learn.auth import clear_profile as remove_profile
 from agent2learn.auth import verify as verify_session
 from agent2learn.calibrate import CourseRef, display_courses, load_calibration
-from agent2learn.errors import A2LError, NotConfigured, SessionExpired
+from agent2learn.errors import A2LError, AuthenticationError, NotConfigured, SessionExpired
 from agent2learn.ingest import fetch_topic
 from agent2learn.schools import UWaterloo
 from agent2learn.vault import Vault
@@ -117,7 +119,10 @@ def auth(
             return
 
         if check:
-            saved = session_store.load()
+            try:
+                saved = session_store.load()
+            except (OSError, ValueError) as exc:
+                raise AuthenticationError("stored session is unreadable · run: a2l auth") from exc
             if saved is None:
                 typer.echo("no saved session · run: a2l auth", err=True)
                 raise typer.Exit(code=3)
@@ -152,15 +157,26 @@ def fetch(
     """Fetch one known topic and print its verified citation path."""
 
     try:
-        cfg = config.load()
-        saved = session_store.load()
+        try:
+            cfg = config.load()
+        except (OSError, ValueError) as exc:
+            raise NotConfigured("configuration is unreadable · run: a2l init") from exc
+        try:
+            saved = session_store.load()
+        except (OSError, ValueError) as exc:
+            raise AuthenticationError("stored session is unreadable · run: a2l auth") from exc
         if saved is None:
             raise NotConfigured("no saved session · run: a2l auth")
         school = UWaterloo()
         vault = Vault(Path(cfg.vault))
 
         def confirm_large(size: int | None) -> bool:
-            free = shutil.disk_usage(vault.root).free
+            try:
+                free = shutil.disk_usage(paths.long_path(vault.root)).free
+            except OSError as exc:
+                raise A2LError(
+                    "free disk space is unavailable; check the vault permissions"
+                ) from exc
             advertised = "unknown size" if size is None else f"{size:,} bytes"
             typer.echo(f"large-file override: {advertised}; free space: {free:,} bytes")
             return typer.confirm("Fetch this one source?", default=False)
@@ -176,6 +192,9 @@ def fetch(
     except A2LError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=exc.exit_code) from None
+    except OSError as exc:
+        typer.echo("fetch failed because local filesystem access is unavailable", err=True)
+        raise typer.Exit(code=1) from exc
 
     citation = result.citation_path or result.source_path
     if citation is None:
@@ -199,15 +218,48 @@ def doctor(
 ) -> None:
     """Diagnose the installation and end with exactly one next command."""
 
-    cfg = config.load()
+    config_failure: doctor_module.Check | None = None
+    try:
+        cfg = config.load()
+    except (OSError, ValueError) as exc:
+        # Doctor must be useful precisely when its own config is broken.  Do not echo the
+        # parser's path or raw value; those can contain a user's home, course, or token-like text.
+        cfg = config.Config()
+        config_failure = doctor_module.Check(
+            "Environment",
+            "config.load",
+            "fail",
+            f"configuration is unreadable ({type(exc).__name__})",
+            "run: a2l init",
+        )
+
     root = Path(cfg.vault)
-    vault = Vault(root) if Vault.is_vault(root) else None
-    checks = doctor_module.run_checks(cfg, vault)
+    try:
+        vault = Vault(root) if Vault.is_vault(root) else None
+    except (OSError, RuntimeError, ValueError):
+        vault = None
+
+    client = None
+    try:
+        saved = session_store.load()
+        if saved is not None and cfg.school == "uwaterloo":
+            client = Client(UWaterloo(), saved)
+    except Exception:
+        # _session() reports the redacted storage failure; client construction is only an
+        # optional live probe and must never prevent the rest of doctor from rendering.
+        client = None
+
+    checks = doctor_module.run_checks(cfg, vault, client=client)
+    if config_failure is not None:
+        checks.insert(0, config_failure)
 
     if open_issue:
-        # Nothing leaves the device here: the body and destination are shown first, the
-        # browser is only launched on an explicit yes, and the user still submits manually.
+        # The body is shown before the browser opens. Opening the page itself sends the
+        # displayed redacted body to GitHub; the user still reviews and submits manually.
         typer.echo(doctor_module.open_notice(checks))
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            typer.echo("refusing to open a report without an interactive terminal", err=True)
+            raise typer.Exit(code=max(1, doctor_module.exit_code(checks)))
         if typer.confirm("Open this pre-filled issue in your browser?", default=False):
             typer.launch(doctor_module.issue_url(checks))
         raise typer.Exit(code=doctor_module.exit_code(checks))
