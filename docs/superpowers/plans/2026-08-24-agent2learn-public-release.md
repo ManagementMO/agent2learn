@@ -1873,7 +1873,7 @@ behavior has a focused regression test, including red-then-green proofs for the 
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_skills_install.py`: detection finds only directories that exist;
+- [x] **Step 1:** Write `tests/test_skills_install.py`: detection finds only directories that exist;
       no directory is written before consent; project-local installation is the default; install
       **copies** by default (not symlink — Windows needs elevation); `--force` overwrites only the
       four recognized Agent2Learn skill directories after previewing the diff; frontmatter `name`
@@ -1885,13 +1885,13 @@ Steps:
       Claude `.claude/skills`/`~/.claude/skills`, Codex
       `.agents/skills`/`~/.codex/skills`, Cursor `.agents/skills`/`~/.cursor/skills`, and universal
       `.agents/skills`/`~/.config/agents/skills`. Shared project destinations are written once.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement detection for the target table in spec §Install contract, plus
+- [x] **Step 2:** Run, verify failure.
+- [x] **Step 3:** Implement detection for the target table in spec §Install contract, plus
       `--global/--project` and `--link` opt-in. Print every destination and whether it will be
       created, updated, or left alone; ask once before writing. Preserve unrelated skills and agent
       configuration. Store source package version/hash so refresh can detect drift without reading
       arbitrary files.
-- [ ] **Step 4:** Write the four public `SKILL.md` files from the approved product contracts. Use
+- [x] **Step 4:** Write the four public `SKILL.md` files from the approved product contracts. Use
       the private skills only to enumerate proven workflows; do not mechanically copy private
       course-specific wording or paths:
       - **`a2l-setup`** — install, auth (including `--paste`), first sync, and how to read
@@ -1916,13 +1916,13 @@ Steps:
         > If the status is `outline_unavailable`, say only that the policy was not locally checked
         > and direct the user to the course outline; never treat unavailable as permission.
       Add `metadata.version` to each frontmatter so `doctor` can detect staleness.
-- [ ] **Step 4b:** Add `skills.sh.json` using the published schema. Define one `Agent2Learn`
+- [x] **Step 4b:** Add `skills.sh.json` using the published schema. Define one `Agent2Learn`
       grouping containing the exact four skill slugs. Validate it against the live schema in CI and
       run an isolated `npx skills add ManagementMO/agent2learn --list` compatibility smoke test.
       Compare Agent2Learn's four target mappings with the reviewed upstream `vercel-labs/skills`
       registry so path drift is visible rather than silently writing stale locations.
       `skills/` remains the sole source; do not duplicate skill bodies into vendor manifests.
-- [ ] **Step 5:** Test the four skills as behavioural documents against synthetic scenarios:
+- [x] **Step 5:** Test the four skills as behavioural documents against synthetic scenarios:
       setup invokes the CLI, sync handles exit 75, study follows stable IDs/citations, and coursework
       presents `a2l check` as an experimental lexical evidence scan rather than proof. Include a
       malicious synthetic slide/announcement saying to ignore agent rules, reveal cookies, and run a
@@ -1930,6 +1930,17 @@ Steps:
       ```
       git commit -m "feat: agent skills plus cross-agent installer"
       ```
+
+**Task 15 completed 2026-08-27.** Commits `2f0a926`, `32483df`, and `81acc78` implement the
+installer, four canonical skill documents, public registry manifest, and review hardening. The
+final fix makes copy/link mode transitions part of planning: `--force --link` replaces a
+recognized managed copy with a rollback-safe canonical source link, while `--force` in copy mode
+replaces a current canonical link with a managed copy. Unmanaged local files block the destructive
+copy-to-link transition. Post-confirmation plans are revalidated before any write, symlink and
+path-component checks remain scoped to trusted roots, and focused tests cover both transitions,
+doctor status, and rollback on failed link installation. Local gates, live schema validation,
+upstream target comparison, isolated wheel discovery, and local Agent Skills discovery passed.
+Task 9's live same-device authentication records and all later milestone tasks remain open.
 
 ---
 

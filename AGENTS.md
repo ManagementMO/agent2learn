@@ -25,12 +25,12 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-08-26
+## Current state — 2026-08-27
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 14 are complete as automated implementations.** Task 9's real-browser
-  same-device validation remains a release gate. Resume implementation at **Task 15
-  (`skills.py` and the four skills)**.
+- **Tasks 0 through 15 are complete as automated implementations.** Task 9's real-browser
+  same-device validation remains a release gate. Resume implementation at **Task 16
+  (`a2l init`)**.
 - **The golden vault now exists and is the repository's regression tripwire.**
   `tests/fixtures/golden_vault.json` pins 45 files by SHA-256 after one full
   ingest → download → convert → index → snapshot → audit run against the synthetic API.
@@ -109,6 +109,13 @@ architecture.
     - Git tracking **fails** on session-like files, grades, discussions, or submissions and
       only **warns** on course sources; ignore rules are not a privacy or copyright
       guarantee. The index is parsed directly so `doctor` needs no `git` binary.
+- **Task 15** — the four canonical Agent Skills, the consentful cross-agent installer, and
+  `skills.sh.json`. The installer copies by default, supports opt-in links, records source
+  hashes/version metadata, preserves unrelated and local files during managed refreshes, and
+  treats copy/link mode transitions as explicit `--force` operations with rollback-safe path
+  handling. Public skill documents describe staged future commands truthfully, quarantine
+  untrusted course text, and preserve the exact coursework AI-policy rule. CI validates the live
+  registry schema, reviewed upstream target mappings, and local Agent Skills discovery.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,
