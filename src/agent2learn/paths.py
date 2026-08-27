@@ -205,21 +205,33 @@ def temporary_directory(parent: Path, *, prefix: str) -> Path:
     return plain_path(Path(raw_path))
 
 
-def has_link_component(path: Path) -> bool:
-    """Return whether any existing component of ``path`` is a symlink/reparse point."""
+def has_link_component(path: Path, *, root: Path | None = None) -> bool:
+    """Return whether ``path`` has a link component inside the trusted root."""
 
-    absolute = Path(os.path.abspath(os.fspath(path)))
-    parts = absolute.parts
-    if not parts:
-        return False
-    candidate = Path(parts[0])
-    for part in parts[1:]:
-        if is_link(candidate):
+    absolute_path = Path(os.path.abspath(os.fspath(path)))
+    if root is None:
+        parts = absolute_path.parts
+        if not parts:
+            return False
+        trusted_root = Path(parts[0])
+        relative_parts = parts[1:]
+    else:
+        trusted_root = Path(os.path.abspath(os.fspath(root)))
+        try:
+            relative_parts = absolute_path.relative_to(trusted_root).parts
+        except ValueError:
             return True
+
+    candidate = trusted_root
+    if is_link(candidate):
+        return True
+    for part in relative_parts:
         if not long_path(candidate).exists():
             return False
         candidate = candidate / part
-    return is_link(candidate)
+        if is_link(candidate):
+            return True
+    return False
 
 
 def symlink_dir(source: Path, destination: Path) -> None:
@@ -232,6 +244,45 @@ def symlink_dir(source: Path, destination: Path) -> None:
         target_is_directory=True,
     )
     _fsync_directory(destination.parent)
+
+
+def replace_link(
+    destination: Path,
+    source: Path,
+    *,
+    root: Path | None = None,
+    retries: int = 5,
+) -> None:
+    """Atomically install a directory link while retaining the old object on failure.
+
+    A directory cannot be replaced in place by ``os.replace`` on every supported platform.
+    The old object is therefore moved to a sibling backup before the staged link is installed;
+    a failed install rolls that backup back into place. ``source`` is trusted by the caller and
+    must be an ordinary directory, while ``root`` protects the destination parent.
+    """
+
+    _validate_retries(retries)
+    if not long_path(source).is_dir() or is_link(source):
+        raise ValueError("link source must be an ordinary directory")
+    if root is not None and has_link_component(destination.parent, root=root):
+        raise ValueError("link destination path contains a link component")
+
+    temporary = _create_temporary_link(destination, source)
+    try:
+        backup = _backup_path(destination)
+        had_destination = long_path(destination).exists() or is_link(destination)
+        if had_destination:
+            _replace_with_retries(destination, backup, retries)
+        try:
+            _replace_with_retries(temporary, destination, retries)
+        except OSError:
+            if had_destination and not (long_path(destination).exists() or is_link(destination)):
+                _replace_with_retries(backup, destination, retries)
+            raise
+        if had_destination:
+            remove_tree(backup, ignore_errors=True)
+    finally:
+        _remove_quietly(temporary)
 
 
 def atomic_write_text(destination: Path, text: str, *, retries: int = 5) -> None:
@@ -279,12 +330,18 @@ def atomic_install_temp(destination: Path, temporary: Path, *, retries: int = 5)
     _replace_with_retries(temporary, destination, retries)
 
 
-def replace_tree(destination: Path, staged: Path, *, retries: int = 5) -> None:
+def replace_tree(
+    destination: Path, staged: Path, *, root: Path | None = None, retries: int = 5
+) -> None:
     """Atomically move a staged tree into place and restore the old tree on failure."""
 
     _validate_retries(retries)
-    if staged.parent.resolve() != destination.parent.resolve():
+    if _plain_absolute(staged.parent) != _plain_absolute(destination.parent):
         raise ValueError("staged tree must be a sibling of destination")
+    if root is not None and (
+        has_link_component(destination.parent, root=root) or has_link_component(staged, root=root)
+    ):
+        raise ValueError("staged tree path contains a link component")
     backup = _backup_path(destination)
     had_destination = long_path(destination).exists() or is_link(destination)
     if had_destination:
@@ -374,12 +431,36 @@ def _create_temporary(destination: Path, *, suffix: str) -> Path:
     return plain_path(Path(raw_path))
 
 
+def _create_temporary_link(destination: Path, source: Path) -> Path:
+    """Create a private sibling link without exposing a partially written destination."""
+
+    temporary = _create_temporary(destination, suffix=".link")
+    try:
+        os.unlink(os.fspath(long_path(temporary)))
+        os.symlink(
+            os.fspath(long_path(source)),
+            os.fspath(long_path(temporary)),
+            target_is_directory=True,
+        )
+    except BaseException:
+        # Do not unlink an unexpected object that another local process inserted after the
+        # placeholder was removed; the hidden name is harmless debris and data safety wins.
+        if is_link(temporary):
+            _remove_quietly(temporary)
+        raise
+    return temporary
+
+
 def _backup_path(destination: Path) -> Path:
     for index in range(1, 100_000):
         backup = destination.parent / f".{destination.name}.backup.{index}"
         if not long_path(backup).exists() and not is_link(backup):
             return backup
     raise RuntimeError("could not allocate a backup path")
+
+
+def _plain_absolute(path: Path) -> Path:
+    return Path(os.path.abspath(os.fspath(path)))
 
 
 def plain_path(path: Path) -> Path:
@@ -487,6 +568,7 @@ __all__ = [
     "long_path",
     "plain_path",
     "remove_tree",
+    "replace_link",
     "replace_tree",
     "rel_posix",
     "walk",
