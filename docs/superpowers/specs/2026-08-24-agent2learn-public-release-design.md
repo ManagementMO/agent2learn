@@ -1335,8 +1335,10 @@ So:
 
 1. After authentication, `a2l init` lists the discovered active term and academic course offerings,
    defaults to all of them, and lets the student deselect before any course metadata request. It
-   persists stable offering IDs rather than course-code strings. If no active academic term can be
-   inferred, it stops with `a2l courses --all-terms` instead of guessing.
+   persists stable offering IDs rather than course-code strings. If multiple active academic terms
+   are returned, it lists each term and its course count and requires an explicit term-code choice;
+   it never silently chooses one. If no active academic term can be inferred, it stops with
+   `a2l courses --all-terms` instead of guessing.
 2. `a2l init` performs a **complete metadata sync for every selected course in the term.** This is
    fast, and it is what produces deadlines, the `INDEX.md` tree, announcements, and grades only when
    the student opted in. **The onboarding moment never waits on a file download.**

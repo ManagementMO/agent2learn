@@ -6,11 +6,11 @@ Agent2Learn is a local-first tool in active development for University of Waterl
 turns the material available through a student's own LEARN account into a revision-safe,
 Markdown-twinned vault that coding agents can navigate and cite.
 
-The repository contains the tested implementation through Task 14, including the `a2l` command,
+The repository contains the tested implementation through Task 16, including the `a2l` command,
 offline synthetic fixtures, cross-platform filesystem handling, revision-safe vault state, bounded
 D2L transport, conversion, indexing, auditing, and redacted diagnostics. It is still **not a v0.1
 package release**: nothing is published to PyPI, Task 9's live same-device validation remains a
-release gate, and implementation resumes at Task 15.
+release gate, and implementation resumes at Task 17.
 
 Start here:
 

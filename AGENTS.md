@@ -25,12 +25,11 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-08-27
+## Current state — 2026-08-28
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 15 are complete as automated implementations.** Task 9's real-browser
-  same-device validation remains a release gate. Resume implementation at **Task 16
-  (`a2l init`)**.
+- **Tasks 0 through 16 are complete as automated implementations.** Task 9's real-browser
+  same-device validation remains a release gate. Resume implementation at **Task 17**.
 - **The golden vault now exists and is the repository's regression tripwire.**
   `tests/fixtures/golden_vault.json` pins 45 files by SHA-256 after one full
   ingest → download → convert → index → snapshot → audit run against the synthetic API.
@@ -116,6 +115,15 @@ architecture.
   handling. Public skill documents describe staged future commands truthfully, quarantine
   untrusted course text, and preserve the exact coursework AI-policy rule. CI validates the live
   registry schema, reviewed upstream target mappings, and local Agent Skills discovery.
+- **Task 16** — consentful, ordered, resumable `a2l init`. It previews and schema-checks the vault
+  before writing, preserves the user's exact approved path across races, creates only minimal
+  missing Obsidian state, handles skill and grade choices, supports dedicated-profile or hidden-TTY
+  authentication, requires an explicit choice among multiple active terms, persists stable course
+  offering IDs, completes metadata before file estimates, classifies media with the ingest path,
+  and offers full/priority/later document syncing. `.a2l/init.json` resumes incomplete stages and
+  every failure has one safe recovery command; non-interactive invocation performs no setup writes.
+  The implementation hardening head `d90f7dc` passed [CI run 33174306467](https://github.com/ManagementMO/agent2learn/actions/runs/33174306467)
+  with all 14 jobs green, including Windows 3.11–3.14.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,

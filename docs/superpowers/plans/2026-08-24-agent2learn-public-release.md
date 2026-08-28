@@ -1960,17 +1960,18 @@ passed on `e672f6896da91332042a0311d4910953862e4a48` with all 14 jobs green, inc
 
 Steps:
 
-- [ ] **Step 1:** Write tests driving `init` with scripted stdin and a synthetic fake client. Assert
+- [x] **Step 1:** Write tests driving `init` with scripted stdin and a synthetic fake client. Assert
       the order: vault preview/consent → school → skill destinations/consent → grade opt-in → local
       browser-profile explanation/consent → auth → discovered term/course selection → metadata sync
       → useful summary → optional file sync. Selection defaults to all inferred active academic
       offerings, persists stable offering IDs, supports deselection, and never silently selects an
-      unclassified organization shell. No inferred active term stops with
+      unclassified organization shell. Multiple active academic terms are listed with course counts
+      and require an explicit term-code choice. No inferred active term stops with
       `a2l courses --all-terms`. A failure at any stage exits with exactly one safe next command. In a non-interactive
       shell, `init` performs no browser/profile/agent-directory writes and prints `run: a2l init`
       for a TTY.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement and pin a synthetic transcript equivalent to this one:
+- [x] **Step 2:** Run, verify failure.
+- [x] **Step 3:** Implement and pin a synthetic transcript equivalent to this one:
       ```
       Agent2Learn will create a local vault at ~/agent2learn. Continue? [Y/n]
       ✓ vault           ~/agent2learn
@@ -1997,24 +1998,36 @@ Steps:
               or ask your agent: "quiz me on COURSE 101 using only my lecture slides"
               include large media later: a2l sync --all --include-media
       ```
-- [ ] **Step 4:** Print size and duration estimates **before** file syncing and offer
+- [x] **Step 4:** Print size and duration estimates **before** file syncing and offer
       `full` (recommended, documents only), `priority`, or `later`; large audio/video remains a
       separate `--include-media` opt-in. Obtain consent before the potentially large download.
       Metadata sync remains automatic after its disclosed network step because it is the core first
       value.
-- [ ] **Step 5:** Detect an occupied `~/agent2learn` and offer `~/agent2learn-2` (Task 5 `claim`).
-- [ ] **Step 6:** Write a minimal Obsidian `.obsidian/` config with no community plugins,
+- [x] **Step 5:** Detect an occupied `~/agent2learn` and offer `~/agent2learn-2` (Task 5 `claim`).
+- [x] **Step 6:** Write a minimal Obsidian `.obsidian/` config with no community plugins,
       executable hooks, or remote assets; if the directory already exists, leave it entirely alone.
-- [ ] **Step 7:** Detect a new enrolled term on later runs and prompt
+- [x] **Step 7:** Detect a new enrolled term on later runs and prompt
       `New term detected: N courses. Sync? [Y/n]`.
-- [ ] **Step 7b:** Prove with tests that declining skills, grades, profile creation, or file download
+- [x] **Step 7b:** Prove with tests that declining skills, grades, profile creation, or file download
       does exactly what it says. Declining profile creation offers the hidden-TTY `--paste` path in
       the same run rather than dead-ending. Rerunning `init` is idempotent and resumes at the first
       incomplete stage without erasing prior choices or browser state.
-- [ ] **Step 8:** Commit.
+- [x] **Step 8:** Commit.
       ```
       git commit -m "feat: a2l init onboarding that ends on a real deadline"
       ```
+
+**Task 16 implementation completed 2026-08-28.** Commit `67ed262` adds the ordered onboarding
+state machine and its synthetic transcript tests. Review-driven hardening in `d90f7dc` adds
+schema preflight before initializer writes, exact-path consent protection against claim races,
+local metadata reloads for honest resume estimates, the canonical ingest media classifier, saved
+multi-term selection, invalid-course retry, and stable-ID precedence. Sixteen focused onboarding
+tests include red-then-green proofs for the non-interactive no-write boundary, schema refusal,
+resume estimates, claim races, real metadata deadlines/sizes/media, and idempotent new-term
+behavior. Local lint, formatting, types, full tests, fixture/notices checks, locked resolution,
+build, pre-commit, and secret scanning pass. [CI run 33174306467](https://github.com/ManagementMO/agent2learn/actions/runs/33174306467)
+passed at `d90f7dccd1034fa134730c4861fccb7cd78e16f5` with all 14 jobs green, including Windows
+3.11, 3.12, 3.13, and 3.14.
 
 ---
 
