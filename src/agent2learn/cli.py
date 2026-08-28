@@ -48,6 +48,7 @@ from agent2learn.ingest import (
     TopicRecord,
     fetch_topic,
     ingest_metadata,
+    is_downloadable_topic,
     is_media_topic,
     load_metadata_report,
     select_priority_topics,
@@ -1592,20 +1593,6 @@ def _topic_is_media(topic: object) -> bool:
     return isinstance(topic, TopicRecord) and is_media_topic(topic)
 
 
-def _topic_is_downloadable(topic: object) -> bool:
-    availability = getattr(topic, "availability", "metadata_only")
-    kind = getattr(topic, "kind", "")
-    url_path = getattr(topic, "url_path", None)
-    return (
-        availability != "external_link"
-        and isinstance(kind, str)
-        and kind.casefold() in {"file", "html", "htmlfile"}
-        and isinstance(url_path, str)
-        and bool(url_path)
-        and getattr(topic, "is_broken", False) is not True
-    )
-
-
 def _topic_size_summary(topics: Sequence[TopicRecord]) -> tuple[int, bool, int]:
     size = 0
     unknown = False
@@ -1622,7 +1609,7 @@ def _print_file_estimates(topics: Iterable[object]) -> None:
     downloadable = [
         topic
         for topic in topics
-        if isinstance(topic, TopicRecord) and _topic_is_downloadable(topic)
+        if isinstance(topic, TopicRecord) and is_downloadable_topic(topic, include_media=True)
     ]
     documents = [topic for topic in downloadable if not _topic_is_media(topic)]
     media = [topic for topic in downloadable if _topic_is_media(topic)]

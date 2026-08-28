@@ -37,6 +37,7 @@ from agent2learn.errors import A2LError
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
 DEFAULT_OCR_WORDS_PER_PAGE = 80
+MIN_PDF_CHARS = 200
 OCR_DPI = 300
 CONVERTER_VERSION = "1"
 MAX_ZIP_MEMBERS = 1_000
@@ -182,7 +183,10 @@ class PdfOxideBackend:
                 _text_value(_call_method(document, "extract_text_auto", page))
                 for page in range(page_count)
             ]
-            healthy = [len(text.split()) >= ocr_words_per_page for text in extracted]
+            document_has_text = sum(len(text) for text in extracted) >= MIN_PDF_CHARS
+            healthy = [
+                document_has_text and len(text.split()) >= ocr_words_per_page for text in extracted
+            ]
             page_markdown: list[str] = []
             coverage: list[PageCoverage] = []
             warnings: list[str] = []
@@ -1169,6 +1173,7 @@ def _now() -> str:
 __all__ = [
     "CONVERTER_VERSION",
     "DEFAULT_OCR_WORDS_PER_PAGE",
+    "MIN_PDF_CHARS",
     "ConversionError",
     "ConversionReport",
     "ConversionResult",

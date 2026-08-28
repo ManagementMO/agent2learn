@@ -18,7 +18,7 @@ from agent2learn import aipolicy, clock, paths
 from agent2learn.api import Client
 from agent2learn.audit import write_audit
 from agent2learn.convert import DEFAULT_OCR_WORDS_PER_PAGE, ConversionReport, convert_vault
-from agent2learn.errors import AuthenticationError
+from agent2learn.errors import AuthenticationError, NotConfigured
 from agent2learn.index import read_content_map, reconcile_content_map, write_content_map
 from agent2learn.ingest import (
     FileReport,
@@ -88,10 +88,10 @@ def load_sync_preferences(
 ) -> SyncPreferences:
     """Read validated init choices without letting corrupt state broaden a course selection.
 
-    ``later`` describes an onboarding deferral, not a reusable file-transfer scope.  When the user
-    later invokes ``a2l sync`` without an override, it therefore falls back to the design's
-    recommended full document archive (``all``), still excluding media unless separately enabled.
-    A missing state file supports pre-initializer vaults; an existing invalid file fails closed.
+    ``later`` describes an onboarding deferral, not a reusable file-transfer scope. When the user
+    later invokes ``a2l sync`` without an override, it falls back to the recommended full document
+    archive, still excluding media. Missing or invalid selection state fails closed so a sync can
+    never broaden silently from selected stable offering IDs to every active course.
     """
 
     fallback_scope = scope_override or DEFAULT_SYNC_SCOPE
@@ -106,7 +106,7 @@ def load_sync_preferences(
     except OSError as exc:
         raise ValueError("saved sync preferences are unavailable") from exc
     if not exists:
-        return SyncPreferences(scope=fallback_scope)
+        raise NotConfigured("saved sync selection is unavailable · run: a2l init")
     if not is_file:
         raise ValueError("saved sync preferences are not a regular file")
     try:

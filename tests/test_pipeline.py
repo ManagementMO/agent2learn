@@ -16,7 +16,7 @@ from ingest_support import FakeClient, course
 from agent2learn import clock
 from agent2learn import ingest as ingest_module
 from agent2learn.convert import ConversionReport
-from agent2learn.errors import AuthenticationError
+from agent2learn.errors import AuthenticationError, NotConfigured
 from agent2learn.ingest import FileReport, MetadataReport, OutlineReport
 from agent2learn.vault import Vault
 
@@ -183,7 +183,7 @@ def test_pipeline_converts_all_local_sources_when_no_file_was_downloaded(
 
 @pytest.mark.parametrize(
     ("stored", "expected"),
-    [("full", "all"), ("priority", "priority"), ("later", "all"), (None, "all")],
+    [("full", "all"), ("priority", "priority"), ("later", "all")],
 )
 def test_sync_preferences_use_valid_init_scope_then_recommended_full_default(
     tmp_path: Path, stored: str | None, expected: str
@@ -214,6 +214,16 @@ def test_sync_preferences_use_valid_init_scope_then_recommended_full_default(
     else:
         assert preferences.term == "1265"
         assert preferences.only == (111111, 222222)
+
+
+def test_sync_preferences_require_initializer_state_before_any_course_can_broaden(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "vault"
+    Vault.claim(root)
+
+    with pytest.raises(NotConfigured, match="a2l init"):
+        _pipeline().load_sync_preferences(Vault(root), scope_override="all")
 
 
 def test_sync_preferences_reject_an_invalid_existing_course_selection(tmp_path: Path) -> None:

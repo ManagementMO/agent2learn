@@ -422,6 +422,18 @@ def load_metadata_report(
     )
 
 
+def is_downloadable_topic(topic: TopicRecord, *, include_media: bool = False) -> bool:
+    """Return whether a topic is eligible for the selected bulk file plan."""
+    return (
+        topic.availability != "external_link"
+        and topic.url_path is not None
+        and topic.kind.casefold() in _DOWNLOADABLE_KINDS
+        and not topic.is_broken
+        and not _is_office_lock(topic)
+        and (include_media or not _is_media(topic))
+    )
+
+
 def select_priority_topics(
     rows: Sequence[TopicRecord],
     *,
@@ -431,7 +443,9 @@ def select_priority_topics(
     """Return the deterministic priority subset used by ingest and onboarding estimates."""
     if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
         raise ValueError("priority budget must be a positive integer")
-    candidates = list(rows) if include_media else [topic for topic in rows if not _is_media(topic)]
+    candidates = [
+        topic for topic in rows if is_downloadable_topic(topic, include_media=include_media)
+    ]
     return tuple(_priority_rows(candidates, scope="priority", budget=budget))
 
 
@@ -2936,6 +2950,7 @@ __all__ = [
     "PRIORITY_BUDGET_BYTES",
     "TopicRecord",
     "fetch_topic",
+    "is_downloadable_topic",
     "is_media_topic",
     "ingest_files",
     "ingest_metadata",

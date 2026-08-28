@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -1065,6 +1066,53 @@ def test_priority_planner_excludes_media_before_applying_document_budget() -> No
     )
 
     assert [item.topic_id for item in planned] == [2]
+
+
+def test_priority_planner_and_estimator_share_one_downloadable_predicate() -> None:
+    selected = course()
+    valid = ingest_module.TopicRecord(
+        source_key="uwaterloo:111111:topic:1",
+        source_id="1",
+        topic_id=1,
+        course_org_unit_id=111111,
+        course_code=selected.code,
+        course_name=selected.name,
+        term=selected.term,
+        title="Notes.pdf",
+        kind="File",
+        module_path=(),
+        module_ids=(),
+        view_url="https://learn.example.test/d2l/home",
+        outline_url=None,
+        url_path="/content/notes.pdf",
+        external_host=None,
+        etag=None,
+        last_modified="2026-01-01T00:00:00Z",
+        is_broken=False,
+        remote_size=100,
+    )
+    rows = [
+        valid,
+        replace(valid, source_key="k:2", source_id="2", topic_id=2, availability="external_link"),
+        replace(valid, source_key="k:3", source_id="3", topic_id=3, url_path=None),
+        replace(valid, source_key="k:4", source_id="4", topic_id=4, kind="Link"),
+        replace(valid, source_key="k:5", source_id="5", topic_id=5, is_broken=True),
+        replace(valid, source_key="k:6", source_id="6", topic_id=6, title="~$draft.docx"),
+        replace(valid, source_key="k:7", source_id="7", topic_id=7, title="recording.mp4"),
+    ]
+
+    planned = ingest_module.select_priority_topics(rows, include_media=False)
+
+    assert planned == (valid,)
+    assert [ingest_module.is_downloadable_topic(row, include_media=False) for row in rows] == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+    ]
 
 
 def test_load_metadata_report_reconstructs_completed_local_metadata_without_network(

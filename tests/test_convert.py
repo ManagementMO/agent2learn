@@ -220,6 +220,27 @@ def test_pdf_ocr_threshold_is_strict_and_uses_external_ocr_only(
     assert [page.mode for page in result.page_coverage] == ["markdown", "ocr"]
 
 
+def test_pdf_under_200_total_text_characters_forces_ocr_even_with_80_words(
+    tmp_path: Path,
+) -> None:
+    sparse = " ".join("x" for _ in range(80))
+    assert len(sparse) < 200
+    document = _FakePdf((sparse,))
+    ocr_calls: list[bytes] = []
+    backend = PdfOxideBackend(
+        document_factory=lambda _source: document,
+        ocr_reader=lambda image: ocr_calls.append(image) or "OCR recovered content",
+    )
+    source = tmp_path / "sparse.pdf"
+    source.write_bytes(b"%PDF-synthetic")
+
+    result = backend.convert_pdf(source, ocr_words_per_page=80)
+
+    assert len(ocr_calls) == 1
+    assert result.page_coverage[0].mode == "ocr"
+    assert "OCR recovered content" in result.markdown
+
+
 def test_unavailable_ocr_is_an_explicit_conversion_gap(tmp_path: Path) -> None:
     source = tmp_path / "thin.pdf"
     source.write_bytes(b"%PDF-synthetic")
