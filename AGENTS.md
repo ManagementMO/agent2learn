@@ -28,8 +28,8 @@ architecture.
 ## Current state — 2026-08-28
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 16 are complete as automated implementations.** Task 9's real-browser
-  same-device validation remains a release gate. Resume implementation at **Task 17**.
+- **Tasks 0 through 17 are complete as automated implementations.** Task 9's real-browser
+  same-device validation remains a release gate. Resume implementation at **Task 18**.
 - **The golden vault now exists and is the repository's regression tripwire.**
   `tests/fixtures/golden_vault.json` pins 45 files by SHA-256 after one full
   ingest → download → convert → index → snapshot → audit run against the synthetic API.
@@ -124,6 +124,15 @@ architecture.
   every failure has one safe recovery command; non-interactive invocation performs no setup writes.
   The implementation hardening head `d90f7dc` passed [CI run 33174306467](https://github.com/ManagementMO/agent2learn/actions/runs/33174306467)
   with all 14 jobs green, including Windows 3.11–3.14.
+- **Task 17** — local daily study views and privacy controls. `a2l today` uses explicit Waterloo
+  timezone arithmetic for deadlines, overdue work, snapshot changes, and exam countdowns;
+  `a2l diff` compares privacy-bounded snapshots with grades opt-in; `a2l calendar` emits stable-UID
+  iCalendar exports; `a2l where` searches every term's structured content maps while excluding
+  sensitive rows; and `a2l open` reveals only a resolved local course directory. `privacy status`
+  reports redacted category state, while `privacy purge` is preview-first, exact-phrase,
+  non-TTY-refusing, stale-plan-bound, symlink-safe, and allowlisted down to explicit files and
+  structured records. Generated JSON rewrites are atomic, generated content is distinguishable
+  from user files, and logical-deletion limits are stated in the preview.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,
@@ -135,7 +144,7 @@ architecture.
   cover the discovered failures; they do not waive Task 9 live validation or any later release
   gate.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
-  `uv run ruff check .`, `uv run mypy src`, `uv run pytest -q`,
+  `uv run ruff check .`, `uv run ruff format --check src tests tools`, `uv run mypy src`, `uv run pytest -q`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.
 - **Verify a new gate by making it fail.** Every safety check added so far was confirmed by
   perturbation — seven fixture mutations, a notices-drift injection, a deliberately-broken offline

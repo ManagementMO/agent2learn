@@ -11,10 +11,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 from agent2learn import paths
 from agent2learn.errors import A2LError
@@ -23,6 +25,245 @@ from agent2learn.vault import ManifestEntry, Vault
 CONTENT_MAP_VERSION = 1
 _EMPTY_HTML = re.compile(r"(?:<[^>]*>|&nbsp;|\s)+", re.IGNORECASE)
 _PRESERVED_GAPS = frozenset({"unsupported_format", "integrity_gap"})
+_SENSITIVE_SEARCH_MARKERS = frozenset({"grade", "grades", "discussion", "discussions"})
+_WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+@dataclass(frozen=True)
+class TopicMatch:
+    """A redaction-safe fuzzy match from a local content map."""
+
+    course: str
+    course_code: str
+    course_name: str
+    term: str
+    title: str
+    kind: str
+    source_id: str
+    source_key: str
+    availability: str
+    path: str | None
+    source_path: str | None
+    stub_path: str | None
+    next_action: str | None
+    score: int
+
+
+def search_topics(vault: Vault, query: str, *, limit: int = 20) -> tuple[TopicMatch, ...]:
+    """Fuzzy-find non-sensitive topics across every term in a local vault.
+
+    Search uses only structured ``content_map.json`` fields and returns vault-relative POSIX
+    paths.  Discussion and grade rows are excluded unless a future command explicitly opts into
+    those categories; this keeps a convenience search from becoming an accidental disclosure.
+    """
+
+    if not isinstance(query, str) or not query.strip():
+        raise A2LError("where query must not be empty")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("where limit must be a positive integer")
+    wanted = _search_tokens(query)
+    matches: list[TopicMatch] = []
+    for content_map in _content_maps(vault):
+        course_dir = content_map.parent.parent
+        raw = read_content_map(course_dir)
+        topics = raw.get("topics")
+        if not isinstance(topics, list):
+            raise A2LError("content_map.json topics must be an array")
+        for row in topics:
+            if not isinstance(row, dict):
+                raise A2LError("content_map.json contains an invalid topic")
+            if _is_sensitive_topic(row):
+                continue
+            candidate = _topic_match(vault, course_dir, row, wanted)
+            if candidate is not None:
+                matches.append(candidate)
+    matches.sort(key=lambda item: (-item.score, item.course, item.source_key))
+    return tuple(matches[:limit])
+
+
+def resolve_course(vault: Vault, selector: str) -> Path:
+    """Resolve one course selector to a known course directory, refusing ambiguity."""
+
+    if not isinstance(selector, str) or not selector.strip():
+        raise A2LError("course selector must not be empty")
+    if (
+        "\\" in selector
+        or _WINDOWS_ABSOLUTE.match(selector) is not None
+        or Path(selector).is_absolute()
+        or ".." in PurePosixPath(selector).parts
+    ):
+        raise A2LError("course selector must identify a local course, not a path escape")
+    wanted = _normalize(selector)
+    candidates: dict[Path, dict[str, str]] = {}
+    for content_map in _content_maps(vault):
+        course_dir = content_map.parent.parent
+        raw = read_content_map(course_dir)
+        topics = raw.get("topics")
+        if not isinstance(topics, list):
+            raise A2LError("content_map.json topics must be an array")
+        metadata = candidates.setdefault(
+            course_dir,
+            {
+                "course": paths.rel_posix(course_dir, vault.root),
+                "code": course_dir.name,
+                "name": course_dir.name,
+                "term": course_dir.parent.name,
+            },
+        )
+        for item in topics:
+            if not isinstance(item, dict):
+                continue
+            for field, target in (
+                ("course_code", "code"),
+                ("course_name", "name"),
+                ("term", "term"),
+            ):
+                value = item.get(field)
+                if isinstance(value, str) and value:
+                    metadata[target] = value
+
+    if not candidates:
+        raise A2LError("no local courses found; run: a2l sync")
+
+    exact = [
+        path
+        for path, metadata in candidates.items()
+        if wanted
+        in {_normalize(metadata["course"]), _normalize(path.name), _normalize(metadata["code"])}
+    ]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        raise A2LError("course selector is ambiguous; include the term or course folder")
+
+    scored = sorted(
+        ((_selector_score(wanted, metadata), path) for path, metadata in candidates.items()),
+        key=lambda item: (-item[0], paths.rel_posix(item[1], vault.root)),
+    )
+    if not scored or scored[0][0] == 0:
+        raise A2LError("course was not found in the local vault")
+    if len(scored) > 1 and scored[0][0] == scored[1][0]:
+        raise A2LError("course selector is ambiguous; include the term or course folder")
+    return scored[0][1]
+
+
+def _content_maps(vault: Vault) -> tuple[Path, ...]:
+    if not paths.long_path(vault.root).is_dir():
+        raise A2LError("vault is unavailable; run: a2l init")
+    try:
+        result = []
+        for candidate in paths.walk(vault.root):
+            if candidate.name != "content_map.json":
+                continue
+            if paths.is_link(candidate):
+                raise A2LError("content_map.json must not be a symlink")
+            if ".a2l" in candidate.parts:
+                continue
+            result.append(candidate)
+        return tuple(sorted(result, key=lambda value: paths.rel_posix(value, vault.root)))
+    except OSError as exc:
+        raise A2LError("content map inventory is unreadable") from exc
+
+
+def _topic_match(
+    vault: Vault,
+    course_dir: Path,
+    row: dict[str, object],
+    wanted: tuple[str, ...],
+) -> TopicMatch | None:
+    fields: dict[str, str] = {}
+    for key in (
+        "title",
+        "kind",
+        "source_id",
+        "source_key",
+        "course_code",
+        "course_name",
+        "term",
+        "module_path",
+    ):
+        value = row.get(key)
+        if isinstance(value, str):
+            fields[key] = value
+        elif isinstance(value, (list, tuple)):
+            fields[key] = " ".join(str(item) for item in value)
+    haystack = _normalize(" ".join(fields.values()))
+    if not all(token in haystack for token in wanted):
+        return None
+    title = fields.get("title") or "Untitled"
+    exact_title = _normalize(title) == _normalize(" ".join(wanted))
+    score = 100 if exact_title else 0
+    for token in wanted:
+        if token in _normalize(title):
+            score += 20
+        elif token in _normalize(fields.get("source_key", "")):
+            score += 10
+        else:
+            score += 1
+    return TopicMatch(
+        course=paths.rel_posix(course_dir, vault.root),
+        course_code=fields.get("course_code", course_dir.name),
+        course_name=fields.get("course_name", course_dir.name),
+        term=fields.get("term", course_dir.parent.name),
+        title=title,
+        kind=fields.get("kind", "topic"),
+        source_id=fields["source_id"],
+        source_key=fields["source_key"],
+        availability=str(row.get("availability", "metadata_only")),
+        path=_safe_result_path(row.get("path")),
+        source_path=_safe_result_path(row.get("source_path")),
+        stub_path=_safe_result_path(row.get("stub_path")),
+        next_action=cast(str, row["next_action"])
+        if isinstance(row.get("next_action"), str)
+        else None,
+        score=score,
+    )
+
+
+def _is_sensitive_topic(row: Mapping[str, object]) -> bool:
+    values: list[str] = []
+    for key in ("kind", "source_key", "path", "source_path", "stub_path"):
+        value = row.get(key)
+        if isinstance(value, str):
+            values.append(_normalize(value))
+    return any(
+        any(
+            marker in value.split(":") or marker in value.split("/")
+            for marker in _SENSITIVE_SEARCH_MARKERS
+        )
+        for value in values
+    )
+
+
+def _safe_result_path(value: object) -> str | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\" in value
+        or _WINDOWS_ABSOLUTE.match(value) is not None
+    ):
+        raise A2LError("content map contains an invalid result path")
+    candidate = PurePosixPath(value)
+    if candidate.is_absolute() or ".." in candidate.parts or "." in candidate.parts:
+        raise A2LError("content map result path escapes the vault")
+    return candidate.as_posix()
+
+
+def _search_tokens(value: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(_normalize(token) for token in value.split() if token.strip()))
+
+
+def _normalize(value: str) -> str:
+    return unicodedata.normalize("NFC", value).casefold()
+
+
+def _selector_score(wanted: str, metadata: Mapping[str, str]) -> int:
+    return max(
+        (50 if wanted in _normalize(value) else 0) + (20 if _normalize(value) == wanted else 0)
+        for value in metadata.values()
+    )
 
 
 def read_content_map(course_dir: Path) -> dict[str, object]:
@@ -295,3 +536,16 @@ def _validate_topic_identity(row: Mapping[str, object]) -> None:
         or source_key.rsplit(":", 1)[-1] != source_id
     ):
         raise A2LError("content_map contains an invalid topic identity")
+
+
+__all__ = [
+    "CONTENT_MAP_VERSION",
+    "TopicMatch",
+    "read_content_map",
+    "reconcile_content_map",
+    "resolve_course",
+    "search_topics",
+    "write_content_map",
+    "write_course_index",
+    "write_submission_readme",
+]

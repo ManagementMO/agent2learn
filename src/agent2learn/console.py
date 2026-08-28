@@ -134,6 +134,21 @@ def configure_logging(*, verbose: bool = False) -> logging.Logger:
     return logger
 
 
+def close_owned_handlers() -> None:
+    """Close only Agent2Learn's allowlisted handlers without creating a replacement.
+
+    Privacy log purge calls this before unlinking the five known rotating files.  Keeping the
+    helper here means the privacy layer does not need to depend on the logger's private marker or
+    accidentally close handlers belonging to an embedding application.
+    """
+
+    logger = get_logger()
+    for handler in list(logger.handlers):
+        if getattr(handler, _HANDLER_MARKER, False):
+            logger.removeHandler(handler)
+            handler.close()
+
+
 def log_event(
     event: str,
     *,
@@ -204,4 +219,11 @@ def _is_tty(stream: TextIO) -> bool:
         return False
 
 
-__all__ = ["GLYPH", "configure_logging", "get_logger", "log_event", "out"]
+__all__ = [
+    "GLYPH",
+    "close_owned_handlers",
+    "configure_logging",
+    "get_logger",
+    "log_event",
+    "out",
+]

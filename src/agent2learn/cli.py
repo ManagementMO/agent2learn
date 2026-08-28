@@ -14,16 +14,20 @@ import re
 import shutil
 import sys
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
 
 import typer
 
 from agent2learn import __version__, config, console, paths
+from agent2learn import calendar as calendar_module
 from agent2learn import doctor as doctor_module
+from agent2learn import index as index_module
+from agent2learn import privacy as privacy_module
 from agent2learn import session as session_store
 from agent2learn import skills as skills_module
+from agent2learn import snapshot as snapshot_module
 from agent2learn.api import Client
 from agent2learn.auth import authenticate
 from agent2learn.auth import clear_profile as remove_profile
@@ -62,6 +66,13 @@ skills_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(skills_app, name="skills")
+
+privacy_app = typer.Typer(
+    name="privacy",
+    help="Inspect or deliberately remove locally retained sensitive categories.",
+    no_args_is_help=True,
+)
+app.add_typer(privacy_app, name="privacy")
 
 
 def _version_callback(value: bool) -> None:
@@ -115,6 +126,27 @@ def _stream_is_tty(stream: object) -> bool:
         return bool(callable(isatty) and isatty())
     except (AttributeError, OSError):
         return False
+
+
+def _local_vault() -> tuple[config.Config, Vault, UWaterloo]:
+    """Load the configured local vault without opening a network or browser session."""
+
+    try:
+        cfg = config.load()
+    except (OSError, ValueError) as exc:
+        raise NotConfigured("configuration is unreadable · run: a2l init") from exc
+    root = Path(cfg.vault).expanduser()
+    try:
+        if not Vault.is_vault(root):
+            raise NotConfigured("local vault is unavailable · run: a2l init")
+        vault = Vault(root)
+    except NotConfigured:
+        raise
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise NotConfigured("local vault is unavailable · run: a2l init") from exc
+    if cfg.school != UWaterloo.id:
+        raise A2LError("configured school adapter is unavailable")
+    return cfg, vault, UWaterloo()
 
 
 @app.command()
@@ -175,6 +207,185 @@ def courses(
         typer.echo(_courses_json(selected, all_terms=all_terms))
         return
     _print_courses(selected, all_terms=all_terms)
+
+
+@app.command()
+def today() -> None:
+    """Show local deadlines, overdue work, changes, and the next exam countdown."""
+
+    try:
+        cfg, vault, school = _local_vault()
+        report = calendar_module.build_today(
+            vault,
+            school,
+            include_grades=cfg.include_grades,
+        )
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except OSError:
+        typer.echo("today failed because local vault metadata is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(calendar_module.render_today(report, include_grades=cfg.include_grades), nl=False)
+
+
+@app.command()
+def diff(
+    since: Annotated[
+        str | None,
+        typer.Option("--since", help="Compare with one exact earlier snapshot identifier."),
+    ] = None,
+) -> None:
+    """Show structured changes between local vault snapshots."""
+
+    try:
+        cfg, vault, _school = _local_vault()
+        result = snapshot_module.diff_vault(
+            vault,
+            since=since,
+            include_grades=cfg.include_grades,
+        )
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except (OSError, ValueError) as exc:
+        typer.echo(f"diff failed ({type(exc).__name__}); run: a2l sync", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(
+        snapshot_module.render_diff(result, include_grades=cfg.include_grades),
+        nl=False,
+    )
+
+
+@app.command()
+def calendar(
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Write the calendar atomically to FILE."),
+    ] = None,
+) -> None:
+    """Export local deadlines, exams, and office hours as an iCalendar file."""
+
+    try:
+        _cfg, vault, school = _local_vault()
+        if output is None:
+            typer.echo(calendar_module.render_ics(vault, school), nl=False)
+        else:
+            written = calendar_module.write_ics(vault, school, output)
+            typer.echo(f"calendar exported: {_display_path(written)}")
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except OSError:
+        typer.echo("calendar failed because local vault metadata is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
+def where(
+    query: str = typer.Argument(..., help="Words to find in local course content metadata."),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable machine-readable matches instead of terminal lines.",
+    ),
+) -> None:
+    """Fuzzy-find a non-sensitive topic across every local course and term."""
+
+    try:
+        _cfg, vault, _school = _local_vault()
+        matches = index_module.search_topics(vault, query)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except OSError:
+        typer.echo("where failed because local content maps are unavailable", err=True)
+        raise typer.Exit(code=1) from None
+
+    if json_output:
+        typer.echo(
+            json.dumps([asdict(match) for match in matches], ensure_ascii=False, sort_keys=True)
+        )
+        return
+    if not matches:
+        typer.echo("No matching topics found.")
+        return
+    for match in matches:
+        locations = [
+            f"twin={match.path}" if match.path else None,
+            f"source={match.source_path}" if match.source_path else None,
+            f"stub={match.stub_path}" if match.stub_path else None,
+        ]
+        target = ", ".join(value for value in locations if value) or "metadata only"
+        typer.echo(f"{match.course} · {match.title} [{match.kind}] · {target}")
+
+
+@app.command("open")
+def open_course(
+    course: str = typer.Argument(
+        ..., help="Course code, course folder, name, or term-qualified selector."
+    ),
+) -> None:
+    """Ask the operating system to reveal one known local course folder."""
+
+    try:
+        _cfg, vault, _school = _local_vault()
+        course_dir = index_module.resolve_course(vault, course)
+        paths.reveal(course_dir)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except OSError:
+        typer.echo("open failed because local course metadata is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"requested opening: {_display_path(course_dir)}")
+
+
+@privacy_app.command("status")
+def privacy_status() -> None:
+    """Show sensitive-category collection flags and redacted local locations."""
+
+    try:
+        cfg, vault, _school = _local_vault()
+        value = privacy_module.status(vault, cfg)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except (OSError, ValueError):
+        typer.echo("privacy status failed because local state is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(privacy_module.render_status(value), nl=False)
+
+
+@privacy_app.command("purge")
+def privacy_purge(
+    category: str = typer.Argument(..., help="Exactly one of: grades, discussions, logs."),
+) -> None:
+    """Preview an exact privacy purge and require a fresh controlling-terminal phrase."""
+
+    try:
+        _cfg, vault, _school = _local_vault()
+        plan = privacy_module.plan_purge(vault, category)
+        typer.echo(privacy_module.render_plan(plan), nl=False)
+        if not plan.targets:
+            return
+        if not _interactive_terminal():
+            typer.echo("refusing to purge without an interactive terminal", err=True)
+            raise typer.Exit(code=1)
+        phrase = typer.prompt(f"Type PURGE {plan.category.upper()} to continue", default="")
+        privacy_module.execute_purge(
+            vault,
+            plan,
+            phrase=phrase,
+            interactive=True,
+        )
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except (OSError, ValueError):
+        typer.echo("privacy purge failed because local state is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo("privacy purge complete (logical deletion only)")
 
 
 @app.command()

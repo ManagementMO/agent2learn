@@ -2043,21 +2043,22 @@ passed at `d90f7dccd1034fa134730c4861fccb7cd78e16f5` with all 14 jobs green, inc
 
 Steps:
 
-- [ ] **Step 1:** Write `tests/test_calendar.py`: the `.ics` validates; UIDs are **deterministic**
+- [x] **Step 1:** Write `tests/test_calendar.py`: the `.ics` validates; UIDs are **deterministic**
       (re-export updates rather than duplicates); all-day vs timed events are correct; `DTSTAMP` is
       UTC; local event times use the school IANA timezone and survive Toronto DST boundaries
       independently of the machine `TZ`. Write `tests/test_diff.py`: two snapshots produce new content, new announcements, and
       changed due dates; grades appear only in an opt-in fixture and never in default output.
-- [ ] **Step 2:** Run, verify failure.
-- [ ] **Step 3:** Implement `calendar.py` from the documented `.ics` contract and deterministic
+- [x] **Step 2:** Run, verify failure. The focused Task 17 tests were observed red before the
+      modules existed, then green after implementation.
+- [x] **Step 3:** Implement `calendar.py` from the documented `.ics` contract and deterministic
       tests, using the private generator only as behavioural evidence. Generalise it over Dropbox
       due dates, quiz dates, and exams.
-- [ ] **Step 4:** Implement `today` — due within 7 days, overdue, what changed since last sync,
+- [x] **Step 4:** Implement `today` — due within 7 days, overdue, what changed since last sync,
       and an exam countdown during the exam period. Show grade postings only when grade sync is
       enabled; do not reveal them in logs or non-interactive diagnostic output.
-- [ ] **Step 5:** Implement `diff`, `where` (fuzzy match over `content_map.json` across all terms),
+- [x] **Step 5:** Implement `diff`, `where` (fuzzy match over `content_map.json` across all terms),
       and `open` (via `paths.reveal`).
-- [ ] **Step 5b:** Write `tests/test_privacy.py` before implementation. `privacy status` lists only
+- [x] **Step 5b:** Write `tests/test_privacy.py` before implementation. `privacy status` lists only
       category state and redacted locations. Purge defaults to preview and enumerates exact targets;
       it refuses non-TTY, broad/unknown categories, symlinks, path escapes, and stale confirmation;
       the confirmed grade purge removes grade JSON and grade fields from every snapshot while
@@ -2067,14 +2068,20 @@ Steps:
       vault pseudonym key when no retained discussion uses it, while preserving unrelated course
       content. Log purge enumerates and removes only the five known rotating files in the configured
       log directory. Disabling collection alone never silently deletes existing data.
-- [ ] **Step 5c:** Implement `a2l privacy status` and
+- [x] **Step 5c:** Implement `a2l privacy status` and
       `a2l privacy purge {grades|discussions|logs}` with an allowlisted target resolver, atomic JSON
       rewrites, exact preview, and one-time interactive phrase. Never call a recursive delete. State
       that logical deletion cannot guarantee secure erasure from filesystem snapshots or backups.
-- [ ] **Step 6:** Commit.
+- [x] **Step 6:** Commit.
       ```
       git commit -m "feat: daily study commands, calendar, and privacy controls"
       ```
+
+Task 17 evidence: focused calendar/diff/navigation/privacy/CLI tests pass; the complete local
+gate suite passes; the golden vault remains byte-identical; and the privacy safety tests were
+perturbed to fail before the final implementation was restored. The implementation intentionally
+keeps the v1 snapshot shape unchanged, binds purge previews to target paths and observed bytes,
+and preserves user-authored discussion files when removing generated discussion artifacts.
 
 ---
 
