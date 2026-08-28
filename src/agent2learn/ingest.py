@@ -363,6 +363,27 @@ def ingest_metadata(
     )
 
 
+def load_metadata_topics(
+    vault: Vault, school: School, courses: Iterable[CourseRef]
+) -> tuple[TopicRecord, ...]:
+    """Load validated topic projections for a completed local metadata phase.
+
+    This is intentionally a local read.  It lets a resumed onboarding run show an honest file
+    estimate without repeating the network metadata phase, while using the same row decoder and
+    filename/media rules as :func:`ingest_files`.
+    """
+
+    topics: list[TopicRecord] = []
+    for course in courses:
+        course_dir = _course_directory(vault, school, course)
+        content_map_path = course_dir / "_meta" / "content_map.json"
+        if paths.is_link(content_map_path) or not paths.long_path(content_map_path).is_file():
+            raise A2LError("course metadata is unavailable; run a2l init")
+        content_map = _read_content_map(course_dir)
+        topics.extend(_topic_from_row(row, course=course) for row in _map_topics(content_map))
+    return tuple(topics)
+
+
 def ingest_files(
     client: Client,
     vault: Vault,
@@ -2279,6 +2300,12 @@ def _is_media(topic: TopicRecord) -> bool:
     return PurePosixPath(_topic_filename(topic)).suffix.casefold() in _MEDIA_SUFFIXES
 
 
+def is_media_topic(topic: TopicRecord) -> bool:
+    """Return the canonical media classification used by file ingestion and previews."""
+
+    return _is_media(topic)
+
+
 def _is_office_lock(topic: TopicRecord) -> bool:
     filename = _topic_filename(topic)
     url_name = PurePosixPath(urlsplit(topic.url_path or "").path).name
@@ -2847,6 +2874,8 @@ __all__ = [
     "OutlineReport",
     "TopicRecord",
     "fetch_topic",
+    "is_media_topic",
     "ingest_files",
     "ingest_metadata",
+    "load_metadata_topics",
 ]

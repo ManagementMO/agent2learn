@@ -8,7 +8,7 @@ proves the CLI's ordering and persistence contract rather than duplicating brows
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,8 +16,10 @@ import pytest
 from typer.testing import CliRunner
 
 from agent2learn import cli, config
+from agent2learn import index as course_index
 from agent2learn.calibrate import Calibration, CourseRef
-from agent2learn.ingest import FileReport, MetadataReport
+from agent2learn.errors import A2LError
+from agent2learn.ingest import CourseMetadata, FileReport, MetadataReport, TopicRecord
 from agent2learn.skills import Destination
 from agent2learn.vault import Vault
 
@@ -61,7 +63,102 @@ def _calibration(courses: list[CourseRef]) -> Calibration:
 
 
 def _metadata_report(world: InitWorld) -> MetadataReport:
-    return MetadataReport(courses=(), topic_count=7, deadline_count=8)
+    reports: list[CourseMetadata] = []
+    topic_number = 900000
+    for course in world.courses:
+        if not course.is_active or course.term is None:
+            continue
+        directory = world.root / "Spring 2026" / f"{course.code}_{course.term}"
+        directory.joinpath("_meta").mkdir(parents=True, exist_ok=True)
+        assignments = [
+            {
+                "id": f"assignment-{course.org_unit_id}",
+                "title": "Problem Set 3",
+                "due_date": "2026-09-18T23:59:00Z",
+            }
+        ]
+        quizzes = [
+            {
+                "id": f"quiz-{course.org_unit_id}",
+                "title": "Quiz 1",
+                "due_date": "2026-09-25T23:59:00Z",
+            }
+        ]
+        directory.joinpath("_meta", "assignments.json").write_text(
+            json.dumps(assignments) + "\n", encoding="utf-8"
+        )
+        directory.joinpath("_meta", "quizzes.json").write_text(
+            json.dumps(quizzes) + "\n", encoding="utf-8"
+        )
+        topics = (
+            _topic_record(
+                course,
+                topic_number,
+                "Lecture notes.pdf",
+                "/d2l/content/download/notes",
+                8 * 1024 * 1024,
+            ),
+            _topic_record(
+                course,
+                topic_number + 1,
+                "Lecture recording.mp4",
+                "/d2l/content/download/recording",
+                20 * 1024 * 1024,
+            ),
+            _topic_record(
+                course,
+                topic_number + 2,
+                "Worksheet.pdf",
+                "/d2l/content/download/worksheet.mp4",
+                4 * 1024 * 1024,
+            ),
+        )
+        course_index.write_content_map(directory, [asdict(topic) for topic in topics])
+        reports.append(
+            CourseMetadata(
+                course=course,
+                directory=directory,
+                topics=topics,
+                module_tree=(),
+            )
+        )
+        topic_number += 10
+    return MetadataReport(
+        courses=tuple(reports),
+        topic_count=sum(len(report.topics) for report in reports),
+        deadline_count=len(reports) * 2,
+    )
+
+
+def _topic_record(
+    course: CourseRef,
+    topic_id: int,
+    title: str,
+    url_path: str,
+    remote_size: int | None,
+) -> TopicRecord:
+    source_id = str(topic_id)
+    return TopicRecord(
+        source_key=f"uwaterloo:{course.org_unit_id}:topic:{source_id}",
+        source_id=source_id,
+        topic_id=topic_id,
+        course_org_unit_id=course.org_unit_id,
+        course_code=course.code,
+        course_name=course.name,
+        term=course.term,
+        title=title,
+        kind="File",
+        module_path=(),
+        module_ids=(),
+        view_url="https://learn.uwaterloo.ca/d2l/home",
+        outline_url=None,
+        url_path=url_path,
+        external_host=None,
+        etag=None,
+        last_modified=None,
+        is_broken=False,
+        remote_size=remote_size,
+    )
 
 
 def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld:
@@ -202,8 +299,11 @@ def test_init_runs_consent_and_sync_stages_in_order_and_persists_defaults(
     assert world.file_calls == []
     assert _state(world.root)["selected_offering_ids"] == [111111, 222222]
     assert _state(world.root)["include_grades"] is False
-    assert "7 topics" in result.stdout
-    assert "8 deadlines" in result.stdout
+    assert "6 topics" in result.stdout
+    assert "2 assignments" in result.stdout
+    assert "2 quizzes" in result.stdout
+    assert "4 deadlines" in result.stdout
+    assert "Problem Set 3" in result.stdout
     assert "grades not synced" in result.stdout
     assert "Files:" in result.stdout
     assert "download later" in result.stdout
@@ -407,3 +507,115 @@ def test_init_requires_an_explicit_choice_when_multiple_terms_are_active(
     assert world.metadata_calls == [{"term": "1265", "only": [111111], "include_grades": False}]
     assert "Multiple active academic terms found" in result.stdout
     assert "Choose an active term code" in result.stdout
+
+    second = CliRunner().invoke(cli.app, ["init"], input="\n")
+
+    assert second.exit_code == 0, second.output
+    assert world.metadata_calls == [{"term": "1265", "only": [111111], "include_grades": False}]
+    assert "New term detected" not in second.stdout
+
+
+def test_init_refuses_an_existing_vault_with_a_newer_schema_before_writing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "vault"
+    Vault.claim(root)
+    root.joinpath(".a2l", "VERSION").write_text("99\n", encoding="utf-8")
+    monkeypatch.setattr(config, "DIRS", _isolated_dirs(tmp_path))
+    monkeypatch.setattr(config, "load", lambda: config.Config(vault=root))
+    monkeypatch.setattr(cli, "_interactive_terminal", lambda: True, raising=False)
+
+    result = CliRunner().invoke(cli.app, ["init"], input="y\n")
+
+    assert result.exit_code == 1, result.output
+    assert result.output.count("run:") == 1
+    assert "run: a2l init" in result.output
+    assert root.joinpath(".a2l", "VERSION").read_text(encoding="utf-8") == "99\n"
+    assert root.joinpath(".a2l", "init.json").is_file() is False
+    assert root.joinpath(".obsidian").is_dir() is False
+
+
+def test_init_resumed_file_estimate_reads_persisted_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    _metadata_report(world)
+    cli._save_init_state(
+        world.root,
+        {
+            "school": "uwaterloo",
+            "vault_confirmed": True,
+            "skills_status": "installed",
+            "grades_configured": True,
+            "include_grades": False,
+            "profile_consent": True,
+            "auth_backend": "auto",
+            "authenticated": True,
+            "term": "1265",
+            "selected_offering_ids": [111111, 222222],
+            "metadata_complete": True,
+        },
+    )
+
+    result = CliRunner().invoke(cli.app, ["init"], input="later\n")
+
+    assert result.exit_code == 0, result.output
+    assert world.metadata_calls == []
+    assert world.file_calls == []
+    assert "full document archive ~24 MB" in result.stdout
+    assert "audio/video ~40 MB" in result.stdout
+    assert "full document archive 0 B" not in result.stdout
+
+
+def test_init_does_not_follow_a_claim_race_to_an_unapproved_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "vault"
+    monkeypatch.setattr(config, "DIRS", _isolated_dirs(tmp_path))
+    monkeypatch.setattr(config, "load", lambda: config.Config(vault=root))
+    monkeypatch.setattr(cli, "_interactive_terminal", lambda: True, raising=False)
+    allow_suffix_values: list[bool] = []
+
+    def claim_elsewhere(path: Path, *, allow_suffix: bool = True) -> Path:
+        del path
+        allow_suffix_values.append(allow_suffix)
+        return root.with_name("vault-2")
+
+    monkeypatch.setattr(cli.Vault, "claim", claim_elsewhere)
+    result = CliRunner().invoke(cli.app, ["init"], input="y\n")
+
+    assert result.exit_code == 1, result.output
+    assert allow_suffix_values == [False]
+    assert result.output.count("run:") == 1
+    assert "run: a2l init" in result.output
+    assert root.with_name("vault-2").is_dir() is False
+
+
+def test_exact_vault_claim_refuses_an_occupied_path_without_suffixing(tmp_path: Path) -> None:
+    occupied = tmp_path / "vault"
+    occupied.mkdir()
+
+    with pytest.raises(A2LError):
+        Vault.claim(occupied, allow_suffix=False)
+
+    assert occupied.with_name("vault-2").is_dir() is False
+
+
+def test_init_reprompts_invalid_course_input_and_prioritizes_stable_ids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    world.courses = [
+        CourseRef(100, "AAA100_sec01_1265", "First", "1265", True),
+        CourseRef(1, "ZZZ001_sec01_1265", "Second", "1265", True),
+    ]
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["init"],
+        input="y\ny\nn\ny\nn\nnot-a-course\n1\nlater\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert world.metadata_calls == [{"term": "1265", "only": [1], "include_grades": False}]
+    assert "Selection did not match a known course" in result.stdout

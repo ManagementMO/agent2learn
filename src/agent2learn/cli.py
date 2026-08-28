@@ -39,9 +39,12 @@ from agent2learn.errors import A2LError, AuthenticationError, NotConfigured, Ses
 from agent2learn.ingest import (
     FileReport,
     MetadataReport,
+    TopicRecord,
     fetch_topic,
     ingest_files,
     ingest_metadata,
+    is_media_topic,
+    load_metadata_topics,
 )
 from agent2learn.schools import UWaterloo
 from agent2learn.vault import Vault
@@ -98,26 +101,6 @@ _INIT_STATE_FILENAME = "init.json"
 _INIT_FILE_SCOPES = frozenset({"full", "priority", "later"})
 _INIT_SKILL_STATUSES = frozenset({"installed", "declined", "unavailable"})
 _INIT_AUTH_BACKENDS = frozenset({"auto", "paste"})
-_MEDIA_SUFFIXES = frozenset(
-    {
-        ".3gp",
-        ".aac",
-        ".avi",
-        ".flac",
-        ".m4a",
-        ".m4v",
-        ".mkv",
-        ".mov",
-        ".mp3",
-        ".mp4",
-        ".mpeg",
-        ".mpg",
-        ".ogg",
-        ".wav",
-        ".webm",
-        ".wmv",
-    }
-)
 
 
 def _interactive_terminal() -> bool:
@@ -463,9 +446,10 @@ def _run_init(requested_vault: Path | None) -> None:
     ):
         raise _InitFailure("vault", "a2l init", detail="cancelled")
 
-    claimed = _init_stage("vault", "a2l init", lambda: Vault.claim(candidate))
+    claimed = _init_stage("vault", "a2l init", lambda: Vault.claim(candidate, allow_suffix=False))
     if claimed != candidate:
-        state = _init_stage("vault", "a2l init", lambda: _read_init_state(claimed))
+        raise _InitFailure("vault", "a2l init", detail="vault location changed")
+    _init_stage("vault", "a2l init", lambda: Vault(claimed).manifest())
     state = _init_stage(
         "vault",
         "a2l init",
@@ -526,10 +510,12 @@ def _run_init(requested_vault: Path | None) -> None:
     calibration = _init_stage("course discovery", "a2l init", lambda: calibrate(client))
     courses = _init_stage("course discovery", "a2l init", lambda: _calibration_courses(calibration))
     active = [course for course in courses if course.is_active and course.term is not None]
+    state_term = state.get("term")
+    preferred_term = state_term if isinstance(state_term, str) else None
     term = _init_stage(
         "course discovery",
         "a2l init",
-        lambda: _choose_active_term(active, school),
+        lambda: _choose_active_term(active, school, preferred_term=preferred_term),
     )
     if term is None:
         raise _InitFailure(
@@ -629,7 +615,16 @@ def _run_init(requested_vault: Path | None) -> None:
     )
 
     if state.get("file_complete") is not True:
-        _init_stage("file estimate", "a2l init", lambda: _print_file_estimates(metadata))
+        estimate_topics: Iterable[object]
+        if metadata is None:
+            estimate_topics = _init_stage(
+                "file estimate",
+                "a2l init",
+                lambda: load_metadata_topics(Vault(claimed), school, selected),
+            )
+        else:
+            estimate_topics = _iter_report_topics(metadata)
+        _init_stage("file estimate", "a2l init", lambda: _print_file_estimates(estimate_topics))
         stored_scope = state.get("file_scope")
         if stored_scope in _INIT_FILE_SCOPES:
             scope_choice = str(stored_scope)
@@ -985,7 +980,9 @@ def _infer_active_term(courses: Sequence[CourseRef]) -> str | None:
     return max(terms, key=_term_sort_key)
 
 
-def _choose_active_term(courses: Sequence[CourseRef], school: UWaterloo) -> str | None:
+def _choose_active_term(
+    courses: Sequence[CourseRef], school: UWaterloo, *, preferred_term: str | None = None
+) -> str | None:
     """Require an explicit term choice when the enrollment projection is ambiguous."""
 
     terms = sorted(
@@ -997,7 +994,7 @@ def _choose_active_term(courses: Sequence[CourseRef], school: UWaterloo) -> str 
     if len(terms) == 1:
         return terms[0]
 
-    default = _infer_active_term(courses)
+    default = preferred_term if preferred_term in terms else _infer_active_term(courses)
     typer.echo("Multiple active academic terms found; choose which term to sync:")
     for term in terms:
         count = sum(1 for course in courses if course.term == term)
@@ -1031,11 +1028,16 @@ def _prompt_course_selection(
         typer.echo(f"  {index}. {course.code} [{course.org_unit_id}] — {course.name}")
     if typer.confirm(f"{label} · {len(courses)} academic courses found. Sync all?", default=True):
         return list(courses)
-    value = typer.prompt(
-        "Select courses by number, code, or stable offering ID (comma-separated; empty for none)",
-        default="none",
-    )
-    return _parse_course_selection(value, courses)
+    while True:
+        value = typer.prompt(
+            "Select courses by number, code, or stable offering ID "
+            "(comma-separated; empty for none)",
+            default="none",
+        )
+        try:
+            return _parse_course_selection(value, courses)
+        except ValueError:
+            typer.echo("Selection did not match a known course; try again.")
 
 
 def _parse_course_selection(value: str, courses: Sequence[CourseRef]) -> list[CourseRef]:
@@ -1048,11 +1050,11 @@ def _parse_course_selection(value: str, courses: Sequence[CourseRef]) -> list[Co
     for token in tokens:
         match: CourseRef | None = None
         if token.isdigit():
-            position = int(token)
-            if 1 <= position <= len(courses):
-                match = courses[position - 1]
-            else:
-                match = next((course for course in courses if course.org_unit_id == position), None)
+            match = next((course for course in courses if str(course.org_unit_id) == token), None)
+            if match is None:
+                position = int(token)
+                if 1 <= position <= len(courses):
+                    match = courses[position - 1]
         else:
             match = next(
                 (course for course in courses if course.code.casefold() == token.casefold()), None
@@ -1173,12 +1175,12 @@ def _print_metadata_summary(
     del root
 
 
-def _iter_report_topics(report: MetadataReport | None) -> Iterable[object]:
-    if report is None:
+def _iter_report_topics(value: MetadataReport | Iterable[object] | None) -> Iterable[object]:
+    if value is None:
         return ()
-    reports = getattr(report, "courses", ())
-    if not isinstance(reports, Sequence):
-        return ()
+    if not isinstance(value, MetadataReport):
+        return value
+    reports = value.courses
     topics: list[object] = []
     for course_report in reports:
         values = getattr(course_report, "topics", ())
@@ -1188,8 +1190,7 @@ def _iter_report_topics(report: MetadataReport | None) -> Iterable[object]:
 
 
 def _topic_is_media(topic: object) -> bool:
-    value = getattr(topic, "url_path", None)
-    return isinstance(value, str) and Path(value).suffix.casefold() in _MEDIA_SUFFIXES
+    return isinstance(topic, TopicRecord) and is_media_topic(topic)
 
 
 def _topic_is_downloadable(topic: object) -> bool:
@@ -1206,13 +1207,13 @@ def _topic_is_downloadable(topic: object) -> bool:
     )
 
 
-def _print_file_estimates(report: MetadataReport | None) -> None:
+def _print_file_estimates(topics: Iterable[object]) -> None:
     document_size = 0
     media_size = 0
     document_unknown = False
     media_unknown = False
     document_count = media_count = 0
-    for topic in _iter_report_topics(report):
+    for topic in topics:
         if not _topic_is_downloadable(topic):
             continue
         remote_size = getattr(topic, "remote_size", None)

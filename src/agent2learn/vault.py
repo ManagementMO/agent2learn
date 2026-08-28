@@ -308,8 +308,16 @@ class Vault:
             return False
 
     @classmethod
-    def claim(cls, p: Path) -> Path:
-        """Claim a new vault root without adopting an unrelated directory."""
+    def claim(cls, p: Path, *, allow_suffix: bool = True) -> Path:
+        """Claim a vault root without adopting an unrelated directory.
+
+        ``allow_suffix=False`` is used by consentful onboarding after it has previewed a path.
+        A race that occupies that exact path must fail safely instead of silently moving the
+        user's approval to a newly allocated sibling.
+        """
+
+        if not isinstance(allow_suffix, bool):
+            raise ValueError("allow_suffix must be a boolean")
 
         requested = Path(p).expanduser().resolve()
         _refuse_agent2learn_checkout(requested)
@@ -324,6 +332,8 @@ class Vault:
                 try:
                     paths.long_path(candidate).mkdir(parents=True, exist_ok=False)
                 except FileExistsError:
+                    if not allow_suffix:
+                        raise A2LError("vault path became occupied after confirmation") from None
                     candidate = requested.with_name(f"{requested.name}-{suffix}")
                     suffix += 1
                     continue
@@ -331,6 +341,8 @@ class Vault:
                 paths.long_path(candidate / ".a2l").mkdir()
                 check_schema(cls(candidate))
                 return candidate
+            if not allow_suffix:
+                raise A2LError("vault path became occupied after confirmation")
             candidate = requested.with_name(f"{requested.name}-{suffix}")
             suffix += 1
 
