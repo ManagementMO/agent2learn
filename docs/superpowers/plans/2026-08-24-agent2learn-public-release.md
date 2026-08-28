@@ -1942,6 +1942,14 @@ doctor status, and rollback on failed link installation. Local gates, live schem
 upstream target comparison, isolated wheel discovery, and local Agent Skills discovery passed.
 Task 9's live same-device authentication records and all later milestone tasks remain open.
 
+The final CI hardening commit `e672f68` makes the preview assertion platform-independent and makes
+the skills.sh smoke check tolerant of the registry CLI's ANSI-formatted output. The first CI run
+after the implementation exposed a lock-restoration defect in the dependency job; `bf4b764` fixed
+that workflow issue. The next run exposed the Windows path-separator assertion and the ANSI slug
+matching issue; both were corrected before the final run. [CI run 33133806972](https://github.com/ManagementMO/agent2learn/actions/runs/33133806972)
+passed on `e672f6896da91332042a0311d4910953862e4a48` with all 14 jobs green, including Windows
+3.11, 3.12, 3.13, and 3.14. The pushed public repository smoke also discovers all four skills.
+
 ---
 
 ### Task 16: `a2l init` — the onboarding flow
