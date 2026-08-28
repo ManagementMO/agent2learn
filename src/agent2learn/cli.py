@@ -15,12 +15,13 @@ import shutil
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
 
 import typer
 
-from agent2learn import __version__, config, console, paths
+from agent2learn import __version__, clock, config, console, paths
 from agent2learn import calendar as calendar_module
 from agent2learn import doctor as doctor_module
 from agent2learn import index as index_module
@@ -42,14 +43,16 @@ from agent2learn.calibrate import (
 )
 from agent2learn.errors import A2LError, AuthenticationError, NotConfigured, SessionExpired
 from agent2learn.ingest import (
+    PRIORITY_BUDGET_BYTES,
     MetadataReport,
     TopicRecord,
     fetch_topic,
     ingest_metadata,
     is_media_topic,
     load_metadata_report,
+    select_priority_topics,
 )
-from agent2learn.schools import UWaterloo
+from agent2learn.schools import UWaterloo, parse_api_timestamp, render_timestamp
 from agent2learn.vault import Vault
 
 app = typer.Typer(
@@ -813,7 +816,25 @@ def _run_init(requested_vault: Path | None) -> None:
     courses = _init_stage("course discovery", "a2l init", lambda: _calibration_courses(calibration))
     active = [course for course in courses if course.is_active and course.term is not None]
     state_term = state.get("term")
-    preferred_term = state_term if isinstance(state_term, str) else None
+    previous_term = state_term if isinstance(state_term, str) else None
+    seen_term = state.get("last_seen_term")
+    last_seen_term = seen_term if isinstance(seen_term, str) else previous_term
+    latest_active_term = max(
+        (course.term for course in active if course.term is not None),
+        key=_term_sort_key,
+        default=None,
+    )
+    preferred_term = previous_term
+    approved_new_term = False
+    new_terms = _new_active_terms(active, last_seen_term)
+    if new_terms:
+        newest = max(new_terms, key=_term_sort_key)
+        count = sum(1 for course in active if course.term == newest)
+        if not typer.confirm(f"New term detected: {count} courses. Sync?", default=True):
+            typer.echo("new term skipped; run: a2l init")
+            return
+        preferred_term = newest
+        approved_new_term = True
     term = _init_stage(
         "course discovery",
         "a2l init",
@@ -828,9 +849,8 @@ def _run_init(requested_vault: Path | None) -> None:
         )
 
     active_for_term = _sort_courses(course for course in active if course.term == term)
-    previous_term = state.get("term") if isinstance(state.get("term"), str) else None
     if previous_term is not None and previous_term != term:
-        if not typer.confirm(
+        if not approved_new_term and not typer.confirm(
             f"New term detected: {len(active_for_term)} courses. Sync?", default=True
         ):
             typer.echo("new term skipped; run: a2l init")
@@ -898,7 +918,7 @@ def _run_init(requested_vault: Path | None) -> None:
                 claimed,
                 state,
                 metadata_complete=True,
-                last_seen_term=term,
+                last_seen_term=latest_active_term or term,
             ),
         )
     else:
@@ -1300,6 +1320,22 @@ def _infer_active_term(courses: Sequence[CourseRef]) -> str | None:
     return max(terms, key=_term_sort_key)
 
 
+def _new_active_terms(courses: Sequence[CourseRef], previous_term: str | None) -> tuple[str, ...]:
+    if previous_term is None:
+        return ()
+    previous_key = _term_sort_key(previous_term)
+    return tuple(
+        sorted(
+            {
+                course.term
+                for course in courses
+                if course.term is not None and _term_sort_key(course.term) > previous_key
+            },
+            key=_term_sort_key,
+        )
+    )
+
+
 def _choose_active_term(
     courses: Sequence[CourseRef], school: UWaterloo, *, preferred_term: str | None = None
 ) -> str | None:
@@ -1435,6 +1471,44 @@ def _read_metadata_rows(path: Path) -> list[dict[str, object]]:
     return [row for row in raw if isinstance(row, dict)]
 
 
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _format_deadline(value: str, school: UWaterloo) -> str:
+    try:
+        local = datetime.fromisoformat(render_timestamp(value, school))
+    except (TypeError, ValueError):
+        return "time unavailable"
+    hour = local.hour % 12 or 12
+    suffix = "am" if local.hour < 12 else "pm"
+    return (
+        f"{_WEEKDAYS[local.weekday()]} {_MONTHS[local.month - 1]} {local.day}, "
+        f"{hour}:{local.minute:02d}{suffix}"
+    )
+
+
+def _first_value_deadlines(
+    rows: Sequence[tuple[str, str, str]], school: UWaterloo, *, limit: int = 5
+) -> list[tuple[str, str, str]]:
+    del school
+    now = clock.now()
+    upcoming: list[tuple[datetime, tuple[str, str, str]]] = []
+    overdue: list[tuple[datetime, tuple[str, str, str]]] = []
+    invalid: list[tuple[str, str, str]] = []
+    for row in rows:
+        try:
+            instant = parse_api_timestamp(row[0])
+        except (TypeError, ValueError):
+            invalid.append(row)
+            continue
+        (upcoming if instant >= now else overdue).append((instant, row))
+    ordered = [row for _, row in sorted(upcoming, key=lambda item: item[0])]
+    ordered.extend(row for _, row in sorted(overdue, key=lambda item: item[0], reverse=True))
+    ordered.extend(sorted(invalid))
+    return ordered[:limit]
+
+
 def _print_metadata_summary(
     report: MetadataReport | None,
     root: Path,
@@ -1484,8 +1558,8 @@ def _print_metadata_summary(
         f"{console.GLYPH['ok']} {course_count} courses · {topic_count} topics · "
         f"{detail} · {grade_text}"
     )
-    for due, title, code in sorted(deadlines)[:5]:
-        typer.echo(f"  {code} · {title} — due {due}")
+    for due, title, code in _first_value_deadlines(deadlines, school):
+        typer.echo(f"  {code} · {title} — due {_format_deadline(due, school)}")
     if not deadlines:
         typer.echo(f"  No upcoming deadlines recorded in {_term_label(school, term)} metadata.")
     del root
@@ -1523,44 +1597,41 @@ def _topic_is_downloadable(topic: object) -> bool:
     )
 
 
-def _print_file_estimates(topics: Iterable[object]) -> None:
-    document_size = 0
-    media_size = 0
-    document_unknown = False
-    media_unknown = False
-    document_count = media_count = 0
+def _topic_size_summary(topics: Sequence[TopicRecord]) -> tuple[int, bool, int]:
+    size = 0
+    unknown = False
     for topic in topics:
-        if not _topic_is_downloadable(topic):
-            continue
-        remote_size = getattr(topic, "remote_size", None)
-        is_media = _topic_is_media(topic)
-        if is_media:
-            media_count += 1
-            if (
-                isinstance(remote_size, int)
-                and not isinstance(remote_size, bool)
-                and remote_size >= 0
-            ):
-                media_size += remote_size
-            else:
-                media_unknown = True
+        remote_size = topic.remote_size
+        if isinstance(remote_size, int) and not isinstance(remote_size, bool) and remote_size >= 0:
+            size += remote_size
         else:
-            document_count += 1
-            if (
-                isinstance(remote_size, int)
-                and not isinstance(remote_size, bool)
-                and remote_size >= 0
-            ):
-                document_size += remote_size
-            else:
-                document_unknown = True
+            unknown = True
+    return size, unknown, len(topics)
+
+
+def _print_file_estimates(topics: Iterable[object]) -> None:
+    downloadable = [
+        topic
+        for topic in topics
+        if isinstance(topic, TopicRecord) and _topic_is_downloadable(topic)
+    ]
+    documents = [topic for topic in downloadable if not _topic_is_media(topic)]
+    media = [topic for topic in downloadable if _topic_is_media(topic)]
+    priority_topics = list(select_priority_topics(documents, budget=PRIORITY_BUDGET_BYTES))
+    document_size, document_unknown, document_count = _topic_size_summary(documents)
+    priority_size, priority_unknown, priority_count = _topic_size_summary(priority_topics)
+    media_size, media_unknown, media_count = _topic_size_summary(media)
 
     full = _size_estimate(document_size, document_unknown, document_count)
-    priority = "unknown" if document_unknown else f"up to {full}"
+    priority = _size_estimate(priority_size, priority_unknown, priority_count)
     duration = _duration_estimate(document_size, document_unknown)
+    priority_duration = _duration_estimate(priority_size, priority_unknown)
     typer.echo("Files:")
     typer.echo(f"  full document archive {full} ({duration}; recommended; media excluded)")
-    typer.echo(f"  priority set {priority} ({_duration_estimate(document_size, document_unknown)})")
+    typer.echo(
+        f"  priority set {priority} ({priority_duration}; "
+        f"{PRIORITY_BUDGET_BYTES // 1_000_000} MB budget)"
+    )
     typer.echo("  or download later")
     if media_count:
         media_label = _size_estimate(media_size, media_unknown, media_count)

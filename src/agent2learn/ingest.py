@@ -44,6 +44,7 @@ from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
 CONTENT_MAP_VERSION = course_index.CONTENT_MAP_VERSION
 DEFAULT_SCOPE: Literal["all", "priority"] = "all"
+PRIORITY_BUDGET_BYTES = 200_000_000
 _MAX_PAGES = 1000
 _COURSE_CONTENT = "content"
 _OFFICE_LOCK = re.compile(r"^~\$", re.IGNORECASE)
@@ -421,6 +422,19 @@ def load_metadata_report(
     )
 
 
+def select_priority_topics(
+    rows: Sequence[TopicRecord],
+    *,
+    budget: int = PRIORITY_BUDGET_BYTES,
+    include_media: bool = False,
+) -> tuple[TopicRecord, ...]:
+    """Return the deterministic priority subset used by ingest and onboarding estimates."""
+    if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+        raise ValueError("priority budget must be a positive integer")
+    candidates = list(rows) if include_media else [topic for topic in rows if not _is_media(topic)]
+    return tuple(_priority_rows(candidates, scope="priority", budget=budget))
+
+
 def ingest_files(
     client: Client,
     vault: Vault,
@@ -430,7 +444,7 @@ def ingest_files(
     only: Iterable[int | str] | None = None,
     scope: Literal["all", "priority"] = DEFAULT_SCOPE,
     include_media: bool = False,
-    priority_budget_bytes: int = 200_000_000,
+    priority_budget_bytes: int = PRIORITY_BUDGET_BYTES,
     include_discussions: bool = False,
     discussion_authors: bool = False,
 ) -> FileReport:
@@ -457,7 +471,17 @@ def ingest_files(
             raise A2LError("course metadata is unavailable; run ingest_metadata first")
 
         planned = _plan_file_paths(rows, course_dir=course_dir, vault=vault, scope=scope)
-        chosen = _priority_rows(planned, scope=scope, budget=priority_budget_bytes)
+        chosen = (
+            list(
+                select_priority_topics(
+                    planned,
+                    budget=priority_budget_bytes,
+                    include_media=include_media,
+                )
+            )
+            if scope == "priority"
+            else list(planned)
+        )
         if include_discussions:
             discussion_error = _ingest_discussions(
                 client,
@@ -2909,6 +2933,7 @@ __all__ = [
     "FileReport",
     "MetadataReport",
     "OutlineReport",
+    "PRIORITY_BUDGET_BYTES",
     "TopicRecord",
     "fetch_topic",
     "is_media_topic",
@@ -2916,4 +2941,5 @@ __all__ = [
     "ingest_metadata",
     "load_metadata_report",
     "load_metadata_topics",
+    "select_priority_topics",
 ]

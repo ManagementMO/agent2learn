@@ -997,6 +997,76 @@ def test_trailing_dot_title_keeps_its_extension_on_every_python_version() -> Non
     assert ingest_module._topic_filename(record) == "Reading list..pdf"
 
 
+def test_public_priority_planner_applies_the_same_200mb_budget_as_ingest() -> None:
+    selected = course()
+    rows = [
+        ingest_module.TopicRecord(
+            source_key=f"uwaterloo:111111:topic:{index}",
+            source_id=str(index),
+            topic_id=index,
+            course_org_unit_id=111111,
+            course_code=selected.code,
+            course_name=selected.name,
+            term=selected.term,
+            title=title,
+            kind="File",
+            module_path=("Week 1",),
+            module_ids=(1,),
+            view_url="https://learn.example.test/d2l/home",
+            outline_url=None,
+            url_path=f"/content/{index}.pdf",
+            external_host=None,
+            etag=None,
+            last_modified="2026-01-01T00:00:00Z",
+            is_broken=False,
+            remote_size=size,
+        )
+        for index, title, size in (
+            (1, "Assignment brief", 120_000_000),
+            (2, "Lecture notes", 100_000_000),
+        )
+    ]
+
+    planned = ingest_module.select_priority_topics(rows)
+
+    assert [topic.topic_id for topic in planned] == [1]
+    assert sum(topic.remote_size or 0 for topic in planned) <= 200_000_000
+
+
+def test_priority_planner_excludes_media_before_applying_document_budget() -> None:
+    selected = course()
+
+    def topic(index: int, title: str, size: int) -> ingest_module.TopicRecord:
+        return ingest_module.TopicRecord(
+            source_key=f"uwaterloo:111111:topic:{index}",
+            source_id=str(index),
+            topic_id=index,
+            course_org_unit_id=111111,
+            course_code=selected.code,
+            course_name=selected.name,
+            term=selected.term,
+            title=title,
+            kind="File",
+            module_path=(),
+            module_ids=(),
+            view_url="https://learn.example.test/d2l/home",
+            outline_url=None,
+            url_path=f"/content/{title}",
+            external_host=None,
+            etag=None,
+            last_modified="2026-01-01T00:00:00Z",
+            is_broken=False,
+            remote_size=size,
+        )
+
+    planned = ingest_module.select_priority_topics(
+        [topic(1, "Assignment recording.mp4", 150_000_000), topic(2, "Notes.pdf", 100_000_000)],
+        include_media=False,
+    )
+
+    assert [item.topic_id for item in planned] == [2]
+
+
 def test_load_metadata_report_reconstructs_completed_local_metadata_without_network(
     tmp_path: Path,
 ) -> None:

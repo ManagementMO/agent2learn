@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
-from agent2learn import cli, config
+from agent2learn import cli, clock, config
 from agent2learn import index as course_index
 from agent2learn.calibrate import Calibration, CourseRef
 from agent2learn.errors import A2LError
@@ -600,6 +601,105 @@ def test_init_opt_in_grades_and_full_files_after_estimate(
     ]
     assert _state(world.root)["include_grades"] is True
     assert "Files:" in result.stdout
+
+
+def test_priority_estimate_uses_the_actual_bounded_subset(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    selected = _courses()[0]
+    topics = [
+        _topic_record(
+            selected,
+            1,
+            "Assignment brief.pdf",
+            "/content/assignment.pdf",
+            120_000_000,
+        ),
+        _topic_record(
+            selected,
+            2,
+            "Lecture notes.pdf",
+            "/content/lecture.pdf",
+            100_000_000,
+        ),
+        _topic_record(
+            selected,
+            3,
+            "Recording.mp4",
+            "/content/recording.mp4",
+            50_000_000,
+        ),
+    ]
+
+    cli._print_file_estimates(topics)
+    output = capsys.readouterr().out
+
+    assert "full document archive ~210 MB" in output
+    assert "priority set ~114 MB" in output
+    assert "200 MB budget" in output
+    assert "audio/video ~48 MB excluded" in output
+
+
+def test_deadline_rendering_uses_waterloo_time_across_dst_and_not_machine_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TZ", "UTC")
+
+    assert cli._format_deadline("2026-03-08T07:30:00Z", cli.UWaterloo()) == ("Sun Mar 8, 3:30am")
+    assert cli._format_deadline("2026-11-01T06:30:00Z", cli.UWaterloo()) == ("Sun Nov 1, 1:30am")
+    assert cli._format_deadline("not-a-date", cli.UWaterloo()) == "time unavailable"
+
+
+def test_upcoming_deadlines_are_not_displaced_by_old_overdue_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(clock, "now", lambda: datetime(2026, 9, 1, 12, tzinfo=UTC))
+    rows = [(f"2026-0{month}-01T12:00:00Z", f"Old {month}", "C") for month in range(1, 7)] + [
+        ("2026-09-02T12:00:00Z", "Tomorrow", "C"),
+        ("2026-09-03T12:00:00Z", "Next", "C"),
+    ]
+
+    selected = cli._first_value_deadlines(rows, cli.UWaterloo(), limit=5)
+
+    assert [title for _, title, _ in selected[:2]] == ["Tomorrow", "Next"]
+
+
+def test_init_detects_new_term_while_previous_term_remains_active(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    first = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+    assert first.exit_code == 0, first.output
+    world.courses = [
+        CourseRef(111111, "COURSE101_sec01_1265", "Spring", "1265", True),
+        CourseRef(555555, "COURSE303_sec01_1269", "Fall", "1269", True),
+    ]
+
+    second = CliRunner().invoke(cli.app, ["init"], input="y\n\ny\nlater\n")
+
+    assert second.exit_code == 0, second.output
+    assert "New term detected: 1 courses. Sync?" in second.stdout
+    assert _state(world.root)["term"] == "1269"
+
+
+def test_declining_overlapping_new_term_keeps_previous_selection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    first = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+    assert first.exit_code == 0, first.output
+    before = list(world.metadata_calls)
+    world.courses = [
+        CourseRef(111111, "COURSE101_sec01_1265", "Spring", "1265", True),
+        CourseRef(555555, "COURSE303_sec01_1269", "Fall", "1269", True),
+    ]
+
+    second = CliRunner().invoke(cli.app, ["init"], input="n\n")
+
+    assert second.exit_code == 0, second.output
+    assert "New term detected: 1 courses. Sync?" in second.stdout
+    assert _state(world.root)["term"] == "1265"
+    assert world.metadata_calls == before
 
 
 def test_init_requires_an_explicit_choice_when_multiple_terms_are_active(
