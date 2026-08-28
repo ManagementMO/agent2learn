@@ -168,6 +168,63 @@ def test_owned_browser_is_terminated_when_endpoint_acquisition_times_out(
     assert process.wait_calls == 1
 
 
+def test_dedicated_page_factory_creates_a_fresh_target_per_outline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    endpoint = cdp.DebugEndpoint(43123, "ws://127.0.0.1:43123/devtools/browser/synthetic")
+    acquired: list[Path] = []
+    events: list[str] = []
+
+    def acquire(profile: Path) -> tuple[cdp.DebugEndpoint, None, bool]:
+        acquired.append(profile)
+        return endpoint, None, False
+
+    class FakeConnection:
+        def __init__(self, url: str) -> None:
+            self.url = url
+            events.append(f"connect:{url}")
+
+        def call(self, method: str, params: dict[str, object] | None = None) -> dict[str, object]:
+            if method == "Target.createTarget":
+                number = sum(event.startswith("create:") for event in events) + 1
+                target_id = f"target-{number}"
+                events.append(f"create:{target_id}")
+                return {"targetId": target_id}
+            if method == "Target.closeTarget":
+                assert params is not None
+                events.append(f"close-target:{params['targetId']}")
+                return {"success": True}
+            events.append(method)
+            return {}
+
+        def close(self) -> None:
+            events.append(f"close:{self.url}")
+
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(cdp, "_acquire_endpoint", acquire)
+    monkeypatch.setattr(cdp, "_CDPConnection", FakeConnection)
+    monkeypatch.setattr(
+        cdp,
+        "_wait_for_target",
+        lambda port, target_id: f"ws://127.0.0.1:{port}/devtools/page/{target_id}",
+    )
+
+    factory = cdp.DedicatedPageFactory()
+    first = factory.open_page()
+    first.close_target()
+    second = factory.open_page()
+    second.close_target()
+    factory.close()
+
+    assert acquired == [tmp_path / "browser-profile"]
+    assert first is not second
+    assert events.count("create:target-1") == 1
+    assert events.count("create:target-2") == 1
+    assert events.count("close-target:target-1") == 1
+    assert events.count("close-target:target-2") == 1
+    assert events.index("close-target:target-1") < events.index("create:target-2")
+
+
 def test_existing_valid_endpoint_is_reused_without_launching(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

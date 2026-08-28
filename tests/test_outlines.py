@@ -333,6 +333,7 @@ class FakeCDP:
     def __init__(self) -> None:
         self.calls: list[str] = []
         self.sent: list[tuple[str, dict[str, object]]] = []
+        self.closed = False
 
     def call(
         self,
@@ -359,6 +360,9 @@ class FakeCDP:
     def send_without_wait(self, method: str, params: dict[str, object]) -> None:
         self.sent.append((method, params))
 
+    def close(self) -> None:
+        self.closed = True
+
 
 def test_cdp_outline_browser_uses_existing_connection_and_no_new_profile() -> None:
     connection = FakeCDP()
@@ -375,3 +379,4 @@ def test_cdp_outline_browser_uses_existing_connection_and_no_new_profile() -> No
     assert "Fetch.enable" in connection.calls
     browser.close_target()
     assert connection.calls[-1] == "Page.close"
+    assert connection.closed is True

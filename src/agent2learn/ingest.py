@@ -197,11 +197,14 @@ def ingest_metadata(
     term: str | None = None,
     only: Iterable[int | str] | None = None,
     include_grades: bool = False,
+    create_snapshot: bool = True,
 ) -> MetadataReport:
     """Fetch and persist complete typed metadata for the selected courses.
 
-    No file endpoint is touched here.  The function is safe to call before the user chooses a
-    file scope, and every category writer merges stable IDs rather than deleting expired records.
+    No file endpoint is touched here. The function is safe to call before the user chooses a file
+    scope, and every category writer merges stable IDs rather than deleting expired records. Direct
+    callers retain the historical metadata snapshot by default; the production pipeline disables
+    that interim write and creates its single snapshot after conversion and index reconciliation.
     """
 
     courses = _selected_courses(client, term=term, only=only)
@@ -349,12 +352,13 @@ def ingest_metadata(
             )
         )
 
-    snapshot.write_snapshot(
-        vault,
-        [report.directory for report in reports],
-        include_grades=include_grades,
-        timestamp=_now(),
-    )
+    if create_snapshot:
+        snapshot.write_snapshot(
+            vault,
+            [report.directory for report in reports],
+            include_grades=include_grades,
+            timestamp=_now(),
+        )
     return MetadataReport(
         courses=tuple(reports),
         topic_count=sum(len(report.topics) for report in reports),

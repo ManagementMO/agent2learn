@@ -1,15 +1,16 @@
-"""Bounded outline rendering through an already-owned local CDP connection.
+"""Bounded outline rendering through Agent2Learn's dedicated local CDP profile.
 
-This module never launches a browser and never reads the everyday browser profile.  The caller
-hands it the dedicated-profile CDP transport established by authentication.  Every top-level and
-subresource URL is checked at the request boundary; a blocked dependency makes the outline
-unavailable instead of producing a false "no policy" conclusion.
+The production factory may acquire or launch only the persistent Agent2Learn browser profile; it
+never reads or attaches to an everyday profile. Every outline gets a fresh page target and CDP
+connection. Top-level and subresource URLs are checked at the request boundary, and a blocked
+dependency makes the outline unavailable instead of producing a false "no policy" conclusion.
 """
 
 from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import time
 from collections.abc import Mapping, Sequence
@@ -32,7 +33,7 @@ from agent2learn.ingest import (
     _write_content_map,
     _write_index,
 )
-from agent2learn.schools import School, hostname_matches_suffix
+from agent2learn.schools import School
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
 OUTLINE_TIMEOUT_SECONDS = 30.0
@@ -57,7 +58,7 @@ class OutlinePage:
 
 
 class OutlineBrowser(Protocol):
-    """The narrow browser capability required by :func:`ingest_outlines`."""
+    """The narrow one-target browser capability required by :func:`ingest_outlines`."""
 
     def render_outline(
         self,
@@ -69,72 +70,128 @@ class OutlineBrowser(Protocol):
         """Render one target and return the final DOM plus its request audit."""
 
     def close_target(self) -> None:
-        """Close the one outline target before the next one is processed."""
+        """Close this target and its page connection before another target is opened."""
+
+
+class OutlineBrowserFactory(Protocol):
+    """Create a new one-target browser connection for every discovered outline."""
+
+    def open_browser(self) -> OutlineBrowser:
+        """Return a browser backed by a newly-created page target."""
+
+    def close(self) -> None:
+        """Release factory-owned dedicated-profile resources after all targets are closed."""
 
 
 def ingest_outlines(
-    browser: OutlineBrowser,
+    browser: OutlineBrowser | OutlineBrowserFactory,
     vault: Vault,
     school: School,
     metadata: MetadataReport,
 ) -> OutlineReport:
-    """Render discovered outline topics after the metadata summary is available."""
+    """Render discovered outlines after metadata, using a fresh target for every attempt."""
 
+    factory = _as_factory(browser)
     rendered = 0
     unavailable = 0
     errors: list[str] = []
-    for course_metadata in metadata.courses:
-        status_rows: list[dict[str, object]] = []
-        stop_after_cleanup_failure = False
-        for topic in _outline_topics(course_metadata.topics):
-            url = _topic_outline_url(topic, school)
-            if url is None:
-                unavailable += 1
-                status_rows.append(_status(topic, "outline_unavailable", "unsafe URL"))
-                continue
-            status: dict[str, object]
-            try:
-                page = _render(browser, url, school)
-                page = _validate_page(page, school)
-                source_path, markdown_path = _install_outline(
-                    vault, school, course_metadata, topic, page
-                )
-            except Exception as exc:
-                unavailable += 1
-                errors.append(f"outline: {type(exc).__name__}")
-                status = _status(topic, "outline_unavailable", type(exc).__name__)
-            else:
-                rendered += 1
-                status = {
-                    "source_key": topic.source_key,
-                    "url": page.canonical_url,
-                    "status": "rendered",
-                    "source_path": source_path,
-                    "path": markdown_path,
-                }
-            finally:
-                close_error = _close_target(browser)
-            if close_error is not None:
-                errors.append(f"outline: target cleanup failed ({close_error})")
-                status["cleanup_error"] = "target could not be closed"
-                stop_after_cleanup_failure = True
-            status_rows.append(status)
-            if stop_after_cleanup_failure:
-                # Continuing would render another outline in a target whose previous page was not
-                # closed. Stop after recording the current result so browser state cannot bleed
-                # into the next course or become a false citation.
-                break
-        _write_json(course_metadata.directory / "_meta" / "outlines.json", status_rows)
-        rendered_paths = [
-            vault.root / path
-            for row in status_rows
-            if row.get("status") == "rendered" and isinstance((path := row.get("path")), str)
-        ]
-        aipolicy.surface_course_ai_policy(course_metadata.directory, rendered_paths)
-        if stop_after_cleanup_failure:
-            break
+    stop_after_cleanup_failure = False
+    try:
+        for course_metadata in metadata.courses:
+            status_rows: list[dict[str, object]] = []
+            for topic in _outline_topics(course_metadata.topics):
+                if stop_after_cleanup_failure:
+                    unavailable += 1
+                    status_rows.append(
+                        _status(
+                            topic,
+                            "outline_unavailable",
+                            "previous target cleanup failed",
+                        )
+                    )
+                    continue
 
+                url = _topic_outline_url(topic, school)
+                if url is None:
+                    unavailable += 1
+                    status_rows.append(_status(topic, "outline_unavailable", "unsafe URL"))
+                    continue
+
+                target: OutlineBrowser | None = None
+                status: dict[str, object]
+                try:
+                    target = factory.open_browser()
+                    page = _render(target, url, school)
+                    page = _validate_page(page, school)
+                    source_path, markdown_path = _install_outline(
+                        vault, school, course_metadata, topic, page
+                    )
+                except Exception as exc:
+                    unavailable += 1
+                    errors.append(f"outline: {type(exc).__name__}")
+                    status = _status(topic, "outline_unavailable", type(exc).__name__)
+                else:
+                    rendered += 1
+                    status = {
+                        "source_key": topic.source_key,
+                        "url": page.canonical_url,
+                        "status": "rendered",
+                        "source_path": source_path,
+                        "path": markdown_path,
+                    }
+                finally:
+                    close_error = _close_target(target) if target is not None else None
+
+                if close_error is not None:
+                    errors.append(f"outline: target cleanup failed ({close_error})")
+                    status["cleanup_error"] = "target could not be closed"
+                    stop_after_cleanup_failure = True
+                status_rows.append(status)
+
+            _write_json(course_metadata.directory / "_meta" / "outlines.json", status_rows)
+            rendered_paths = [
+                vault.root / path
+                for row in status_rows
+                if row.get("status") == "rendered" and isinstance((path := row.get("path")), str)
+            ]
+            aipolicy.surface_course_ai_policy(course_metadata.directory, rendered_paths)
+    finally:
+        factory_error = _close_factory(factory)
+
+    if factory_error is not None:
+        errors.append(f"outline: browser cleanup failed ({factory_error})")
     return OutlineReport(rendered=rendered, unavailable=unavailable, errors=tuple(errors))
+
+
+class _BorrowedBrowserFactory:
+    """Compatibility adapter for one-target callers; it deliberately refuses target reuse."""
+
+    def __init__(self, browser: OutlineBrowser) -> None:
+        self._browser = browser
+        self._opened = False
+
+    def open_browser(self) -> OutlineBrowser:
+        if self._opened:
+            raise RuntimeError("a fresh outline target factory is required")
+        self._opened = True
+        return self._browser
+
+    def close(self) -> None:
+        return
+
+
+def _as_factory(value: OutlineBrowser | OutlineBrowserFactory) -> OutlineBrowserFactory:
+    if callable(getattr(value, "open_browser", None)) and callable(getattr(value, "close", None)):
+        return cast(OutlineBrowserFactory, value)
+    return _BorrowedBrowserFactory(cast(OutlineBrowser, value))
+
+
+def _close_factory(factory: OutlineBrowserFactory) -> str | None:
+    try:
+        factory.close()
+    except Exception as exc:
+        return type(exc).__name__
+    return None
 
 
 def _outline_topics(topics: Sequence[TopicRecord]) -> list[TopicRecord]:
@@ -180,28 +237,13 @@ def _normalize_allowed_url(value: str, school: School) -> str | None:
 
 
 def _host_allowed(value: str, school: School) -> bool:
-    parsed = urlsplit(value)
-    hostname = parsed.hostname
-    base = urlsplit(school.base_url)
-    base_host = base.hostname
-    if hostname is None or base_host is None:
-        return False
-    try:
-        normalized_host = hostname.encode("idna").decode("ascii").casefold().rstrip(".")
-        normalized_base = base_host.encode("idna").decode("ascii").casefold().rstrip(".")
-        port = parsed.port or 443
-        base_port = base.port or 443
-    except (UnicodeError, ValueError):
-        return False
-    if normalized_host == normalized_base and port == base_port:
-        return True
-    return hostname_matches_suffix(value, school.outline_hosts())
+    return _allowed_host_from_list(value, (school.base_url, *school.outline_hosts()))
 
 
 def _render(browser: OutlineBrowser, url: str, school: School) -> OutlinePage:
     result = browser.render_outline(
         url,
-        allowed_hosts=tuple([urlsplit(school.base_url).hostname or "", *school.outline_hosts()]),
+        allowed_hosts=(school.base_url, *school.outline_hosts()),
         timeout=OUTLINE_TIMEOUT_SECONDS,
     )
     return _coerce_page(result)
@@ -273,16 +315,33 @@ def _install_outline(
     source_destination = _source_destination(vault, metadata, topic, prior, page)
     markdown_destination = _markdown_destination(vault, source_destination, prior)
     markdown_bytes = _outline_markdown(topic.title, page)
-    if prior is not None and source_hash != prior.sha256:
+    markdown_hash = sha256(markdown_bytes).hexdigest()
+    if prior is not None and _outline_is_current(
+        vault,
+        prior,
+        source_destination=source_destination,
+        source_hash=source_hash,
+        markdown_destination=markdown_destination,
+        markdown_hash=markdown_hash,
+    ):
+        _update_topic_map(vault, metadata, topic, prior, school)
+        artifact = prior.derived["markdown"]
+        return prior.path, artifact.path
+
+    if prior is not None and _outline_needs_preservation(vault, prior, source_hash, markdown_hash):
         preserved = vault.preserve_revision(key=topic.source_key, changed_at=clock.now())
-        if preserved is None and paths.long_path(vault.materialized(prior)).exists():
-            raise ValueError("current outline source could not be preserved")
+        prior_material_remains = any(
+            paths.is_link(path) or paths.long_path(path).exists()
+            for path in (source_destination, markdown_destination)
+        )
+        if preserved is None and prior_material_remains:
+            raise ValueError("current outline revision could not be preserved")
 
     _install_bytes(source_destination, source_bytes)
     _install_bytes(markdown_destination, markdown_bytes)
     derived = DerivedArtifact(
         path=paths.rel_posix(markdown_destination, vault.root),
-        sha256=sha256(markdown_bytes).hexdigest(),
+        sha256=markdown_hash,
         source_sha256=source_hash,
         tool="outline-renderer",
         tool_version=OUTLINE_TOOL_VERSION,
@@ -292,8 +351,8 @@ def _install_outline(
         path=paths.rel_posix(source_destination, vault.root),
         sha256=source_hash,
         source_id=topic.source_id,
-        etag=None,
-        last_modified=None,
+        etag=topic.etag,
+        last_modified=topic.last_modified,
         size=len(source_bytes),
         fetched_at=_now(),
         derived={"markdown": derived},
@@ -302,6 +361,79 @@ def _install_outline(
     vault.save_manifest()
     _update_topic_map(vault, metadata, topic, entry, school)
     return entry.path, derived.path
+
+
+def _outline_is_current(
+    vault: Vault,
+    prior: ManifestEntry,
+    *,
+    source_destination: Path,
+    source_hash: str,
+    markdown_destination: Path,
+    markdown_hash: str,
+) -> bool:
+    """Require both generated files and their manifest provenance to match exactly."""
+
+    artifact = prior.derived.get("markdown")
+    if artifact is None:
+        return False
+    if (
+        prior.path != paths.rel_posix(source_destination, vault.root)
+        or prior.sha256 != source_hash
+        or artifact.path != paths.rel_posix(markdown_destination, vault.root)
+        or artifact.sha256 != markdown_hash
+        or artifact.source_sha256 != source_hash
+        or artifact.tool != "outline-renderer"
+        or artifact.tool_version != OUTLINE_TOOL_VERSION
+    ):
+        return False
+    source_fingerprint = _file_fingerprint(source_destination)
+    markdown_fingerprint = _file_fingerprint(markdown_destination)
+    return source_fingerprint == (prior.sha256, prior.size) and (
+        markdown_fingerprint is not None and markdown_fingerprint[0] == artifact.sha256
+    )
+
+
+def _outline_needs_preservation(
+    vault: Vault,
+    prior: ManifestEntry,
+    source_hash: str,
+    markdown_hash: str,
+) -> bool:
+    """Preserve changed generated bytes or a locally modified current artifact before overwrite."""
+
+    if source_hash != prior.sha256:
+        return True
+    source = vault.materialized(prior)
+    actual_source = _file_fingerprint(source)
+    if actual_source is not None and actual_source != (prior.sha256, prior.size):
+        return True
+
+    artifact = prior.derived.get("markdown")
+    if artifact is None:
+        return False
+    if markdown_hash != artifact.sha256:
+        return True
+    markdown = _markdown_destination(vault, source, prior)
+    actual_markdown = _file_fingerprint(markdown)
+    return actual_markdown is not None and actual_markdown[0] != artifact.sha256
+
+
+def _file_fingerprint(source: Path) -> tuple[str, int] | None:
+    if paths.is_link(source):
+        raise ValueError("outline artifact must not be a symlink")
+    digest = sha256()
+    size = 0
+    try:
+        with open(os.fspath(paths.long_path(source)), "rb") as handle:
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+                size += len(chunk)
+    except FileNotFoundError:
+        return None
+    except IsADirectoryError as exc:
+        raise ValueError("outline artifact must be a regular file") from exc
+    return digest.hexdigest(), size
 
 
 def _source_destination(
@@ -417,8 +549,37 @@ def _write_json(destination: Path, payload: object) -> None:
     paths.atomic_write_text(destination, text)
 
 
+class _PageConnectionFactory(Protocol):
+    def open_page(self) -> Any:
+        """Return a fresh page-target CDP connection."""
+
+    def close(self) -> None:
+        """Release endpoint/process resources after all page targets are closed."""
+
+
+class CDPOutlineBrowserFactory:
+    """Adapt a dedicated-profile page factory to one fresh outline browser per target."""
+
+    def __init__(self, pages: _PageConnectionFactory) -> None:
+        self._pages = pages
+
+    def open_browser(self) -> OutlineBrowser:
+        return CDPOutlineBrowser(self._pages.open_page())
+
+    def close(self) -> None:
+        self._pages.close()
+
+
+def dedicated_profile_outline_factory() -> OutlineBrowserFactory:
+    """Build the production factory for Agent2Learn's dedicated persistent profile."""
+
+    from agent2learn.auth.cdp import DedicatedPageFactory
+
+    return CDPOutlineBrowserFactory(DedicatedPageFactory())
+
+
 class CDPOutlineBrowser:
-    """Render through an existing CDP connection without launching or owning a browser."""
+    """Render one outline through one newly-created dedicated-profile page connection."""
 
     def __init__(self, connection: Any) -> None:
         self.connection = connection
@@ -473,7 +634,14 @@ class CDPOutlineBrowser:
         )
 
     def close_target(self) -> None:
-        self.connection.call("Page.close")
+        force_close = getattr(self.connection, "close_target", None)
+        if callable(force_close):
+            force_close()
+            return
+        try:
+            self.connection.call("Page.close")
+        finally:
+            self.connection.close()
 
 
 class _CDPGate:
@@ -517,16 +685,51 @@ class _CDPGate:
 
 
 def _allowed_host_from_list(value: str, allowed_hosts: Sequence[str]) -> bool:
-    parsed = urlsplit(value)
-    if parsed.scheme.casefold() != "https" or parsed.username or parsed.password:
+    """Apply the exact LEARN origin plus declared-host boundary policy at request time."""
+
+    if not allowed_hosts:
         return False
-    return any(hostname_matches_suffix(value, [allowed]) for allowed in allowed_hosts if allowed)
+    try:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme.casefold() != "https"
+            or parsed.hostname is None
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            return False
+        host = parsed.hostname.encode("idna").decode("ascii").casefold().rstrip(".")
+        port = parsed.port or 443
+        base_host, base_port = _declared_host(allowed_hosts[0])
+        if host == base_host and port == base_port:
+            return True
+        for declared in allowed_hosts[1:]:
+            declared_host, declared_port = _declared_host(declared)
+            if port == declared_port and (
+                host == declared_host or host.endswith(f".{declared_host}")
+            ):
+                return True
+    except (TypeError, UnicodeError, ValueError):
+        return False
+    return False
+
+
+def _declared_host(value: str) -> tuple[str, int]:
+    candidate = value if "://" in value else f"https://{value}"
+    parsed = urlsplit(candidate)
+    if parsed.scheme.casefold() != "https" or parsed.hostname is None:
+        raise ValueError("outline host declaration must be HTTPS")
+    host = parsed.hostname.encode("idna").decode("ascii").casefold().rstrip(".")
+    return host, parsed.port or 443
 
 
 __all__ = [
     "CDPOutlineBrowser",
+    "CDPOutlineBrowserFactory",
     "OUTLINE_TIMEOUT_SECONDS",
     "OutlineBrowser",
+    "OutlineBrowserFactory",
     "OutlinePage",
+    "dedicated_profile_outline_factory",
     "ingest_outlines",
 ]

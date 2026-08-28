@@ -89,8 +89,8 @@ def test_exit_codes_are_zero_one_two() -> None:
     assert doctor.exit_code(fail) == 2
 
 
-def test_render_suggests_exactly_one_command_and_prefers_failures() -> None:
-    """Six suggestions is the same as none: the user closes the window."""
+def test_render_suggests_exactly_one_registered_command() -> None:
+    """Manual repair prose stays in detail; the single command slot remains executable."""
     checks = [
         doctor.Check("Session", "b", "warn", "stale", "run: a2l auth"),
         doctor.Check("Vault", "c", "warn", "empty", "run: a2l sync"),
@@ -99,8 +99,9 @@ def test_render_suggests_exactly_one_command_and_prefers_failures() -> None:
 
     text = doctor.render(checks)
 
-    assert doctor.next_command(checks) == "check folder permissions"
+    assert doctor.next_command(checks) == "run: a2l auth"
     assert text.count("Next:") == 1
+    assert "Next: a2l auth" in text
     assert "run: a2l sync" not in text
 
 
@@ -113,6 +114,43 @@ def test_render_uses_the_safe_default_next_command_when_everything_passes() -> N
     assert text.count("Next:") == 1
     assert "Next: a2l sync" in text
     assert "all clear" in text
+
+
+def test_every_next_command_names_a_registered_cli_command() -> None:
+    """Doctor recovery output cannot route a user to a command the CLI does not expose."""
+    from typer.main import get_command
+    from typer.testing import CliRunner
+
+    from agent2learn.cli import app
+
+    registered = set(get_command(app).commands)
+    assert set(doctor._REGISTERED_CLI_COMMANDS) <= registered
+    scenarios = [
+        [doctor.Check("Environment", "healthy", "ok", "fine")],
+        [doctor.Check("Environment", "init", "fail", "missing", "run: a2l init")],
+        [doctor.Check("Session", "auth", "fail", "expired", "run: a2l auth")],
+        [
+            doctor.Check(
+                "Optional tools",
+                "browser",
+                "warn",
+                "missing",
+                "browser sign-in needs one; a2l auth --paste works without it",
+            )
+        ],
+        [doctor.Check("Skills", "skills", "warn", "stale", "run: a2l skills install")],
+        [doctor.Check("Filesystem", "unknown", "fail", "blocked", "run: a2l not-a-command")],
+        [doctor.Check("Filesystem", "permissions", "fail", "blocked", "check permissions")],
+    ]
+
+    for checks in scenarios:
+        action = doctor.next_command(checks)
+        assert action is not None
+        words = action.removeprefix("run: ").split()
+        assert words[0] == "a2l", action
+        assert words[1] in registered, action
+        help_result = CliRunner().invoke(app, [words[1], "--help"])
+        assert help_result.exit_code == 0, action
 
 
 def test_render_groups_in_a_stable_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

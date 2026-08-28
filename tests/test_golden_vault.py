@@ -25,6 +25,7 @@ import os
 import unicodedata
 from pathlib import Path
 
+import golden_support
 import pytest
 from golden_support import frozen_clock, hash_tree, run_full_pipeline  # noqa: F401
 
@@ -35,6 +36,27 @@ def _write_golden(tree: dict[str, str]) -> None:
     GOLDEN.write_text(
         json.dumps(tree, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+
+
+def test_golden_harness_delegates_to_production_pipeline(
+    tmp_path: Path,
+    synthetic_api: object,
+    monkeypatch: pytest.MonkeyPatch,
+    frozen_clock: object,  # noqa: F811
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    def fake_pipeline(*args: object, **_kwargs: object) -> object:
+        calls.append(args)
+        return object()
+
+    monkeypatch.setattr(golden_support, "run_pipeline", fake_pipeline, raising=False)
+
+    vault = run_full_pipeline(tmp_path / "vault", synthetic_api.base_url, monkeypatch)  # type: ignore[attr-defined]
+
+    assert vault.root == (tmp_path / "vault").resolve()
+    assert len(calls) == 1
+    assert calls[0][1] is vault
 
 
 def test_vault_is_byte_identical_across_platforms(

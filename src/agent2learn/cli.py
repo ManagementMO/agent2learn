@@ -24,6 +24,7 @@ from agent2learn import __version__, config, console, paths
 from agent2learn import calendar as calendar_module
 from agent2learn import doctor as doctor_module
 from agent2learn import index as index_module
+from agent2learn import pipeline as pipeline_module
 from agent2learn import privacy as privacy_module
 from agent2learn import session as session_store
 from agent2learn import skills as skills_module
@@ -207,6 +208,98 @@ def courses(
         typer.echo(_courses_json(selected, all_terms=all_terms))
         return
     _print_courses(selected, all_terms=all_terms)
+
+
+@app.command()
+def sync(
+    all_files: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Fetch every eligible configured-course document; media remains separate.",
+        ),
+    ] = False,
+    priority: Annotated[
+        bool,
+        typer.Option(
+            "--priority",
+            help="Use the deterministic byte-bounded priority file scope for this run.",
+        ),
+    ] = False,
+    include_media: Annotated[
+        bool,
+        typer.Option(
+            "--include-media",
+            help="Include otherwise-excluded audio and video files for this run.",
+        ),
+    ] = False,
+) -> None:
+    """Incrementally ingest, convert, index, and audit using saved configuration.
+
+    Grade and discussion collection follow the existing saved configuration and remain off by
+    default. ``--all`` and ``--priority`` override the valid persisted onboarding scope once.
+    """
+
+    if all_files and priority:
+        raise typer.BadParameter("--all and --priority are mutually exclusive")
+
+    try:
+        cfg, vault, school = _local_vault()
+        explicit_scope: pipeline_module.SyncScope | None
+        if all_files:
+            explicit_scope = "all"
+        elif priority:
+            explicit_scope = "priority"
+        else:
+            explicit_scope = None
+        # Validate the persisted course boundary before session access or network calibration. A
+        # corrupt selection must never silently broaden into requests for every enrolled course.
+        preferences = pipeline_module.load_sync_preferences(
+            vault,
+            scope_override=explicit_scope,
+        )
+        try:
+            saved = session_store.load()
+        except (OSError, ValueError) as exc:
+            raise AuthenticationError("stored session is unreadable · run: a2l auth") from exc
+        if saved is None:
+            raise NotConfigured("no saved session · run: a2l auth")
+
+        client = Client(school, saved)
+        calibration = calibrate(client)
+        # The fresh calibration is the selected-course inventory for both ingest phases.  Storing
+        # it on the client avoids a second machine-state read while retaining ingest's public API.
+        client.courses = calibration.courses  # type: ignore[attr-defined]
+        report = pipeline_module.run_pipeline(
+            client,
+            vault,
+            school,
+            scope=preferences.scope,
+            include_media=include_media,
+            include_grades=cfg.include_grades,
+            include_discussions=cfg.include_discussions,
+            ocr_words_per_page=cfg.ocr_words_per_page,
+            term=preferences.term,
+            only=preferences.only,
+            metadata_observer=_print_sync_metadata,
+            profile_consent=preferences.profile_consent,
+        )
+    except SessionExpired:
+        typer.echo("session expired · run: a2l auth", err=True)
+        raise typer.Exit(code=SessionExpired.exit_code) from None
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except (OSError, RuntimeError, ValueError) as exc:
+        typer.echo(f"sync failed ({type(exc).__name__}) · run: a2l doctor", err=True)
+        raise typer.Exit(code=1) from None
+
+    if report.exit_code == SessionExpired.exit_code:
+        typer.echo("session expired · run: a2l auth", err=True)
+        raise typer.Exit(code=SessionExpired.exit_code)
+    typer.echo(pipeline_module.render_report(report), nl=False)
+    if report.exit_code:
+        raise typer.Exit(code=report.exit_code)
 
 
 @app.command()
@@ -1296,6 +1389,15 @@ def _state_offering_ids(state: dict[str, object]) -> list[int]:
     if not isinstance(value, list):
         raise ValueError("initializer state offering IDs are invalid")
     return [value for value in value if isinstance(value, int) and not isinstance(value, bool)]
+
+
+def _print_sync_metadata(report: MetadataReport) -> None:
+    """Expose the complete cheap metadata value before browser or file work starts."""
+
+    typer.echo(
+        f"{console.GLYPH['ok']} metadata · {len(report.courses)} courses · "
+        f"{report.topic_count} topics · {report.deadline_count} deadlines"
+    )
 
 
 def _report_has_errors(report: MetadataReport) -> bool:

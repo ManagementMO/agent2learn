@@ -135,6 +135,122 @@ class _CDPConnection:
             return
 
 
+class _DedicatedPageConnection:
+    """Pair one page socket with the browser-level handle that can force-close its target."""
+
+    def __init__(
+        self,
+        page: _CDPConnection,
+        browser: _CDPConnection,
+        target_id: str,
+    ) -> None:
+        self._page = page
+        self._browser = browser
+        self._target_id = target_id
+        self._closed = False
+
+    def call(
+        self,
+        method: str,
+        params: dict[str, object] | None = None,
+        *,
+        event_handler: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        return self._page.call(method, params, event_handler=event_handler)
+
+    def send_without_wait(self, method: str, params: dict[str, object] | None = None) -> None:
+        self._page.send_without_wait(method, params)
+
+    def close_target(self) -> None:
+        """Force-close exactly this target instead of trusting page before-unload handlers."""
+
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            result = self._browser.call("Target.closeTarget", {"targetId": self._target_id})
+            if result.get("success") is not True:
+                raise AuthenticationError("dedicated outline target could not be closed")
+        finally:
+            self._page.close()
+            self._browser.close()
+
+    def close(self) -> None:
+        self.close_target()
+
+
+class DedicatedPageFactory:
+    """Own the dedicated-profile endpoint and create one fresh page target per outline.
+
+    The factory never inspects or attaches to an everyday profile.  It acquires only the
+    Agent2Learn ``browser-profile`` endpoint, creates an inert ``about:blank`` target for each
+    caller, and leaves closing that target to the returned page connection's owner.
+    """
+
+    def __init__(self) -> None:
+        self._endpoint: DebugEndpoint | None = None
+        self._process: subprocess.Popen[bytes] | None = None
+        self._owned = False
+        self._closed = False
+
+    def open_page(self) -> _DedicatedPageConnection:
+        """Create and connect to a fresh loopback page target."""
+
+        endpoint = self._ensure_endpoint()
+        browser: _CDPConnection | None = None
+        page: _CDPConnection | None = None
+        target_id: str | None = None
+        try:
+            browser = _CDPConnection(endpoint.browser_websocket_url)
+            result = browser.call(
+                "Target.createTarget",
+                {"url": "about:blank", "background": True},
+            )
+            raw_target_id = result.get("targetId")
+            if not isinstance(raw_target_id, str) or not raw_target_id:
+                raise AuthenticationError("dedicated browser did not create an outline target")
+            target_id = raw_target_id
+            websocket_url = _wait_for_target(endpoint.port, target_id)
+            page = _CDPConnection(websocket_url)
+            return _DedicatedPageConnection(page, browser, target_id)
+        except BaseException:
+            if page is not None:
+                page.close()
+            if browser is not None and target_id is not None:
+                with suppress(Exception):
+                    browser.call("Target.closeTarget", {"targetId": target_id})
+            if browser is not None:
+                browser.close()
+            raise
+
+    def close(self) -> None:
+        """Close only a browser process this factory launched, once all targets are gone."""
+
+        if self._closed:
+            return
+        self._closed = True
+        endpoint = self._endpoint
+        process = self._process
+        self._endpoint = None
+        self._process = None
+        if self._owned and endpoint is not None:
+            _close_owned_browser(endpoint, process)
+
+    def _ensure_endpoint(self) -> DebugEndpoint:
+        if self._closed:
+            raise AuthenticationError("dedicated outline browser factory is closed")
+        if self._endpoint is not None:
+            return self._endpoint
+        profile = profile_path()
+        _validate_profile_path(profile)
+        paths.long_path(profile).mkdir(parents=True, exist_ok=True)
+        endpoint, process, owned = _acquire_endpoint(profile)
+        self._endpoint = endpoint
+        self._process = process
+        self._owned = owned
+        return endpoint
+
+
 class _AuthGate:
     def __init__(self, connection: _CDPConnection, school: School) -> None:
         self.connection = connection
@@ -451,6 +567,26 @@ def _has_exact_argument(command: str, marker: str) -> bool:
     return False
 
 
+def _wait_for_target(port: int, target_id: str) -> str:
+    """Return the validated page websocket for one newly-created target."""
+
+    deadline = time.monotonic() + ENDPOINT_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            targets = _get_json_list(port, "/json/list")
+        except AuthenticationError:
+            time.sleep(POLL_SECONDS)
+            continue
+        for target in targets:
+            if target.get("type") != "page" or target.get("id") != target_id:
+                continue
+            websocket_url = target.get("webSocketDebuggerUrl")
+            if isinstance(websocket_url, str) and _loopback_url(websocket_url, port):
+                return websocket_url
+        time.sleep(POLL_SECONDS)
+    raise AuthenticationError("dedicated browser outline target is not reachable")
+
+
 def _wait_for_page(port: int) -> str:
     deadline = time.monotonic() + ENDPOINT_WAIT_SECONDS
     while time.monotonic() < deadline:
@@ -701,6 +837,7 @@ __all__ = [
     "CDP_TIMEOUT",
     "ENDPOINT_WAIT_SECONDS",
     "DebugEndpoint",
+    "DedicatedPageFactory",
     "authenticate_browser",
     "locate_browser",
     "profile_path",

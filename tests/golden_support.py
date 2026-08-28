@@ -30,9 +30,9 @@ import pytest
 import requests
 from requests.adapters import HTTPAdapter
 
-from agent2learn import audit as audit_module
-from agent2learn import clock, convert, ingest
+from agent2learn import clock
 from agent2learn.api import Client
+from agent2learn.pipeline import run_pipeline
 from agent2learn.schools._base import CONSERVATIVE_TOPIC_EXCLUSION_POLICY, TopicExclusionPolicy
 from agent2learn.vault import Vault
 
@@ -133,10 +133,19 @@ def run_full_pipeline(
     calibration = calibrate(client)
     client.courses = calibration.courses  # type: ignore[attr-defined]
 
-    ingest.ingest_metadata(client, vault, school)
-    ingest.ingest_files(client, vault, school, scope="all", include_media=include_media)
-    convert.convert_vault(vault)
-    audit_module.write_audit(vault)
+    # CDP outline rendering and the new post-conversion INDEX refresh have focused production
+    # integration tests.  Enabling either here changes the already-reviewed 45-entry fixture, so
+    # this portable API/conversion corpus keeps those compatibility seams off until a three-OS
+    # candidate can be reviewed.  The orchestration itself is still the public production pipeline.
+    run_pipeline(
+        client,
+        vault,
+        school,
+        scope="all",
+        include_media=include_media,
+        render_outlines=False,
+        rebuild_indexes=False,
+    )
     return vault
 
 

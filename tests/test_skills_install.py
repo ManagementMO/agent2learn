@@ -940,11 +940,11 @@ def test_required_ai_policy_rule_is_exact() -> None:
 def test_future_command_skills_guard_against_the_current_development_cli() -> None:
     help_result = CliRunner().invoke(app, ["--help"])
     assert help_result.exit_code == 0
-    assert " sync " not in help_result.output
+    assert " sync " in help_result.output
     assert " check " not in help_result.output
 
     errors = skills.validate_skill_behavior_contracts(
-        Path.cwd(), available_commands={"auth", "courses", "doctor", "fetch", "skills"}
+        Path.cwd(), available_commands={"auth", "courses", "doctor", "fetch", "skills", "sync"}
     )
 
     assert errors == []

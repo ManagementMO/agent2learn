@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,26 @@ LONG_PATH_ADVISORY = 240
 MAX_ISSUE_URL_LENGTH = 8_000
 
 _STATUS_GLYPH: dict[Status, str] = {"ok": "ok", "warn": "warn", "fail": "fail"}
+_A2L_RECOVERY = re.compile(
+    r"\ba2l\s+[a-z][a-z0-9-]*(?:\s+(?!--)[a-z][a-z0-9-]*)?(?:\s+--[a-z][a-z0-9-]*)*"
+)
+_REGISTERED_CLI_COMMANDS = frozenset(
+    {
+        "auth",
+        "calendar",
+        "courses",
+        "diff",
+        "doctor",
+        "fetch",
+        "init",
+        "open",
+        "privacy",
+        "skills",
+        "sync",
+        "today",
+        "where",
+    }
+)
 _GROUP_ORDER = (
     "Environment",
     "Filesystem",
@@ -824,10 +845,17 @@ def next_command(checks: Sequence[Check]) -> str | None:
     """
     for status in ("fail", "warn"):
         for check in checks:
-            if check.status == status and check.fix:
-                return check.fix
-    # Keep the output contract literal even on a healthy installation: there is still one
-    # useful, reversible next action for a student who ran doctor during onboarding.
+            if check.status != status or not check.fix:
+                continue
+            match = _A2L_RECOVERY.search(check.fix)
+            if match is None:
+                continue
+            candidate = match.group(0)
+            words = candidate.split()
+            if len(words) >= 2 and words[1] in _REGISTERED_CLI_COMMANDS:
+                return f"run: {candidate}"
+    # Free-form repair prose belongs in the check detail, not in the command slot. Keep the output
+    # contract literal even when all fixes are manual: the fallback is a real, reversible command.
     return "run: a2l sync"
 
 
