@@ -831,6 +831,15 @@ def _run_init(requested_vault: Path | None) -> None:
         newest = max(new_terms, key=_term_sort_key)
         count = sum(1 for course in active if course.term == newest)
         if not typer.confirm(f"New term detected: {count} courses. Sync?", default=True):
+            _init_stage(
+                "course discovery",
+                "a2l init",
+                lambda: _update_init_state(
+                    claimed,
+                    state,
+                    last_seen_term=latest_active_term or previous_term,
+                ),
+            )
             typer.echo("new term skipped; run: a2l init")
             return
         preferred_term = newest

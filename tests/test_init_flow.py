@@ -701,6 +701,11 @@ def test_declining_overlapping_new_term_keeps_previous_selection(
     assert _state(world.root)["term"] == "1265"
     assert world.metadata_calls == before
 
+    third = CliRunner().invoke(cli.app, ["init"], input="\n")
+    assert third.exit_code == 0, third.output
+    assert "New term detected" not in third.stdout
+    assert _state(world.root)["term"] == "1265"
+
 
 def test_init_requires_an_explicit_choice_when_multiple_terms_are_active(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
