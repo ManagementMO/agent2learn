@@ -1010,6 +1010,23 @@ def test_required_ai_policy_rule_is_exact() -> None:
     assert AI_POLICY_RULE in body
 
 
+def test_repository_validator_enforces_staged_command_guards(tmp_path: Path) -> None:
+    shutil.copytree(Path("skills"), tmp_path / "skills")
+    shutil.copy2(Path("skills.sh.json"), tmp_path / "skills.sh.json")
+    coursework = tmp_path / "skills" / "a2l-coursework" / "SKILL.md"
+    coursework.write_text(
+        coursework.read_text(encoding="utf-8").replace(
+            "verify the command exists", "look for it", 1
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    errors = skills.validate_repository_artifacts(tmp_path)
+
+    assert "a2l-coursework: missing command-availability guard for a2l check" in errors
+
+
 def test_future_command_skills_guard_against_the_current_development_cli() -> None:
     help_result = CliRunner().invoke(app, ["--help"])
     assert help_result.exit_code == 0
@@ -1094,6 +1111,15 @@ def test_malicious_source_contract_gate_fails_when_a_prohibition_is_removed(
     )
 
     assert "a2l-setup: missing malicious-source untrusted-content scenario" in errors
+
+
+def test_ci_smokes_skill_source_from_an_installed_wheel() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "Installed wheel skill source smoke" in workflow
+    assert "from agent2learn.skills import" in workflow
+    assert "source_root" in workflow
+    assert "len(list(root.glob('*/SKILL.md'))) == 4" in workflow
 
 
 def test_ci_wires_live_skills_schema_npx_and_upstream_mapping_checks() -> None:

@@ -548,6 +548,7 @@ def build_notebook() -> str:
         "cells": [
             {
                 "cell_type": "markdown",
+                "id": "analysis-markdown",
                 "metadata": {},
                 "source": ["# Analysis\n", "\n", "Inline image: ![tiny](attachment:tiny.png)\n"],
                 "attachments": {
@@ -563,6 +564,7 @@ def build_notebook() -> str:
             {
                 "cell_type": "code",
                 "execution_count": 1,
+                "id": "analysis-stream-result",
                 "metadata": {},
                 "source": ["print('hello')\n", "# a fence in the body: ```\n"],
                 "outputs": [
@@ -578,6 +580,7 @@ def build_notebook() -> str:
             {
                 "cell_type": "code",
                 "execution_count": 2,
+                "id": "analysis-error",
                 "metadata": {},
                 "source": ["raise ValueError('example')\n"],
                 "outputs": [
@@ -594,6 +597,7 @@ def build_notebook() -> str:
             {
                 "cell_type": "code",
                 "execution_count": 3,
+                "id": "analysis-unsupported",
                 "metadata": {},
                 "source": ["display_unsupported()\n"],
                 "outputs": [

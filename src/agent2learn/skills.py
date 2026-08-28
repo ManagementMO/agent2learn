@@ -86,6 +86,7 @@ _FUTURE_COMMANDS = {
     "a2l-sync": ("sync",),
     "a2l-coursework": ("check",),
 }
+_IMPLEMENTED_SKILL_COMMANDS = frozenset({"sync"})
 
 
 class SkillsInstallError(Exception):
@@ -391,7 +392,12 @@ def validate_repository_artifacts(root: Path) -> list[str]:
             if phrase not in document:
                 errors.append(f"{slug}: missing public contract phrase")
 
-    errors.extend(validate_skill_behavior_contracts(root, available_commands=None))
+    errors.extend(
+        validate_skill_behavior_contracts(
+            root,
+            available_commands=set(_IMPLEMENTED_SKILL_COMMANDS),
+        )
+    )
     errors.extend(validate_manifest(root / "skills.sh.json"))
     if _target_registry_tuple() != _UPSTREAM_REVIEWED_TARGETS:
         errors.append("target registry no longer matches the reviewed upstream table")

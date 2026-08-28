@@ -18,11 +18,14 @@ import math
 import re
 import subprocess
 import sys
+import warnings
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import nbformat
 import pytest
+from nbformat.validator import MissingIDFieldWarning
 
 FIXTURES = Path(__file__).parent / "fixtures"
 API = FIXTURES / "api"
@@ -388,6 +391,20 @@ def test_toc_contains_every_required_adversarial_case() -> None:
     assert any(m["Topics"] == [] and m["Modules"] == [] for m in doc["Modules"]), (
         "missing empty module"
     )
+
+
+def test_notebook_fixture_has_deterministic_ids_and_needs_no_implicit_repair() -> None:
+    raw = json.loads((FILES / "analysis.ipynb").read_text(encoding="utf-8"))
+    ids = [cell.get("id") for cell in raw["cells"]]
+    assert all(isinstance(value, str) and value for value in ids)
+    assert len(ids) == len(set(ids))
+
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        notebook = nbformat.reads(json.dumps(raw), as_version=4)
+        nbformat.validate(notebook)
+
+    assert not [item for item in captured if issubclass(item.category, MissingIDFieldWarning)]
 
 
 def test_binary_fixtures_exist_and_are_well_formed() -> None:
