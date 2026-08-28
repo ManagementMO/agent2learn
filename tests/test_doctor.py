@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -435,9 +436,26 @@ def test_git_tracking_classifies_all_private_and_course_material_paths(
     assert check.status == expected_status
 
 
-def test_malformed_git_index_becomes_a_warning() -> None:
+def test_malformed_git_index_fails_closed_without_disclosing_paths(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    git_directory = vault.root / ".git"
+    git_directory.mkdir()
     raw = b"DIRC\x00\x00\x00\x02\x00\x00\x00\x01"
-    assert doctor._parse_git_index(raw, Path("/"), Path("/")) is None
+    (git_directory / "index").write_bytes(raw)
+
+    check = doctor._git_tracking(vault)
+
+    assert doctor._parse_git_index(raw, vault.root, vault.root) is None
+    assert check.status == "fail"
+    assert str(vault.root) not in check.detail
+    assert str(vault.root) not in doctor.report([check])
+
+
+def test_non_git_directory_remains_ok(tmp_path: Path) -> None:
+    check = doctor._git_tracking(_vault(tmp_path))
+
+    assert check.status == "ok"
+    assert check.detail == "vault is not inside a Git repository"
 
 
 def test_git_tracking_reads_a_linked_worktree_index(tmp_path: Path) -> None:
@@ -469,6 +487,17 @@ def _run_git(root: Path, *arguments: str) -> None:
     )
 
 
+def _force_v4_index(root: Path) -> bytes:
+    _run_git(root, "update-index", "--index-version", "4")
+    metadata = doctor._git_metadata(root)
+    assert metadata is not None
+    repository, git_directory = metadata
+    raw = (git_directory / "index").read_bytes()
+    assert raw[:8] == b"DIRC\x00\x00\x00\x04"
+    assert doctor._parse_git_index(raw, root, repository) is None
+    return raw
+
+
 @pytest.mark.parametrize(
     ("tracked", "expected_status"),
     [
@@ -488,16 +517,77 @@ def test_git_tracking_reads_private_paths_from_a_real_v4_index(
     vault = tmp_path / "vault"
     vault.mkdir()
     _run_git(vault, "init")
-    _run_git(vault, "config", "index.version", "4")
     target = vault / tracked
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("synthetic\n", encoding="utf-8")
     _run_git(vault, "add", "--", tracked)
+    _force_v4_index(vault)
 
     check = doctor._git_tracking(Vault(vault))
 
     assert check.status == expected_status
     assert tracked not in check.detail
+
+
+def test_real_v4_index_invokes_the_bounded_git_ls_files_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _run_git(vault, "init")
+    private = vault / ".a2l/private/pseudonym.key"
+    private.parent.mkdir(parents=True)
+    private.write_text("synthetic\n", encoding="utf-8")
+    _run_git(vault, "add", "--", ".a2l/private/pseudonym.key")
+    _force_v4_index(vault)
+    real_run = subprocess.run
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def record_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        calls.append((command, kwargs))
+        return real_run(command, **kwargs)  # type: ignore[arg-type,return-value]
+
+    monkeypatch.setattr(doctor.subprocess, "run", record_run)
+
+    tracked = doctor._tracked_files(vault)
+
+    assert tracked == [".a2l/private/pseudonym.key"]
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command[0] == "git"
+    assert command[2:] == [os.fspath(doctor.paths.long_path(vault)), "ls-files", "-z", "--"]
+    assert kwargs == {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.DEVNULL,
+        "check": False,
+        "shell": False,
+        "timeout": 5,
+    }
+
+
+def test_real_v4_index_without_git_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _run_git(vault, "init")
+    private = vault / ".a2l/private/pseudonym.key"
+    private.parent.mkdir(parents=True)
+    private.write_text("synthetic\n", encoding="utf-8")
+    _run_git(vault, "add", "--", ".a2l/private/pseudonym.key")
+    _force_v4_index(vault)
+
+    def missing_git(*_args: object, **_kwargs: object) -> object:
+        raise FileNotFoundError("/private/student/bin/git")
+
+    monkeypatch.setattr(doctor.subprocess, "run", missing_git)
+
+    check = doctor._git_tracking(Vault(vault))
+
+    assert check.status == "fail"
+    assert ".a2l/private/pseudonym.key" not in check.detail
+    assert "/private/student" not in check.detail
 
 
 def test_git_tracking_reads_a_private_file_through_a_linked_worktree_gitfile(
@@ -508,11 +598,11 @@ def test_git_tracking_reads_a_private_file_through_a_linked_worktree_gitfile(
     git_directory = tmp_path / "worktree-git"
     vault.mkdir()
     _run_git(vault, "init", f"--separate-git-dir={git_directory}")
-    _run_git(vault, "config", "index.version", "4")
     private = vault / ".a2l/private/pseudonym.key"
     private.parent.mkdir(parents=True)
     private.write_text("synthetic\n", encoding="utf-8")
     _run_git(vault, "add", "--", ".a2l/private/pseudonym.key")
+    _force_v4_index(vault)
 
     check = doctor._git_tracking(Vault(vault))
 
@@ -521,20 +611,43 @@ def test_git_tracking_reads_a_private_file_through_a_linked_worktree_gitfile(
     assert ".a2l/private/pseudonym.key" not in check.detail
 
 
-def test_unreadable_git_metadata_is_reported_as_a_warning(
+def test_unreadable_git_metadata_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     vault = _vault(tmp_path)
 
     def unreadable(_root: Path) -> tuple[Path, Path] | None:
-        raise OSError("synthetic permission failure")
+        raise OSError("synthetic permission failure at /private/student/repository")
 
     monkeypatch.setattr(doctor, "_git_metadata", unreadable)
 
     check = doctor._git_tracking(vault)
 
-    assert check.status == "warn"
+    assert check.status == "fail"
     assert check.detail == "Git metadata is unreadable"
+    assert "/private/student/repository" not in check.detail
+
+
+def test_unreadable_git_index_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    vault = _vault(tmp_path)
+    git_directory = vault.root / ".git"
+    git_directory.mkdir()
+    index = git_directory / "index"
+    index.write_bytes(b"DIRC")
+    real_open = open
+
+    def deny_index(path: object, *args: object, **kwargs: object) -> object:
+        if str(path).replace("\\", "/").endswith("/.git/index"):
+            raise PermissionError("denied /private/student/repository/.git/index")
+        return real_open(path, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr("builtins.open", deny_index)
+
+    check = doctor._git_tracking(vault)
+
+    assert check.status == "fail"
+    assert check.detail == "inside Git, but the file list is unreadable"
+    assert "/private/student" not in check.detail
 
 
 def test_longest_path_permission_error_becomes_a_warning(
@@ -573,6 +686,41 @@ def test_issue_url_is_encoded_and_bounded() -> None:
     assert url.startswith(doctor.ISSUE_URL)
     assert " " not in url and "\n" not in url
     assert len(url) < 40_000
+
+
+def test_issue_url_hard_bounds_hostile_encoding_at_unicode_line_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hostile_token = "界" * 500
+    monkeypatch.setattr(doctor, "__version__", hostile_token)
+    monkeypatch.setattr(doctor.platform, "python_version", lambda: hostile_token)
+    monkeypatch.setattr(doctor.platform, "system", lambda: hostile_token)
+    monkeypatch.setattr(doctor.platform, "machine", lambda: hostile_token)
+    secret = "/Users/student/private/session.json?token=super-secret"
+    checks = [
+        doctor.Check("Filesystem", "fs.git", "fail", secret, public=secret),
+        *(doctor.Check("Vault", f"check.{index}", "warn", "x") for index in range(4000)),
+    ]
+    full_diagnostics = doctor.report(checks)
+
+    url = doctor.issue_url(checks)
+    query = parse_qs(urlsplit(url).query, strict_parsing=True)
+    diagnostics = query["diagnostics"][0]
+
+    assert len(url) <= 8_000
+    assert query["template"] == ["bug_report.yml"]
+    assert query["labels"] == ["bug"]
+    assert "body" not in query
+    assert diagnostics.endswith("_(truncated)_\n")
+    complete_lines = diagnostics.removesuffix("_(truncated)_\n")
+    assert complete_lines.endswith("\n")
+    assert full_diagnostics.startswith(complete_lines)
+    assert "界" * 64 in diagnostics
+    assert secret not in diagnostics
+    assert all(
+        len(segment) >= 2 and all(char in "0123456789abcdefABCDEF" for char in segment[:2])
+        for segment in url.split("%")[1:]
+    )
 
 
 def test_issue_url_prefills_the_bug_template_diagnostics_field_without_secrets() -> None:

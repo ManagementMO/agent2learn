@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from agent2learn import config, skills
 from agent2learn.cli import app
-from agent2learn.doctor import run_checks
+from agent2learn.doctor import report, run_checks
 from agent2learn.vault import Vault
 
 EXPECTED_SKILLS = ("a2l-setup", "a2l-sync", "a2l-study", "a2l-coursework")
@@ -839,6 +839,38 @@ def test_doctor_reports_ambiguous_same_slug_skill_conflicts_truthfully(
     assert check.status == "warn"
     assert "1 conflict skill(s)" in check.detail
     assert "0 missing skill(s)" in check.detail
+
+
+def test_doctor_reports_malformed_installed_skill_metadata_as_an_unknown_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    vault = _make_vault(tmp_path / "vault")
+    home = tmp_path / "home"
+    home.mkdir()
+    vault.root.joinpath(".agents").mkdir()
+    monkeypatch.setattr(skills, "source_root", lambda: source)
+    monkeypatch.setattr(skills.Path, "home", classmethod(lambda _cls: home))
+    skills.install(
+        scope="project",
+        project=vault.root,
+        home=home,
+        source_root=source,
+        confirm=lambda preview: True,
+    )
+    metadata_path = vault.root / ".agents" / "skills" / "a2l-study" / ".agent2learn.json"
+    secret = "/Users/student/private/skill-source"
+    metadata_path.write_text(f'{{"package_version": "{secret}"', encoding="utf-8")
+
+    check = _skills_check(vault)
+
+    assert check.name == "skills.installed"
+    assert check.status == "warn"
+    assert "1 conflict skill(s) left alone, package unknown" in check.detail
+    assert secret not in check.detail
+    assert str(vault.root) not in check.detail
+    assert secret not in report([check])
+    assert metadata_path.read_text(encoding="utf-8").endswith(secret + '"')
 
 
 def test_doctor_reports_per_agent_project_and_global_skill_versions_without_paths(

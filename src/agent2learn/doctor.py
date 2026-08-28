@@ -45,7 +45,7 @@ Status = Literal["ok", "warn", "fail"]
 
 ISSUE_URL = "https://github.com/ManagementMO/agent2learn/issues/new"
 LONG_PATH_ADVISORY = 240
-_MAX_REPORT_BODY = 6_000
+MAX_ISSUE_URL_LENGTH = 8_000
 
 _STATUS_GLYPH: dict[Status, str] = {"ok": "ok", "warn": "warn", "fail": "fail"}
 _GROUP_ORDER = (
@@ -314,9 +314,21 @@ def _git_tracking(vault: Vault) -> Check:
             return Check("Filesystem", "fs.git", "ok", "vault is not inside a Git repository")
         tracked = _tracked_files(vault.root)
     except (OSError, UnicodeError, RuntimeError):
-        return Check("Filesystem", "fs.git", "warn", "Git metadata is unreadable")
+        return Check(
+            "Filesystem",
+            "fs.git",
+            "fail",
+            "Git metadata is unreadable",
+            "inspect Git metadata locally before pushing anywhere",
+        )
     if tracked is None:
-        return Check("Filesystem", "fs.git", "warn", "inside Git, but the file list is unreadable")
+        return Check(
+            "Filesystem",
+            "fs.git",
+            "fail",
+            "inside Git, but the file list is unreadable",
+            "inspect Git metadata locally before pushing anywhere",
+        )
 
     normalized = [(entry, _git_entry_parts(entry)) for entry in tracked]
     private = sorted({entry for entry, parts in normalized if _is_private_git_entry(parts)})
@@ -555,26 +567,35 @@ def _skill_scope(destination: Path, project: Path) -> str:
 
 def _skill_destination_detail(destination: skills_module.DestinationResult) -> str:
     """Describe one skill root without disclosing its filesystem location."""
-    by_status: dict[str, list[str]] = {status: [] for status in ("unchanged", "updated")}
-    counts = {status: 0 for status in ("created", "conflict")}
+    counts = {status: 0 for status in ("created", "updated", "unchanged", "conflict")}
+    versions: dict[str, list[str]] = {status: [] for status in ("updated", "unchanged", "conflict")}
+    unknown_versions = {status: 0 for status in versions}
     for _, status, version in skills_module.installed_package_versions(destination):
-        if status in by_status:
-            if version is not None:
-                by_status[status].append(version)
+        counts[status] += 1
+        if status == "created":
+            continue
+        if version is None:
+            unknown_versions[status] += 1
         else:
-            counts[status] += 1
+            versions[status].append(version)
+
+    def version_detail(status: str) -> str:
+        known = sorted(set(versions[status]))
+        if unknown_versions[status]:
+            known.append("unknown")
+        return ", ".join(known)
 
     parts: list[str] = []
     for status, label in (("unchanged", "current"), ("updated", "stale")):
-        count = sum(1 for _, candidate in destination.skills if candidate == status)
-        if count:
-            versions = sorted(set(by_status[status]))
-            version_detail = ", ".join(versions) if versions else "unknown"
-            parts.append(f"{count} {label} skill(s), package {version_detail}")
+        if counts[status]:
+            parts.append(f"{counts[status]} {label} skill(s), package {version_detail(status)}")
     if counts["created"]:
         parts.append(f"{counts['created']} missing skill(s)")
     if counts["conflict"]:
-        parts.append(f"{counts['conflict']} conflict skill(s) left alone")
+        parts.append(
+            f"{counts['conflict']} conflict skill(s) left alone, "
+            f"package {version_detail('conflict')}"
+        )
     return "; ".join(parts)
 
 
@@ -862,11 +883,30 @@ def report(checks: Sequence[Check]) -> str:
 
 
 def issue_url(checks: Sequence[Check]) -> str:
-    """Build a pre-filled issue URL. The user still reviews and submits it themselves."""
-    body = report(checks)
-    if len(body) > _MAX_REPORT_BODY:
-        body = body[:_MAX_REPORT_BODY].rsplit("\n", 1)[0] + "\n_(truncated)_\n"
-    query = urlencode((("template", "bug_report.yml"), ("labels", "bug"), ("diagnostics", body)))
+    """Build a pre-filled issue URL bounded to ``MAX_ISSUE_URL_LENGTH`` characters."""
+    diagnostics = report(checks)
+    url = _encoded_issue_url(diagnostics)
+    if len(url) <= MAX_ISSUE_URL_LENGTH:
+        return url
+
+    lines = diagnostics.splitlines(keepends=True)
+    marker = "_(truncated)_\n"
+    lower = 0
+    upper = len(lines)
+    while lower < upper:
+        midpoint = (lower + upper + 1) // 2
+        candidate = "".join(lines[:midpoint]) + marker
+        if len(_encoded_issue_url(candidate)) <= MAX_ISSUE_URL_LENGTH:
+            lower = midpoint
+        else:
+            upper = midpoint - 1
+    return _encoded_issue_url("".join(lines[:lower]) + marker)
+
+
+def _encoded_issue_url(diagnostics: str) -> str:
+    query = urlencode(
+        (("template", "bug_report.yml"), ("labels", "bug"), ("diagnostics", diagnostics))
+    )
     return f"{ISSUE_URL}?{query}"
 
 
@@ -985,22 +1025,19 @@ def _git_metadata(root: Path) -> tuple[Path, Path] | None:
     """Return worktree root and git dir, including linked-worktree ``.git`` files."""
     for directory in [root, *root.parents]:
         marker = directory / ".git"
-        try:
-            if paths.long_path(marker).is_dir():
-                return directory, marker
-            if not paths.long_path(marker).is_file():
-                continue
-            with open(os.fspath(paths.long_path(marker)), encoding="utf-8", newline="") as handle:
-                line = handle.readline().strip()
-            prefix = "gitdir:"
-            if not line.casefold().startswith(prefix):
-                return None
-            git_directory = Path(line[len(prefix) :].strip())
-            if not git_directory.is_absolute():
-                git_directory = directory / git_directory
-            return directory, git_directory.resolve()
-        except (OSError, UnicodeError, RuntimeError):
-            raise
+        if paths.long_path(marker).is_dir():
+            return directory, marker
+        if not paths.long_path(marker).is_file():
+            continue
+        with open(os.fspath(paths.long_path(marker)), encoding="utf-8", newline="") as handle:
+            line = handle.readline().strip()
+        prefix = "gitdir:"
+        if not line.casefold().startswith(prefix):
+            return None
+        git_directory = Path(line[len(prefix) :].strip())
+        if not git_directory.is_absolute():
+            git_directory = directory / git_directory
+        return directory, git_directory.resolve()
     return None
 
 
@@ -1040,6 +1077,7 @@ def _git_entry_parts(entry: str) -> tuple[str, ...]:
     normalized = entry.replace("\\", "/")
     if normalized.startswith("./"):
         normalized = normalized[2:]
+    # PurePosixPath intentionally normalizes interior ``.`` segments in Git-style paths.
     return tuple(part.casefold() for part in PurePosixPath(normalized).parts)
 
 
@@ -1085,6 +1123,7 @@ def _ordered_groups(checks: Iterable[Check]) -> list[str]:
 __all__ = [
     "Check",
     "ISSUE_URL",
+    "MAX_ISSUE_URL_LENGTH",
     "exit_code",
     "issue_url",
     "next_command",

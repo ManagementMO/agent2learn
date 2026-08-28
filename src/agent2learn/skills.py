@@ -120,6 +120,7 @@ class DestinationResult:
     status: Status
     skills: tuple[tuple[str, Status], ...]
     details: tuple[str, ...] = ()
+    package_versions: tuple[tuple[str, str | None], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -496,12 +497,8 @@ def installed_package_versions(
     but never need to read or render an installed skill body.
     """
 
-    versions: list[tuple[str, Status, str | None]] = []
-    for slug, status in destination.skills:
-        metadata = _read_installed_metadata(destination.path / slug)
-        version = metadata.get("package_version") if metadata is not None else None
-        versions.append((slug, status, version if isinstance(version, str) else None))
-    return tuple(versions)
+    package_versions = dict(destination.package_versions)
+    return tuple((slug, status, package_versions.get(slug)) for slug, status in destination.skills)
 
 
 def metadata_for(source: Path, slug: str) -> dict[str, object]:
@@ -523,10 +520,10 @@ def metadata_for(source: Path, slug: str) -> dict[str, object]:
 def _destination_plan(
     destination: Destination, source: Path, *, force: bool, link: bool, trusted_root: Path
 ) -> DestinationResult:
-    skill_statuses = tuple(
+    skill_states = tuple(
         (
             slug,
-            _planned_skill_status(
+            *_planned_skill_state(
                 destination.path / slug,
                 source,
                 slug,
@@ -537,19 +534,23 @@ def _destination_plan(
         )
         for slug in SKILL_SLUGS
     )
+    skill_statuses = tuple((slug, status) for slug, status, _ in skill_states)
     details = tuple(
         detail
-        for slug, status in skill_statuses
-        for detail in _file_change_details(destination.path / slug, source / slug, slug, status)
+        for slug, status, metadata in skill_states
+        for detail in _file_change_details(
+            destination.path / slug, source / slug, slug, status, metadata
+        )
     )
     mode_details = tuple(
         detail
-        for slug, status in skill_statuses
+        for slug, status, metadata in skill_states
         for detail in _mode_change_details(
             destination.path / slug,
             source / slug,
             slug,
             status,
+            metadata,
             force=force,
             link=link,
         )
@@ -564,11 +565,16 @@ def _destination_plan(
     else:
         status = "unchanged"
     return DestinationResult(
-        destination.path, destination.agents, status, skill_statuses, details + mode_details
+        destination.path,
+        destination.agents,
+        status,
+        skill_statuses,
+        details + mode_details,
+        tuple((slug, _package_version(metadata)) for slug, _, metadata in skill_states),
     )
 
 
-def _planned_skill_status(
+def _planned_skill_state(
     destination: Path,
     source: Path,
     slug: str,
@@ -576,30 +582,39 @@ def _planned_skill_status(
     force: bool,
     link: bool,
     trusted_root: Path,
-) -> Status:
+) -> tuple[Status, dict[str, object] | None]:
     if paths.is_link(destination):
         if _is_current_source_link(destination, source / slug):
-            return "updated" if force and not link else "unchanged"
-        return "conflict"
+            return ("updated" if force and not link else "unchanged"), None
+        return "conflict", None
     if paths.has_link_component(destination, root=trusted_root):
-        return "conflict"
+        return "conflict", None
     if not paths.long_path(destination).exists():
-        return "created"
+        return "created", None
     if not paths.long_path(destination).is_dir() or _tree_has_link(destination):
-        return "conflict"
+        return "conflict", None
     metadata = _read_installed_metadata(destination)
     if metadata is None or metadata.get("skill") != slug or metadata.get("source") != SOURCE_NAME:
-        return "unchanged" if _is_exact_sidecarless_copy(destination, source / slug) else "conflict"
+        status: Status = (
+            "unchanged" if _is_exact_sidecarless_copy(destination, source / slug) else "conflict"
+        )
+        return status, metadata
     if link:
         if force:
-            return (
+            status = (
                 "conflict"
                 if _has_unmanaged_local_files(destination, source / slug, metadata)
                 else "updated"
             )
-        return "unchanged"
+            return status, metadata
+        return "unchanged", metadata
     current = metadata_for(source, slug)
-    return "updated" if force or metadata != current else "unchanged"
+    return ("updated" if force or metadata != current else "unchanged"), metadata
+
+
+def _package_version(metadata: dict[str, object] | None) -> str | None:
+    version = metadata.get("package_version") if metadata is not None else None
+    return version if isinstance(version, str) else None
 
 
 def _mode_change_details(
@@ -607,6 +622,7 @@ def _mode_change_details(
     source: Path,
     slug: str,
     status: Status,
+    metadata: dict[str, object] | None,
     *,
     force: bool,
     link: bool,
@@ -614,7 +630,6 @@ def _mode_change_details(
     """Explain mode mismatches so a no-op cannot masquerade as a requested transition."""
 
     if link and not paths.is_link(destination):
-        metadata = _read_installed_metadata(destination)
         if metadata is None or metadata.get("skill") != slug:
             return ()
         if _has_unmanaged_local_files(destination, source, metadata):
@@ -782,7 +797,11 @@ def _preserve_local_files(existing: Path, staged: Path, source: Path) -> None:
 
 
 def _file_change_details(
-    destination: Path, source: Path, slug: str, status: Status
+    destination: Path,
+    source: Path,
+    slug: str,
+    status: Status,
+    metadata: dict[str, object] | None,
 ) -> tuple[str, ...]:
     if status == "created":
         return tuple(
@@ -795,7 +814,6 @@ def _file_change_details(
         return ()
 
     source_files = tuple(_source_files(source))
-    metadata = _read_installed_metadata(destination)
     old_managed = _managed_files(metadata)
     if old_managed is None:
         old_managed = {path.relative_to(source).as_posix() for path in source_files}
