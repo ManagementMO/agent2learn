@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from ingest_support import FakeClient, course
 
 from agent2learn import outlines
@@ -151,6 +152,19 @@ def _status_rows(metadata: MetadataReport) -> list[dict[str, object]]:
     return json.loads(
         (metadata.courses[0].directory / "_meta" / "outlines.json").read_text(encoding="utf-8")
     )
+
+
+def test_multiple_outlines_reject_a_single_borrowed_browser_before_rendering(
+    tmp_path: Path,
+) -> None:
+    vault, metadata = _metadata(tmp_path)
+    connection = _PageConnection(1, [])
+    borrowed = outlines.CDPOutlineBrowser(connection)
+
+    with pytest.raises(TypeError, match="OutlineBrowserFactory"):
+        outlines.ingest_outlines(borrowed, vault, UWaterloo(), metadata)
+
+    assert connection.events == []
 
 
 def test_two_outlines_use_fresh_targets_and_close_each_before_the_next(tmp_path: Path) -> None:

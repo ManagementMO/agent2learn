@@ -84,14 +84,17 @@ class OutlineBrowserFactory(Protocol):
 
 
 def ingest_outlines(
-    browser: OutlineBrowser | OutlineBrowserFactory,
+    factory: OutlineBrowserFactory,
     vault: Vault,
     school: School,
     metadata: MetadataReport,
 ) -> OutlineReport:
     """Render discovered outlines after metadata, using a fresh target for every attempt."""
 
-    factory = _as_factory(browser)
+    if not callable(getattr(factory, "open_browser", None)) or not callable(
+        getattr(factory, "close", None)
+    ):
+        raise TypeError("ingest_outlines requires an OutlineBrowserFactory")
     rendered = 0
     unavailable = 0
     errors: list[str] = []
@@ -161,29 +164,6 @@ def ingest_outlines(
     if factory_error is not None:
         errors.append(f"outline: browser cleanup failed ({factory_error})")
     return OutlineReport(rendered=rendered, unavailable=unavailable, errors=tuple(errors))
-
-
-class _BorrowedBrowserFactory:
-    """Compatibility adapter for one-target callers; it deliberately refuses target reuse."""
-
-    def __init__(self, browser: OutlineBrowser) -> None:
-        self._browser = browser
-        self._opened = False
-
-    def open_browser(self) -> OutlineBrowser:
-        if self._opened:
-            raise RuntimeError("a fresh outline target factory is required")
-        self._opened = True
-        return self._browser
-
-    def close(self) -> None:
-        return
-
-
-def _as_factory(value: OutlineBrowser | OutlineBrowserFactory) -> OutlineBrowserFactory:
-    if callable(getattr(value, "open_browser", None)) and callable(getattr(value, "close", None)):
-        return cast(OutlineBrowserFactory, value)
-    return _BorrowedBrowserFactory(cast(OutlineBrowser, value))
 
 
 def _close_factory(factory: OutlineBrowserFactory) -> str | None:

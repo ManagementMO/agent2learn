@@ -67,6 +67,12 @@ class FakeOutlineBrowser:
     def close_target(self) -> None:
         self.closed += 1
 
+    def open_browser(self) -> FakeOutlineBrowser:
+        return self
+
+    def close(self) -> None:
+        return
+
 
 def _metadata(tmp_path: Path, *, raw_url: str | None = None) -> tuple[Vault, MetadataReport]:
     client = FakeClient(

@@ -187,10 +187,13 @@ def run_pipeline(
     outlines = OutlineReport()
     files = FileReport()
     conversion = ConversionReport()
+    consent_limited_outlines = (
+        render_outlines and profile_consent is not True and outline_factory is None
+    )
     metadata_complete = not metadata.errors and metadata.exit_code == 0
     if metadata_complete:
         if render_outlines:
-            if profile_consent is False:
+            if consent_limited_outlines:
                 factory: OutlineBrowserFactory = _UnavailableOutlineFactory()
             else:
                 factory = outline_factory or dedicated_profile_outline_factory()
@@ -219,7 +222,13 @@ def run_pipeline(
         timestamp=timestamp,
     )
     audit_path = write_audit(vault, timestamp=timestamp)
-    errors, exit_code = _result_status(metadata, outlines, files, conversion)
+    errors, exit_code = _result_status(
+        metadata,
+        outlines,
+        files,
+        conversion,
+        outline_failure=not consent_limited_outlines,
+    )
     return PipelineReport(
         scope=scope,
         include_media=include_media,
@@ -329,11 +338,13 @@ def _result_status(
     outlines: OutlineReport,
     files: FileReport,
     conversion: ConversionReport,
+    *,
+    outline_failure: bool = True,
 ) -> tuple[tuple[str, ...], int]:
     errors: list[str] = []
     if metadata.errors or metadata.exit_code:
         errors.append("metadata incomplete")
-    if outlines.unavailable or outlines.errors:
+    if outline_failure and (outlines.unavailable or outlines.errors):
         errors.append("outline unavailable")
     if files.failed or files.errors or files.exit_code:
         errors.append("file sync incomplete")

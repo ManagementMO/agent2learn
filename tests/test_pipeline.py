@@ -219,8 +219,9 @@ def test_sync_preferences_reject_an_unhashable_existing_file_scope(tmp_path: Pat
         pipeline.load_sync_preferences(Vault(root))
 
 
-def test_declined_profile_consent_records_outlines_as_unavailable_without_opening_profile(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("profile_consent", [False, None])
+def test_absent_or_declined_profile_consent_records_outlines_without_opening_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, profile_consent: bool | None
 ) -> None:
     pipeline = _pipeline()
     metadata = MetadataReport(courses=(), topic_count=0, deadline_count=0)
@@ -250,15 +251,15 @@ def test_declined_profile_consent_records_outlines_as_unavailable_without_openin
         object(),
         Vault(tmp_path),
         SimpleNamespace(),
-        profile_consent=False,
+        profile_consent=profile_consent,
     )
 
     assert len(observed_factories) == 1
     assert report.outlines.unavailable == 1
-    assert report.exit_code == 1
+    assert report.exit_code == 0
 
 
-def test_an_unavailable_discovered_outline_makes_the_typed_report_nonzero() -> None:
+def test_declined_outline_profile_is_coverage_not_a_sync_failure() -> None:
     pipeline = _pipeline()
 
     errors, exit_code = pipeline._result_status(
@@ -266,6 +267,22 @@ def test_an_unavailable_discovered_outline_makes_the_typed_report_nonzero() -> N
         OutlineReport(unavailable=1),
         FileReport(),
         ConversionReport(),
+        outline_failure=False,
+    )
+
+    assert errors == ()
+    assert exit_code == 0
+
+
+def test_actual_outline_failure_makes_the_typed_report_nonzero() -> None:
+    pipeline = _pipeline()
+
+    errors, exit_code = pipeline._result_status(
+        MetadataReport(courses=(), topic_count=0, deadline_count=0),
+        OutlineReport(unavailable=1),
+        FileReport(),
+        ConversionReport(),
+        outline_failure=True,
     )
 
     assert errors == ("outline unavailable",)
@@ -342,4 +359,6 @@ def test_second_unchanged_pipeline_run_is_byte_idempotent(
     assert second_report.files.downloaded == 0
     assert second_report.conversion.converted == 0
     assert metadata_snapshot_calls == []
+    assert len(list((root / ".a2l" / "snapshots").glob("*.json"))) == 1
+    assert first_report.snapshot_path == second_report.snapshot_path
     assert _tree(root) == first

@@ -133,18 +133,17 @@ def run_full_pipeline(
     calibration = calibrate(client)
     client.courses = calibration.courses  # type: ignore[attr-defined]
 
-    # CDP outline rendering and the new post-conversion INDEX refresh have focused production
-    # integration tests.  Enabling either here changes the already-reviewed 45-entry fixture, so
-    # this portable API/conversion corpus keeps those compatibility seams off until a three-OS
-    # candidate can be reviewed.  The orchestration itself is still the public production pipeline.
+    # This is the exact production sequence. The synthetic run records outline coverage as
+    # unavailable without opening a browser, because no profile consent exists in this
+    # isolated fixture; every deterministic local phase, including post-conversion INDEX
+    # reconciliation, remains enabled and hashed.
     run_pipeline(
         client,
         vault,
         school,
         scope="all",
         include_media=include_media,
-        render_outlines=False,
-        rebuild_indexes=False,
+        profile_consent=False,
     )
     return vault
 
