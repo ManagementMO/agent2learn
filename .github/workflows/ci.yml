@@ -88,38 +88,21 @@ jobs:
       - name: Install wheel in a clean environment and smoke test
         run: |
           set -euo pipefail
-          uv venv /tmp/a2l-smoke --python ${{ matrix.python }}
-          WHEEL=$(ls dist/*.whl | head -n 1)
+          SMOKE="$RUNNER_TEMP/a2l-smoke-${{ matrix.os }}-${{ matrix.python }}"
+          uv venv "$SMOKE" --python ${{ matrix.python }}
+          WHEEL=$(uv run python -c 'import glob; paths=glob.glob("dist/*.whl"); assert len(paths) == 1, paths; print(paths[0])')
           echo "installing $WHEEL"
-          uv pip install --python /tmp/a2l-smoke "$WHEEL"
-          if [ "$RUNNER_OS" = "Windows" ]; then BIN=/tmp/a2l-smoke/Scripts; else BIN=/tmp/a2l-smoke/bin; fi
+          uv pip install --python "$SMOKE" "$WHEEL"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
           "$BIN/a2l" --version
           "$BIN/a2l" --version | grep -q "agent2learn"
 
       - name: Installed wheel skill source smoke
         run: |
           set -euo pipefail
-          if [ "$RUNNER_OS" = "Windows" ]; then BIN=/tmp/a2l-smoke/Scripts; else BIN=/tmp/a2l-smoke/bin; fi
-          "$BIN/python" - <<'PY'
-          from pathlib import Path
-          from tempfile import TemporaryDirectory
-          from agent2learn.skills import SKILL_SLUGS, install, source_root
-
-          root = source_root()
-          assert len(list(root.glob('*/SKILL.md'))) == 4
-          assert tuple(sorted(path.parent.name for path in root.glob('*/SKILL.md'))) == tuple(sorted(SKILL_SLUGS))
-          with TemporaryDirectory() as value:
-              project = Path(value) / "vault"
-              (project / ".agents").mkdir(parents=True)
-              result = install(
-                  scope="project",
-                  project=project,
-                  source_root=root,
-                  confirm=lambda _preview: False,
-              )
-              assert result.cancelled is True
-              assert not (project / ".agents" / "skills").exists()
-          PY
+          SMOKE="$RUNNER_TEMP/a2l-smoke-${{ matrix.os }}-${{ matrix.python }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
+          "$BIN/python" tools/smoke_installed_skills.py
 
   dependencies:
     # The lock is the authority for release artifacts. This job exists to detect stale

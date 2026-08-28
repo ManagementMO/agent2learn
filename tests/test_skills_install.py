@@ -1113,13 +1113,22 @@ def test_malicious_source_contract_gate_fails_when_a_prohibition_is_removed(
     assert "a2l-setup: missing malicious-source untrusted-content scenario" in errors
 
 
+def test_staged_command_registry_matches_actual_cli_help() -> None:
+    help_result = CliRunner().invoke(app, ["--help"])
+    assert help_result.exit_code == 0
+    staged_dependencies = {
+        command for values in skills._FUTURE_COMMANDS.values() for command in values
+    }
+    actual = {command for command in staged_dependencies if f" {command} " in help_result.output}
+    assert set(skills._IMPLEMENTED_SKILL_COMMANDS) == actual
+
+
 def test_ci_smokes_skill_source_from_an_installed_wheel() -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "Installed wheel skill source smoke" in workflow
-    assert "from agent2learn.skills import" in workflow
-    assert "source_root" in workflow
-    assert "len(list(root.glob('*/SKILL.md'))) == 4" in workflow
+    assert "$RUNNER_TEMP/a2l-smoke-${{ matrix.os }}-${{ matrix.python }}" in workflow
+    assert "tools/smoke_installed_skills.py" in workflow
 
 
 def test_ci_wires_live_skills_schema_npx_and_upstream_mapping_checks() -> None:
