@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -458,6 +460,67 @@ def test_git_tracking_reads_a_linked_worktree_index(tmp_path: Path) -> None:
     assert "private file" in check.detail
 
 
+def _run_git(root: Path, *arguments: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+@pytest.mark.parametrize(
+    ("tracked", "expected_status"),
+    [
+        (".a2l/private/pseudonym.key", "fail"),
+        (".a2l/private/category-inventory.json", "fail"),
+        (".a2l/submissions/receipt.json", "fail"),
+        ("_meta/my_grades.json", "fail"),
+        ("Fall 2026/Course/_meta/my_grades.json", "fail"),
+        ("Fall 2026/Course/discussions/post.json", "fail"),
+        ("notes/session-notes.pdf", "ok"),
+    ],
+)
+def test_git_tracking_reads_private_paths_from_a_real_v4_index(
+    tmp_path: Path, tracked: str, expected_status: str
+) -> None:
+    """Git v4 falls back safely, while exact names avoid session-notes false positives."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _run_git(vault, "init")
+    _run_git(vault, "config", "index.version", "4")
+    target = vault / tracked
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("synthetic\n", encoding="utf-8")
+    _run_git(vault, "add", "--", tracked)
+
+    check = doctor._git_tracking(Vault(vault))
+
+    assert check.status == expected_status
+    assert tracked not in check.detail
+
+
+def test_git_tracking_reads_a_private_file_through_a_linked_worktree_gitfile(
+    tmp_path: Path,
+) -> None:
+    """A .git file points at the worktree index just as Git itself does."""
+    vault = tmp_path / "vault"
+    git_directory = tmp_path / "worktree-git"
+    vault.mkdir()
+    _run_git(vault, "init", f"--separate-git-dir={git_directory}")
+    _run_git(vault, "config", "index.version", "4")
+    private = vault / ".a2l/private/pseudonym.key"
+    private.parent.mkdir(parents=True)
+    private.write_text("synthetic\n", encoding="utf-8")
+    _run_git(vault, "add", "--", ".a2l/private/pseudonym.key")
+
+    check = doctor._git_tracking(Vault(vault))
+
+    assert (vault / ".git").is_file()
+    assert check.status == "fail"
+    assert ".a2l/private/pseudonym.key" not in check.detail
+
+
 def test_unreadable_git_metadata_is_reported_as_a_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -510,6 +573,31 @@ def test_issue_url_is_encoded_and_bounded() -> None:
     assert url.startswith(doctor.ISSUE_URL)
     assert " " not in url and "\n" not in url
     assert len(url) < 40_000
+
+
+def test_issue_url_prefills_the_bug_template_diagnostics_field_without_secrets() -> None:
+    checks = [
+        doctor.Check(
+            "Filesystem",
+            "fs.git",
+            "fail",
+            "private /Users/student/vault/.a2l/session.json token=super-secret",
+            "remove it",
+            public="private /Users/student/vault/.a2l/session.json token=super-secret",
+        )
+    ]
+
+    query = parse_qs(urlsplit(doctor.issue_url(checks)).query, strict_parsing=True)
+
+    assert query == {
+        "template": ["bug_report.yml"],
+        "labels": ["bug"],
+        "diagnostics": [doctor.report(checks)],
+    }
+    assert "body" not in query
+    decoded = query["diagnostics"][0]
+    for secret in ("/Users/student", "session.json", "super-secret", "token="):
+        assert secret not in decoded
 
 
 def test_run_checks_never_raises_on_a_missing_vault(monkeypatch: pytest.MonkeyPatch) -> None:

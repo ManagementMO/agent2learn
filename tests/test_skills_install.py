@@ -841,6 +841,64 @@ def test_doctor_reports_ambiguous_same_slug_skill_conflicts_truthfully(
     assert "0 missing skill(s)" in check.detail
 
 
+def test_doctor_reports_per_agent_project_and_global_skill_versions_without_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Shared roots are counted once, but every detected agent gets an actionable status."""
+    source = _synthetic_source(tmp_path / "source")
+    vault = _make_vault(tmp_path / "vault")
+    home = tmp_path / "home"
+    vault.root.joinpath(".claude").mkdir()
+    vault.root.joinpath(".agents").mkdir()
+    home.joinpath(".codex").mkdir(parents=True)
+    monkeypatch.setattr(skills, "source_root", lambda: source)
+    monkeypatch.setattr(skills.Path, "home", classmethod(lambda _cls: home))
+
+    skills.install(
+        scope="project",
+        project=vault.root,
+        home=home,
+        source_root=source,
+        confirm=lambda preview: True,
+    )
+    skills.install(
+        scope="global",
+        project=vault.root,
+        home=home,
+        source_root=source,
+        confirm=lambda preview: True,
+    )
+    metadata_path = vault.root / ".agents" / "skills" / "a2l-study" / ".agent2learn.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["package_version"] = "0.0.9"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    conflict = vault.root / ".agents" / "skills" / "a2l-coursework"
+    conflict.joinpath(".agent2learn.json").unlink()
+    conflict.joinpath("SKILL.md").write_text("local skill kept intact\n", encoding="utf-8")
+
+    check = _skills_check(vault)
+
+    assert check.status == "warn"
+    assert "3 destination(s), 4 detected agent(s)" in check.detail
+    assert "Claude Code (project): 4 current skill(s), package 0.1.0" in check.detail
+    assert (
+        "Codex (project): 2 current skill(s), package 0.1.0; 1 stale skill(s), "
+        "package 0.0.9; 1 conflict skill(s) left alone" in check.detail
+    )
+    assert "Codex (global): 4 current skill(s), package 0.1.0" in check.detail
+    assert (
+        "Cursor (project): 2 current skill(s), package 0.1.0; 1 stale skill(s), "
+        "package 0.0.9; 1 conflict skill(s) left alone" in check.detail
+    )
+    assert (
+        "Universal Agent Skills target (project): 2 current skill(s), package 0.1.0; "
+        "1 stale skill(s), package 0.0.9; 1 conflict skill(s) left alone" in check.detail
+    )
+    assert conflict.joinpath("SKILL.md").read_text(encoding="utf-8") == "local skill kept intact\n"
+    assert str(vault.root) not in check.detail
+    assert str(home) not in check.detail
+
+
 def test_required_ai_policy_rule_is_exact() -> None:
     body = Path("skills/a2l-coursework/SKILL.md").read_text(encoding="utf-8")
 

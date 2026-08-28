@@ -487,6 +487,23 @@ def current_installations(
     return (*project_results, *global_results)
 
 
+def installed_package_versions(
+    destination: DestinationResult,
+) -> tuple[tuple[str, Status, str | None], ...]:
+    """Return the validated package version beside each installed skill status.
+
+    This is deliberately metadata-only: diagnostics need a version to explain staleness,
+    but never need to read or render an installed skill body.
+    """
+
+    versions: list[tuple[str, Status, str | None]] = []
+    for slug, status in destination.skills:
+        metadata = _read_installed_metadata(destination.path / slug)
+        version = metadata.get("package_version") if metadata is not None else None
+        versions.append((slug, status, version if isinstance(version, str) else None))
+    return tuple(versions)
+
+
 def metadata_for(source: Path, slug: str) -> dict[str, object]:
     """Return canonical installed metadata for one skill."""
 
@@ -943,6 +960,7 @@ __all__ = [
     "detect_destinations",
     "ensure_interactive_scope",
     "install",
+    "installed_package_versions",
     "metadata_for",
     "parse_frontmatter",
     "render_preview",

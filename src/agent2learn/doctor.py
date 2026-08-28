@@ -21,13 +21,14 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol
-from urllib.parse import quote
+from urllib.parse import urlencode
 
 import requests
 
@@ -488,7 +489,13 @@ def _optional_tools() -> list[Check]:
 
 
 def _skills(cfg: config_module.Config) -> list[Check]:
-    destinations = skills_module.current_installations(project=cfg.vault)
+    detected = skills_module.current_installations(project=cfg.vault, include_global=True)
+    destinations = tuple(
+        destination
+        for destination in detected
+        if _skill_scope(destination.path, cfg.vault) == "project"
+        or any(status != "created" for _, status in destination.skills)
+    )
     if not destinations:
         return [
             Check(
@@ -500,36 +507,75 @@ def _skills(cfg: config_module.Config) -> list[Check]:
             )
         ]
 
-    current = 0
-    stale = 0
-    missing = 0
-    conflicts = 0
-    for destination in destinations:
-        for _, status in destination.skills:
-            if status == "unchanged":
-                current += 1
-            elif status == "updated":
-                stale += 1
-            elif status == "conflict":
-                conflicts += 1
-            else:
-                missing += 1
-
-    if stale or missing or conflicts:
-        detail = (
-            f"{len(destinations)} destination(s), {current} current skill(s), "
-            f"{stale} stale skill(s), {missing} missing skill(s), "
-            f"{conflicts} conflict skill(s) left alone"
-        )
-        return [Check("Skills", "skills.installed", "warn", detail, "run: a2l skills install")]
+    agents = {agent for destination in destinations for agent in destination.agents}
+    current = sum(
+        status == "unchanged" for destination in destinations for _, status in destination.skills
+    )
+    stale = sum(
+        status == "updated" for destination in destinations for _, status in destination.skills
+    )
+    missing = sum(
+        status == "created" for destination in destinations for _, status in destination.skills
+    )
+    conflicts = sum(
+        status == "conflict" for destination in destinations for _, status in destination.skills
+    )
+    descriptions = [
+        f"{agent} ({_skill_scope(destination.path, cfg.vault)}): "
+        f"{_skill_destination_detail(destination)}"
+        for destination in destinations
+        for agent in destination.agents
+    ]
+    unhealthy = any(
+        status != "unchanged" for destination in destinations for _, status in destination.skills
+    )
+    detail = (
+        f"{len(destinations)} destination(s), {len(agents)} detected agent(s), "
+        f"{current} current skill(s), {stale} stale skill(s), {missing} missing skill(s), "
+        f"{conflicts} conflict skill(s) left alone: " + "; ".join(descriptions)
+    )
     return [
         Check(
             "Skills",
             "skills.installed",
-            "ok",
-            f"{len(destinations)} destination(s), {current} current Agent2Learn skill(s)",
+            "warn" if unhealthy else "ok",
+            detail,
+            "run: a2l skills install" if unhealthy else None,
         )
     ]
+
+
+def _skill_scope(destination: Path, project: Path) -> str:
+    try:
+        destination.resolve().relative_to(project.resolve())
+    except ValueError:
+        return "global"
+    return "project"
+
+
+def _skill_destination_detail(destination: skills_module.DestinationResult) -> str:
+    """Describe one skill root without disclosing its filesystem location."""
+    by_status: dict[str, list[str]] = {status: [] for status in ("unchanged", "updated")}
+    counts = {status: 0 for status in ("created", "conflict")}
+    for _, status, version in skills_module.installed_package_versions(destination):
+        if status in by_status:
+            if version is not None:
+                by_status[status].append(version)
+        else:
+            counts[status] += 1
+
+    parts: list[str] = []
+    for status, label in (("unchanged", "current"), ("updated", "stale")):
+        count = sum(1 for _, candidate in destination.skills if candidate == status)
+        if count:
+            versions = sorted(set(by_status[status]))
+            version_detail = ", ".join(versions) if versions else "unknown"
+            parts.append(f"{count} {label} skill(s), package {version_detail}")
+    if counts["created"]:
+        parts.append(f"{counts['created']} missing skill(s)")
+    if counts["conflict"]:
+        parts.append(f"{counts['conflict']} conflict skill(s) left alone")
+    return "; ".join(parts)
 
 
 def _vault(vault: Vault | None) -> list[Check]:
@@ -820,7 +866,8 @@ def issue_url(checks: Sequence[Check]) -> str:
     body = report(checks)
     if len(body) > _MAX_REPORT_BODY:
         body = body[:_MAX_REPORT_BODY].rsplit("\n", 1)[0] + "\n_(truncated)_\n"
-    return f"{ISSUE_URL}?labels=bug&body={quote(body, safe='')}"
+    query = urlencode((("template", "bug_report.yml"), ("labels", "bug"), ("diagnostics", body)))
+    return f"{ISSUE_URL}?{query}"
 
 
 def open_notice(checks: Sequence[Check]) -> str:
@@ -900,12 +947,7 @@ def _inside_git_worktree(root: Path) -> bool:
 
 
 def _tracked_files(root: Path) -> list[str] | None:
-    """List Git-tracked paths without shelling out to `git`.
-
-    Reading the index directly keeps `doctor` from depending on a `git` binary being on
-    PATH, and avoids spawning a subprocess inside a diagnostic. Only the filename table is
-    needed, so the index is parsed only far enough to recover it.
-    """
+    """List Git-tracked paths, using Git only for unsupported index layouts."""
     metadata = _git_metadata(root)
     if metadata is None:
         return None
@@ -916,7 +958,27 @@ def _tracked_files(root: Path) -> list[str] | None:
             raw = handle.read()
     except OSError:
         return None
-    return _parse_git_index(raw, root, repo)
+    parsed = _parse_git_index(raw, root, repo)
+    return parsed if parsed is not None else _git_ls_files(root)
+
+
+def _git_ls_files(root: Path) -> list[str] | None:
+    """Read a valid but unsupported index with Git, without releasing its filenames."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", os.fspath(paths.long_path(root)), "ls-files", "-z", "--"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            shell=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return [entry for entry in os.fsdecode(result.stdout).split("\0") if entry]
 
 
 def _git_metadata(root: Path) -> tuple[Path, Path] | None:
@@ -975,16 +1037,18 @@ def _parse_git_index(raw: bytes, root: Path, repo: Path) -> list[str] | None:
 
 
 def _git_entry_parts(entry: str) -> tuple[str, ...]:
-    normalized = entry.replace("\\", "/").lstrip("./")
+    normalized = entry.replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
     return tuple(part.casefold() for part in PurePosixPath(normalized).parts)
 
 
 def _is_private_git_entry(parts: tuple[str, ...]) -> bool:
-    if "session" in "".join(parts):
+    sensitive_components = {"session", "sessions", "discussions"}
+    sensitive_basenames = {"session.json", "sessions.json", "discussions.json", "my_grades.json"}
+    if set(parts) & sensitive_components:
         return True
-    if "discussions" in parts or "discussions.json" in parts:
-        return True
-    if "my_grades.json" in parts:
+    if parts and parts[-1] in sensitive_basenames:
         return True
     for index, part in enumerate(parts[:-1]):
         if part == ".a2l" and parts[index + 1] in {"private", "submissions"}:
