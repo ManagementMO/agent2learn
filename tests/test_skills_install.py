@@ -137,7 +137,7 @@ def test_install_requires_one_consent_and_writes_nothing_before_consent(tmp_path
 
     assert result.cancelled is True
     assert len(previews) == 1
-    assert ".agents/skills" in previews[0]
+    assert str(project / ".agents" / "skills") in previews[0]
     assert not project.joinpath(".agents", "skills").exists()
 
 

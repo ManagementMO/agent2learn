@@ -173,12 +173,12 @@ jobs:
           mkdir -p "$A2L_NPX_CACHE"
           npm_config_cache="$A2L_NPX_CACHE" npx --yes skills add "$GITHUB_WORKSPACE" --list | tee "$RUNNER_TEMP/a2l-local-skills.txt"
           for slug in a2l-setup a2l-sync a2l-study a2l-coursework; do
-            grep -E "(^|[[:space:]])${slug}($|[[:space:]])" "$RUNNER_TEMP/a2l-local-skills.txt"
+            grep -F -- "$slug" "$RUNNER_TEMP/a2l-local-skills.txt"
           done
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             npm_config_cache="$A2L_NPX_CACHE" npx --yes skills add ManagementMO/agent2learn --list | tee "$RUNNER_TEMP/a2l-remote-skills.txt"
             for slug in a2l-setup a2l-sync a2l-study a2l-coursework; do
-              grep -E "(^|[[:space:]])${slug}($|[[:space:]])" "$RUNNER_TEMP/a2l-remote-skills.txt"
+              grep -F -- "$slug" "$RUNNER_TEMP/a2l-remote-skills.txt"
             done
           else
             echo "Skipping public ManagementMO/agent2learn npx smoke on pull_request because GitHub main may not contain this checkout yet."
