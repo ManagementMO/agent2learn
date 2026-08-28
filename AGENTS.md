@@ -144,7 +144,7 @@ architecture.
   fails closed on unreadable/tracked private Git state and opens the required prefilled issue form.
   Deadlines use Waterloo local time, priority estimates share ingest's 200,000,000-byte planner,
   declined new terms are remembered without changing selection, notebook cells have deterministic
-  IDs, and installed-wheel skill discovery is a matrix smoke. Local evidence: 634 passed / 4
+  IDs, and installed-wheel skill discovery is a matrix smoke. Local evidence: 636 passed / 4
   skipped / zero warnings; independent per-task reviews clean. Final whole-branch review and 14-job
   CI remain required before this paragraph may say complete.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining

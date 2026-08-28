@@ -2116,7 +2116,11 @@ Doctor could miss tracked `.a2l/private` and submission-receipt state.
       cell a stable valid ID; enforce staged-command guards from the standalone artifact validator;
       add a matrix-unique installed-wheel smoke proving four packaged skills and a no-write decline.
       Commits `46e089c`, `ab919f7`; independent re-review clean.
-- [ ] **Step 6 — final branch evidence.** The local candidate has **634 passing / 4 skipped / zero
+- [x] **Step 5b — final-review corrections.** Share one downloadable-topic predicate between ingest
+      and estimates; implement the documented 200-character whole-PDF OCR trigger; and require
+      saved initializer selection state so sync cannot silently broaden to every active course.
+      Commit `20cf4c9`; scoped re-review pending.
+- [ ] **Step 6 — final branch evidence.** The local candidate has **636 passing / 4 skipped / zero
       warnings**, strict Ruff/format/mypy success, byte-reproducible fixtures, current notices, and a
       local isolated-wheel smoke. Before checking this box: complete a fresh whole-branch review,
       run all release gates, and—only after push is explicitly authorized—prove the **49-entry**
