@@ -6,18 +6,20 @@ Agent2Learn is a local-first tool in active development for University of Waterl
 turns the material available through a student's own LEARN account into a revision-safe,
 Markdown-twinned vault that coding agents can navigate and cite.
 
-The repository contains the tested implementation through Task 17, including the `a2l` command,
-offline synthetic fixtures, cross-platform filesystem handling, revision-safe vault state, bounded
-D2L transport, conversion, indexing, auditing, redacted diagnostics, local daily study views,
-deterministic calendar export, snapshot diffs, navigation, and preview-first privacy controls. It
-is still **not a v0.1 package release**: nothing is published to PyPI, Task 9's live same-device
-validation remains a release gate, and implementation resumes at Task 18.
+The repository contains the tested implementation through Task 17 plus a Task 16.5 integration-
+hardening candidate, including the `a2l` command, one production sync pipeline, offline synthetic
+fixtures, cross-platform filesystem handling, revision-safe vault state, bounded D2L transport,
+conversion, indexing, auditing, redacted diagnostics, local daily study views, deterministic
+calendar export, snapshot diffs, navigation, and preview-first privacy controls. It is still **not a
+v0.1 package release**: nothing is published to PyPI, Task 16.5 still needs final whole-branch and
+14-job CI verification, and Task 9's live same-device validation remains a release gate.
 
 ## Local study surface
 
-After `a2l init` and a local sync, the read-only study commands are:
+After `a2l init`, refresh the vault with `sync`; the remaining commands read local state:
 
 ```text
+a2l sync [--all|--priority]       metadata, outlines, files, twins, index, snapshot, audit
 a2l today                         deadlines, overdue work, changes, and exam countdowns
 a2l diff [--since SNAPSHOT]       changes between local sync snapshots
 a2l calendar [-o FILE]            deterministic deadlines/exams/office-hours .ics export

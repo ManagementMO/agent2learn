@@ -28,11 +28,14 @@ architecture.
 ## Current state — 2026-08-28
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 17 are complete as automated implementations.** Task 9's real-browser
-  same-device validation remains a release gate. Resume implementation at **Task 18**.
+- **Tasks 0 through 17 are complete as automated implementations.** A post-Task-17 **Task 16.5
+  integration-hardening candidate** is locally implemented and independently reviewed, but its
+  final whole-branch review and 14-job CI proof remain open. Do not resume Task 18 until those gates
+  close. Task 9's real-browser same-device validation remains a release gate.
 - **The golden vault now exists and is the repository's regression tripwire.**
-  `tests/fixtures/golden_vault.json` pins 45 files by SHA-256 after one full
-  ingest → download → convert → index → snapshot → audit run against the synthetic API.
+  `tests/fixtures/golden_vault.json` pins 49 files by SHA-256 after one full production
+  metadata → explicit outline state → download → convert → index → snapshot → audit run against the
+  synthetic API.
   **Never regenerate it to make an unexplained diff green** — a changed hash is either an
   output change you can state a reason for, or a regression that was just caught.
   Regenerate deliberately with `A2L_REGENERATE_GOLDEN=1 uv run pytest tests/test_golden_vault.py`,
@@ -133,6 +136,17 @@ architecture.
   non-TTY-refusing, stale-plan-bound, symlink-safe, and allowlisted down to explicit files and
   structured records. Generated JSON rewrites are atomic, generated content is distinguishable
   from user files, and logical-deletion limits are stated in the preview.
+- **Task 16.5 candidate** — closes the system-level gap between completed libraries and the public
+  product. `pipeline.py` is now the one metadata-first sync sequence used by `a2l sync`, `a2l init`,
+  and the golden harness; it writes explicit outline/policy state, downloads by saved scope,
+  converts all current local sources, refreshes indexes, writes one snapshot, and audits. Fresh
+  onboarding maps actual globally detected agents to consented project-local skill paths. Doctor
+  fails closed on unreadable/tracked private Git state and opens the required prefilled issue form.
+  Deadlines use Waterloo local time, priority estimates share ingest's 200,000,000-byte planner,
+  declined new terms are remembered without changing selection, notebook cells have deterministic
+  IDs, and installed-wheel skill discovery is a matrix smoke. Local evidence: 634 passed / 4
+  skipped / zero warnings; independent per-task reviews clean. Final whole-branch review and 14-job
+  CI remain required before this paragraph may say complete.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,
@@ -151,10 +165,11 @@ architecture.
   guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
-- Known open items, none blocking: Task 9's live same-device auth still needs pass/fail records on
-  Windows, macOS, and Linux; `mypy` covers `src/` only (`tests/` and `tools/` have unresolved
-  annotations); there is no coverage measurement yet; three Dependabot PRs are blocked because
-  they propose versions past the declared caps and each needs a human decision.
+- Known open items: **Task 16.5 final review and 14-job CI are blocking Task 18.** Task 9's live
+  same-device auth still needs pass/fail records on Windows, macOS, and Linux before release;
+  `mypy` covers `src/` only (`tests/` and `tools/` have unresolved annotations); there is no coverage
+  measurement yet; three Dependabot PRs are blocked because they propose versions past the declared
+  caps and each needs a human decision.
 - Do not publish a package, create a GitHub release, or register a production domain yet.
 - **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
   - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same

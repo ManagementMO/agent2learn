@@ -2085,6 +2085,48 @@ and preserves user-authored discussion files when removing generated discussion 
 
 ---
 
+### Task 16.5: integration and contract hardening after Task 17
+
+This is a distinct post-Task-17 correction, not rewritten history. A fresh contract review found
+that the completed libraries were not joined through the public CLI: `a2l sync` did not exist,
+`init` stopped at raw `source_only` files, fresh vaults could not install project-local skills, and
+Doctor could miss tracked `.a2l/private` and submission-receipt state.
+
+- [x] **Step 1 — Doctor privacy and issue routing.** Preserve the leading `.a2l` component during
+      Git path classification; fail closed when a known worktree cannot be inspected; use a real
+      v4-index fallback; bound the final encoded issue URL; select `bug_report.yml` and prefill its
+      required `diagnostics` field; report per-agent skill version/staleness without widening the
+      public allowlist. Commits `c174b05`, `5f97210`; independent re-review clean.
+- [x] **Step 2 — Production sync pipeline.** Add typed `pipeline.py` and public `a2l sync`; keep
+      grades/discussions controlled by saved config; preserve exit 75; create a fresh dedicated CDP
+      target per outline; run metadata → explicit outline state → files → conversion → current
+      indexes → one snapshot → audit. Make the golden harness use the complete production sequence.
+      Commits `a2fa872`, `a43e32c`; independent re-review clean.
+- [x] **Step 3 — Cited first-run output.** Make full/priority/later onboarding consume the production
+      pipeline and a precomputed/local metadata report. Full and priority produce verified Markdown
+      twins; later downloads nothing but still writes current snapshot/index/audit state. Detect
+      actual global agent installations and map only those identities to consented project-local
+      destinations. Commit `fe26713`; independent review clean.
+- [x] **Step 4 — Truthful onboarding.** Render deadlines in the Waterloo timezone, prioritize
+      upcoming deadlines, derive priority estimates from the same 200,000,000-byte planner as
+      ingest, and distinguish selected vs last-seen terms so overlapping/declined terms are neither
+      silently selected nor repeatedly described as new. Commits `fb8c272`, `b704ea9`; independent
+      re-review clean.
+- [x] **Step 5 — Deterministic notebook and installed-wheel skills.** Give every generated notebook
+      cell a stable valid ID; enforce staged-command guards from the standalone artifact validator;
+      add a matrix-unique installed-wheel smoke proving four packaged skills and a no-write decline.
+      Commits `46e089c`, `ab919f7`; independent re-review clean.
+- [ ] **Step 6 — final branch evidence.** The local candidate has **634 passing / 4 skipped / zero
+      warnings**, strict Ruff/format/mypy success, byte-reproducible fixtures, current notices, and a
+      local isolated-wheel smoke. Before checking this box: complete a fresh whole-branch review,
+      run all release gates, and—only after push is explicitly authorized—prove the **49-entry**
+      full-production golden candidate and installed-wheel smoke on all 14 CI jobs. Live three-OS
+      authentication and outline validation remain manual release gates.
+
+Do not begin Task 18 until Step 6 is complete or the user explicitly accepts a documented blocker.
+
+---
+
 ### Task 18: `ground.py`
 
 **Files:**
