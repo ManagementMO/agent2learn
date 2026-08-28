@@ -997,6 +997,24 @@ def test_trailing_dot_title_keeps_its_extension_on_every_python_version() -> Non
     assert ingest_module._topic_filename(record) == "Reading list..pdf"
 
 
+def test_load_metadata_report_reconstructs_completed_local_metadata_without_network(
+    tmp_path: Path,
+) -> None:
+    selected = course()
+    client = FakeClient([selected], tocs={111111: _toc(_topic(1, "Reading"))})
+    vault = Vault(tmp_path)
+    original = ingest_metadata(client, vault, client.school)
+    client.json_calls.clear()
+
+    loaded = ingest_module.load_metadata_report(vault, client.school, [selected])
+
+    assert client.json_calls == []
+    assert loaded.topic_count == original.topic_count
+    assert loaded.deadline_count == original.deadline_count
+    assert [item.course.org_unit_id for item in loaded.courses] == [111111]
+    assert loaded.courses[0].topics == original.courses[0].topics
+
+
 def test_split_name_inserts_a_collision_suffix_before_the_real_extension() -> None:
     assert ingest_module._split_name("Reading list..pdf") == ("Reading list.", ".pdf")
     assert ingest_module._split_name("Reading list.") == ("Reading list.", "")

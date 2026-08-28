@@ -121,6 +121,79 @@ def test_detection_uses_existing_marker_directories_without_creating_them(tmp_pa
     assert not home.joinpath(".config", "agents").exists()
 
 
+def test_fresh_project_maps_only_globally_detected_agents_after_consent(tmp_path: Path) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    project = tmp_path / "fresh-vault"
+    home = tmp_path / "home"
+    project.mkdir()
+    (home / ".claude").mkdir(parents=True)
+    (home / ".codex").mkdir()
+
+    agents = skills.detect_installed_agents(home=home)
+    result = skills.install_detected_project(
+        project=project,
+        home=home,
+        source_root=source,
+        agents=agents,
+        confirm=lambda preview: True,
+    )
+
+    assert agents == ("Claude Code", "Codex")
+    assert [
+        (item.path.relative_to(project).as_posix(), item.agents) for item in result.destinations
+    ] == [
+        (".agents/skills", ("Codex",)),
+        (".claude/skills", ("Claude Code",)),
+    ]
+    assert (project / ".agents" / "skills" / "a2l-study" / "SKILL.md").is_file()
+    assert (project / ".claude" / "skills" / "a2l-study" / "SKILL.md").is_file()
+
+
+def test_declining_fresh_project_skills_creates_no_agent_directories(tmp_path: Path) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    project = tmp_path / "fresh-vault"
+    home = tmp_path / "home"
+    project.mkdir()
+    (home / ".claude").mkdir(parents=True)
+
+    result = skills.install_detected_project(
+        project=project,
+        home=home,
+        source_root=source,
+        agents=skills.detect_installed_agents(home=home),
+        confirm=lambda preview: False,
+    )
+
+    assert result.cancelled is True
+    assert not (project / ".claude").exists()
+    assert not (project / ".agents").exists()
+
+
+def test_fresh_project_revalidates_destination_after_consent(tmp_path: Path) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    project = tmp_path / "fresh-vault"
+    home = tmp_path / "home"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    (home / ".codex").mkdir(parents=True)
+
+    def swap(_preview: str) -> bool:
+        (project / ".agents").symlink_to(outside, target_is_directory=True)
+        return True
+
+    with pytest.raises(skills.SkillsInstallError, match="changed after preview"):
+        skills.install_detected_project(
+            project=project,
+            home=home,
+            source_root=source,
+            agents=("Codex",),
+            confirm=swap,
+        )
+
+    assert not (outside / "skills").exists()
+
+
 def test_install_requires_one_consent_and_writes_nothing_before_consent(tmp_path: Path) -> None:
     source = _synthetic_source(tmp_path / "source")
     project = tmp_path / "vault"

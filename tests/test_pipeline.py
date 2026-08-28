@@ -105,6 +105,44 @@ def test_pipeline_exposes_metadata_before_every_expensive_phase(
     assert report.metadata is metadata
 
 
+def test_pipeline_uses_precomputed_metadata_without_refetching_and_can_skip_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pipeline = _pipeline()
+    metadata = MetadataReport(courses=(), topic_count=2, deadline_count=1)
+    monkeypatch.setattr(
+        pipeline,
+        "ingest_metadata",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("completed onboarding metadata must not be refetched")
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "ingest_files",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("later scope must not download files")
+        ),
+    )
+    monkeypatch.setattr(pipeline, "convert_vault", lambda *_args, **_kwargs: ConversionReport())
+    monkeypatch.setattr(pipeline, "refresh_indexes", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(pipeline, "write_snapshot", lambda *_args, **_kwargs: tmp_path / "s.json")
+    monkeypatch.setattr(pipeline, "write_audit", lambda *_args, **_kwargs: tmp_path / "AUDIT.md")
+
+    report = pipeline.run_pipeline(
+        object(),
+        Vault(tmp_path),
+        SimpleNamespace(),
+        metadata=metadata,
+        download_files=False,
+        render_outlines=False,
+    )
+
+    assert report.metadata is metadata
+    assert report.files == FileReport()
+    assert report.audit_path == "AUDIT.md"
+
+
 def test_pipeline_converts_all_local_sources_when_no_file_was_downloaded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

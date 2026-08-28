@@ -42,14 +42,12 @@ from agent2learn.calibrate import (
 )
 from agent2learn.errors import A2LError, AuthenticationError, NotConfigured, SessionExpired
 from agent2learn.ingest import (
-    FileReport,
     MetadataReport,
     TopicRecord,
     fetch_topic,
-    ingest_files,
     ingest_metadata,
     is_media_topic,
-    load_metadata_topics,
+    load_metadata_report,
 )
 from agent2learn.schools import UWaterloo
 from agent2learn.vault import Vault
@@ -888,6 +886,7 @@ def _run_init(requested_vault: Path | None) -> None:
                 term=term,
                 only=selected_ids,
                 include_grades=include_grades,
+                create_snapshot=False,
             ),
         )
         if _report_has_errors(metadata):
@@ -919,15 +918,13 @@ def _run_init(requested_vault: Path | None) -> None:
     )
 
     if state.get("file_complete") is not True:
-        estimate_topics: Iterable[object]
         if metadata is None:
-            estimate_topics = _init_stage(
+            metadata = _init_stage(
                 "file estimate",
                 "a2l init",
-                lambda: load_metadata_topics(Vault(claimed), school, selected),
+                lambda: load_metadata_report(Vault(claimed), school, selected),
             )
-        else:
-            estimate_topics = _iter_report_topics(metadata)
+        estimate_topics: Iterable[object] = _iter_report_topics(metadata)
         _init_stage("file estimate", "a2l init", lambda: _print_file_estimates(estimate_topics))
         stored_scope = state.get("file_scope")
         if stored_scope in _INIT_FILE_SCOPES:
@@ -940,42 +937,47 @@ def _run_init(requested_vault: Path | None) -> None:
                 lambda: _update_init_state(claimed, state, file_scope=scope_choice),
             )
 
-        if scope_choice == "later":
-            state = _init_stage(
-                "file choice",
+        download_files = scope_choice != "later"
+        pipeline_report = _init_stage(
+            "file sync" if download_files else "local finalization",
+            "a2l init",
+            lambda: pipeline_module.run_pipeline(
+                client,
+                Vault(claimed),
+                school,
+                scope="priority" if scope_choice == "priority" else "all",
+                include_media=False,
+                include_grades=include_grades,
+                include_discussions=False,
+                ocr_words_per_page=cfg.ocr_words_per_page,
+                term=term,
+                only=selected_ids,
+                metadata=metadata,
+                download_files=download_files,
+                render_outlines=download_files,
+                profile_consent=state.get("profile_consent") is True,
+            ),
+        )
+        if pipeline_report.exit_code:
+            exit_code = 130 if pipeline_report.files.interrupted else pipeline_report.exit_code
+            raise _InitFailure(
+                "file sync" if download_files else "local finalization",
                 "a2l init",
-                lambda: _update_init_state(claimed, state, file_complete=True),
+                exit_code=exit_code,
+                detail="incomplete",
             )
-            typer.echo("files deferred; metadata and deadlines are ready locally")
-        else:
-            file_report = _init_stage(
-                "file sync",
-                "a2l init",
-                lambda: ingest_files(
-                    client,
-                    Vault(claimed),
-                    school,
-                    term=term,
-                    only=selected_ids,
-                    scope="priority" if scope_choice == "priority" else "all",
-                    include_media=False,
-                    include_discussions=False,
-                ),
-            )
-            if _file_report_has_errors(file_report):
-                exit_code = 130 if file_report.interrupted else 1
-                raise _InitFailure(
-                    "file sync", "a2l init", exit_code=exit_code, detail="incomplete"
-                )
-            state = _init_stage(
-                "file sync",
-                "a2l init",
-                lambda: _update_init_state(claimed, state, file_complete=True),
-            )
+        state = _init_stage(
+            "file sync" if download_files else "file choice",
+            "a2l init",
+            lambda: _update_init_state(claimed, state, file_complete=True),
+        )
+        if download_files:
             typer.echo(
-                f"{console.GLYPH['ok']} files · {file_report.downloaded} downloaded · "
-                f"{file_report.skipped} skipped"
+                f"{console.GLYPH['ok']} files · {pipeline_report.files.downloaded} downloaded · "
+                f"{pipeline_report.files.skipped} skipped"
             )
+        else:
+            typer.echo("files deferred; metadata and deadlines are ready locally")
     else:
         typer.echo(
             f"{console.GLYPH['ok']} files already handled ({state.get('file_scope', 'later')})"
@@ -1173,12 +1175,17 @@ def _update_init_state(
 def _configure_init_skills(root: Path, state: dict[str, object]) -> dict[str, object]:
     if state.get("skills_status") in {"installed", "declined"}:
         return state
-    destinations = skills_module.detect_destinations(scope="project", project=root)
-    if not destinations:
+    detected_agents = skills_module.detect_installed_agents()
+    project_destinations = skills_module.detect_destinations(scope="project", project=root)
+    if detected_agents:
+        agents = list(detected_agents)
+    elif project_destinations:
+        agents = sorted(
+            {agent for destination in project_destinations for agent in destination.agents}
+        )
+    else:
         typer.echo("No detected agent skill destinations; skipping project-local skills.")
         return _update_init_state(root, state, skills_status="unavailable")
-
-    agents = sorted({agent for destination in destinations for agent in destination.agents})
     typer.echo(f"Found {_join_words(agents)}.")
 
     def confirm(preview: str) -> bool:
@@ -1187,13 +1194,22 @@ def _configure_init_skills(root: Path, state: dict[str, object]) -> dict[str, ob
             f"Install {len(skills_module.SKILL_SLUGS)} skills into this project?", default=True
         )
 
-    result = skills_module.install(
-        scope="project",
-        project=root,
-        force=False,
-        link=False,
-        confirm=confirm,
-    )
+    if detected_agents:
+        result = skills_module.install_detected_project(
+            project=root,
+            agents=detected_agents,
+            force=False,
+            link=False,
+            confirm=confirm,
+        )
+    else:
+        result = skills_module.install(
+            scope="project",
+            project=root,
+            force=False,
+            link=False,
+            confirm=confirm,
+        )
     if result.cancelled:
         typer.echo("agent skills skipped")
         return _update_init_state(root, state, skills_status="declined")
@@ -1404,19 +1420,6 @@ def _report_has_errors(report: MetadataReport) -> bool:
     errors = getattr(report, "errors", ())
     exit_code = getattr(report, "exit_code", 0)
     return bool(errors) or (isinstance(exit_code, int) and exit_code != 0)
-
-
-def _file_report_has_errors(report: FileReport) -> bool:
-    errors = getattr(report, "errors", ())
-    exit_code = getattr(report, "exit_code", 0)
-    failed = getattr(report, "failed", 0)
-    interrupted = getattr(report, "interrupted", False)
-    return (
-        bool(errors)
-        or failed != 0
-        or interrupted
-        or (isinstance(exit_code, int) and exit_code != 0)
-    )
 
 
 def _read_metadata_rows(path: Path) -> list[dict[str, object]]:

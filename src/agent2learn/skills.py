@@ -222,6 +222,77 @@ def detect_destinations(
     )
 
 
+def detect_installed_agents(*, home: Path | None = None) -> tuple[str, ...]:
+    """Detect reviewed agents from existing user-level marker directories."""
+    root = Path.home() if home is None else home
+    detected: list[str] = []
+    for target in target_registry():
+        marker = root / target.global_marker
+        if paths.has_link_component(marker, root=root):
+            continue
+        if paths.long_path(marker).is_dir():
+            detected.append(target.agent)
+    return tuple(detected)
+
+
+def _detected_project_destinations(
+    project: Path, agents: tuple[str, ...], *, home: Path
+) -> tuple[Destination, ...]:
+    registry = {target.agent: target for target in target_registry()}
+    unknown = set(agents) - set(registry)
+    if unknown:
+        raise SkillsInstallError("detected agent set contains an unknown target")
+    current = set(detect_installed_agents(home=home))
+    if not set(agents).issubset(current):
+        raise SkillsInstallError("detected agents changed after preview")
+    grouped: dict[Path, list[str]] = {}
+    for agent in agents:
+        destination = project / registry[agent].project_path
+        if paths.has_link_component(destination, root=project):
+            raise SkillsInstallError(f"{destination} changed after preview")
+        grouped.setdefault(destination, []).append(agent)
+    return tuple(
+        Destination(path=path, agents=tuple(names))
+        for path, names in sorted(grouped.items(), key=lambda item: item[0].as_posix())
+    )
+
+
+def install_detected_project(
+    *,
+    project: Path,
+    agents: tuple[str, ...],
+    confirm: Callable[[str], bool],
+    home: Path | None = None,
+    source_root: Path | None = None,
+    force: bool = False,
+    link: bool = False,
+) -> InstallResult:
+    """Install globally detected agents into reviewed project-local destinations."""
+    root = Path.home() if home is None else home
+    source = source_root if source_root is not None else globals()["source_root"]()
+    _validate_source(source)
+    destinations = _detected_project_destinations(project, agents, home=root)
+    if not destinations:
+        raise SkillsInstallError("no installed agents detected for project-local skills")
+    planned = tuple(
+        _destination_plan(item, source, force=force, link=link, trusted_root=project)
+        for item in destinations
+    )
+    preview = render_preview(planned, link=link, force=force)
+    if not confirm(preview):
+        return InstallResult(cancelled=True, destinations=planned, preview=preview)
+    current = _detected_project_destinations(project, agents, home=root)
+    refreshed = tuple(
+        _destination_plan(item, source, force=force, link=link, trusted_root=project)
+        for item in current
+    )
+    if refreshed != planned:
+        raise SkillsInstallError("project skill destinations changed after preview")
+    for destination in refreshed:
+        _apply_destination(destination, source, link=link, trusted_root=project)
+    return InstallResult(cancelled=False, destinations=refreshed, preview=preview)
+
+
 def install(
     *,
     scope: Scope,
@@ -976,8 +1047,10 @@ __all__ = [
     "SkillsInstallError",
     "current_installations",
     "detect_destinations",
+    "detect_installed_agents",
     "ensure_interactive_scope",
     "install",
+    "install_detected_project",
     "installed_package_versions",
     "metadata_for",
     "parse_frontmatter",

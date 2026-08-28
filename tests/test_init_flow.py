@@ -204,8 +204,9 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
         term: str | None = None,
         only: object = None,
         include_grades: bool = False,
+        create_snapshot: bool = True,
     ) -> MetadataReport:
-        del client, vault, school
+        del client, vault, school, create_snapshot
         world.events.append("metadata")
         selected = list(only) if only is not None else None
         world.metadata_calls.append(
@@ -247,7 +248,14 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
     monkeypatch.setattr(cli, "Client", fake_client)
     monkeypatch.setattr(cli, "calibrate", fake_calibrate)
     monkeypatch.setattr(cli, "ingest_metadata", fake_metadata)
-    monkeypatch.setattr(cli, "ingest_files", fake_files)
+
+    def fake_pipeline(*args: object, **kwargs: object) -> object:
+        file_report = FileReport()
+        if kwargs.get("download_files", True):
+            file_report = fake_files(*args, **kwargs)
+        return SimpleNamespace(files=file_report, exit_code=0, errors=())
+
+    monkeypatch.setattr(cli.pipeline_module, "run_pipeline", fake_pipeline)
     monkeypatch.setattr(
         cli.skills_module,
         "detect_destinations",
@@ -261,7 +269,13 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
             )
         ),
     )
+    monkeypatch.setattr(
+        cli.skills_module,
+        "detect_installed_agents",
+        lambda: ("Claude Code", "Codex"),
+    )
     monkeypatch.setattr(cli.skills_module, "install", fake_install)
+    monkeypatch.setattr(cli.skills_module, "install_detected_project", fake_install)
     monkeypatch.setattr(cli.session_store, "load", lambda: fake_session)
     return world
 
@@ -346,6 +360,42 @@ def test_init_without_active_academic_term_stops_before_metadata(
     assert result.output.count("run:") == 1
 
 
+def test_init_maps_globally_detected_agents_into_a_fresh_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    world.root.joinpath(".agents").rmdir()
+    world.root.joinpath(".claude").rmdir()
+    installed: list[tuple[Path, tuple[str, ...]]] = []
+    monkeypatch.setattr(
+        cli.skills_module,
+        "detect_installed_agents",
+        lambda: ("Claude Code", "Codex"),
+        raising=False,
+    )
+
+    def install_detected(
+        *, project: Path, agents: tuple[str, ...], confirm: object, **_kwargs: object
+    ) -> object:
+        installed.append((project, agents))
+        assert callable(confirm)
+        accepted = confirm("fresh project skill preview\n")
+        return SimpleNamespace(cancelled=not accepted)
+
+    monkeypatch.setattr(
+        cli.skills_module,
+        "install_detected_project",
+        install_detected,
+        raising=False,
+    )
+
+    result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+
+    assert result.exit_code == 0, result.output
+    assert installed == [(world.root, ("Claude Code", "Codex"))]
+    assert "Found Claude Code and Codex" in result.stdout
+
+
 def test_init_declining_profile_uses_paste_without_calling_browser_auth(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -392,8 +442,13 @@ def test_init_uses_agent2learn_2_for_an_occupied_default_without_touching_origin
     courses = [CourseRef(111111, "COURSE101_sec01_1265", "Current", "1265", True)]
     monkeypatch.setattr(cli, "calibrate", lambda _client: _calibration(courses))
     monkeypatch.setattr(cli, "ingest_metadata", lambda *args, **kwargs: MetadataReport((), 0, 0))
-    monkeypatch.setattr(cli, "ingest_files", lambda *args, **kwargs: FileReport())
+    monkeypatch.setattr(
+        cli.pipeline_module,
+        "run_pipeline",
+        lambda *args, **kwargs: SimpleNamespace(files=FileReport(), exit_code=0, errors=()),
+    )
     monkeypatch.setattr(cli.skills_module, "detect_destinations", lambda **kwargs: ())
+    monkeypatch.setattr(cli.skills_module, "detect_installed_agents", lambda: ())
 
     result = CliRunner().invoke(cli.app, ["init"], input="y\nn\ny\ny\nlater\n")
 
@@ -451,6 +506,61 @@ def test_init_is_idempotent_and_resumes_when_a_new_term_appears(
     assert _state(world.root)["term"] == "1266"
     assert _state(world.root)["selected_offering_ids"] == [555555]
     assert "New term detected: 1 courses. Sync?" in third.stdout
+
+
+def test_init_full_reuses_production_pipeline_with_completed_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _prepare_world(monkeypatch, tmp_path)
+    calls: list[dict[str, object]] = []
+    snapshot_flags: list[object] = []
+    metadata_ingest = cli.ingest_metadata
+
+    def metadata_without_snapshot(*args: object, **kwargs: object) -> MetadataReport:
+        snapshot_flags.append(kwargs.get("create_snapshot"))
+        return metadata_ingest(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "ingest_metadata", metadata_without_snapshot)
+
+    def pipeline_run(*_args: object, **kwargs: object) -> object:
+        calls.append(kwargs)
+        return SimpleNamespace(
+            files=FileReport(downloaded=2),
+            exit_code=0,
+            errors=(),
+        )
+
+    monkeypatch.setattr(cli.pipeline_module, "run_pipeline", pipeline_run)
+
+    result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nfull\n")
+
+    assert result.exit_code == 0, result.output
+    assert snapshot_flags == [False]
+    assert len(calls) == 1
+    assert isinstance(calls[0]["metadata"], MetadataReport)
+    assert calls[0]["scope"] == "all"
+    assert calls[0]["download_files"] is True
+    assert calls[0]["include_media"] is False
+
+
+def test_init_later_finalizes_metadata_without_downloading(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _prepare_world(monkeypatch, tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def pipeline_run(*_args: object, **kwargs: object) -> object:
+        calls.append(kwargs)
+        return SimpleNamespace(files=FileReport(), exit_code=0, errors=())
+
+    monkeypatch.setattr(cli.pipeline_module, "run_pipeline", pipeline_run)
+    result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert calls[0]["download_files"] is False
+    assert calls[0]["render_outlines"] is False
+    assert isinstance(calls[0]["metadata"], MetadataReport)
 
 
 def test_init_opt_in_grades_and_full_files_after_estimate(

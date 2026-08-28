@@ -164,6 +164,8 @@ def run_pipeline(
     profile_consent: bool | None = None,
     render_outlines: bool = True,
     rebuild_indexes: bool = True,
+    metadata: MetadataReport | None = None,
+    download_files: bool = True,
 ) -> PipelineReport:
     """Run the single metadata → outlines → files → local-artifact production sequence."""
 
@@ -172,17 +174,18 @@ def run_pipeline(
     if profile_consent is not None and not isinstance(profile_consent, bool):
         raise ValueError("profile_consent must be a boolean or None")
     selection = tuple(only) if only is not None else None
-    metadata = ingest_metadata(
-        client,
-        vault,
-        school,
-        term=term,
-        only=selection,
-        include_grades=include_grades,
-        create_snapshot=False,
-    )
-    if metadata_observer is not None:
-        metadata_observer(metadata)
+    if metadata is None:
+        metadata = ingest_metadata(
+            client,
+            vault,
+            school,
+            term=term,
+            only=selection,
+            include_grades=include_grades,
+            create_snapshot=False,
+        )
+        if metadata_observer is not None:
+            metadata_observer(metadata)
 
     outlines = OutlineReport()
     files = FileReport()
@@ -198,18 +201,19 @@ def run_pipeline(
             else:
                 factory = outline_factory or dedicated_profile_outline_factory()
             outlines = ingest_outlines(factory, vault, school, metadata)
-        files = ingest_files(
-            client,
-            vault,
-            school,
-            term=term,
-            only=selection,
-            scope=scope,
-            include_media=include_media,
-            include_discussions=include_discussions,
-        )
-        # This is intentionally unconditional: already-local sources still need conversion after
-        # an interrupted, deferred, priority, or fully unchanged download pass.
+        if download_files:
+            files = ingest_files(
+                client,
+                vault,
+                school,
+                term=term,
+                only=selection,
+                scope=scope,
+                include_media=include_media,
+                include_discussions=include_discussions,
+            )
+        # This remains unconditional: already-local sources still need conversion after an
+        # interrupted, deferred, priority, or fully unchanged download pass.
         conversion = convert_vault(vault, ocr_words_per_page=ocr_words_per_page)
 
     indexed_courses = refresh_indexes(vault, school, metadata) if rebuild_indexes else 0

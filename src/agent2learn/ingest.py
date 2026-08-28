@@ -388,6 +388,39 @@ def load_metadata_topics(
     return tuple(topics)
 
 
+def load_metadata_report(
+    vault: Vault, school: School, courses: Iterable[CourseRef]
+) -> MetadataReport:
+    """Reconstruct a completed metadata report from validated local course projections."""
+    reports: list[CourseMetadata] = []
+    deadline_count = 0
+    for course in courses:
+        course_dir = _course_directory(vault, school, course)
+        topics = load_metadata_topics(vault, school, [course])
+        module_tree = tuple(_read_toc_modules(course_dir))
+        deadline_count += sum(
+            1
+            for row in [
+                *_read_list(course_dir / "_meta" / "assignments.json"),
+                *_read_list(course_dir / "_meta" / "quizzes.json"),
+            ]
+            if row.get("due_date")
+        )
+        reports.append(
+            CourseMetadata(
+                course=course,
+                directory=course_dir,
+                topics=topics,
+                module_tree=module_tree,
+            )
+        )
+    return MetadataReport(
+        courses=tuple(reports),
+        topic_count=sum(len(report.topics) for report in reports),
+        deadline_count=deadline_count,
+    )
+
+
 def ingest_files(
     client: Client,
     vault: Vault,
@@ -2881,5 +2914,6 @@ __all__ = [
     "is_media_topic",
     "ingest_files",
     "ingest_metadata",
+    "load_metadata_report",
     "load_metadata_topics",
 ]
