@@ -83,3 +83,9 @@ source-include = ["skills.sh.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Registered so the suite stays warning-free. The benchmark always checks correctness and scale;
+# its wall-clock budget is only enforced when A2L_BENCHMARK_STRICT is set, because shared CI
+# runners are too noisy for a timing assertion to mean anything.
+markers = [
+  "benchmark: measured performance budget, enforced only with A2L_BENCHMARK_STRICT",
+]

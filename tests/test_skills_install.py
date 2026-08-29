@@ -1012,9 +1012,15 @@ def test_required_ai_policy_rule_is_exact() -> None:
     assert AI_POLICY_RULE in body
 
 
-def test_repository_validator_enforces_staged_command_guards(tmp_path: Path) -> None:
+def test_validator_enforces_staged_command_guards_for_an_engine_missing_the_command(
+    tmp_path: Path,
+) -> None:
+    """The guard is checked against a command set, not against whatever this build happens to ship.
+
+    Skills install without the engine, so an older or partial engine is a real deployment. The
+    validator must still demand the availability guard for a command that engine lacks.
+    """
     shutil.copytree(Path("skills"), tmp_path / "skills")
-    shutil.copy2(Path("skills.sh.json"), tmp_path / "skills.sh.json")
     coursework = tmp_path / "skills" / "a2l-coursework" / "SKILL.md"
     coursework.write_text(
         coursework.read_text(encoding="utf-8").replace(
@@ -1024,17 +1030,19 @@ def test_repository_validator_enforces_staged_command_guards(tmp_path: Path) -> 
         newline="\n",
     )
 
-    errors = skills.validate_repository_artifacts(tmp_path)
+    errors = skills.validate_skill_behavior_contracts(
+        tmp_path, available_commands={"auth", "courses", "doctor", "fetch", "skills", "sync"}
+    )
 
-    assert "a2l-coursework: missing command-availability guard for a2l check" in errors
+    assert "a2l-coursework: missing command-availability guard for a2l check, a2l ground" in errors
 
 
-def test_future_command_skills_guard_against_the_current_development_cli() -> None:
+def test_shipped_skills_keep_their_guard_for_an_engine_without_the_command() -> None:
     help_result = CliRunner().invoke(app, ["--help"])
     output = strip_ansi(help_result.output)
     assert help_result.exit_code == 0
-    assert " sync " in output
-    assert " check " not in output
+    for command in (" sync ", " check ", " ground "):
+        assert command in output
 
     errors = skills.validate_skill_behavior_contracts(
         Path.cwd(), available_commands={"auth", "courses", "doctor", "fetch", "skills", "sync"}

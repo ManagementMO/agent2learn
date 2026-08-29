@@ -23,6 +23,7 @@ import typer
 
 from agent2learn import __version__, clock, config, console, paths
 from agent2learn import calendar as calendar_module
+from agent2learn import check as check_module
 from agent2learn import doctor as doctor_module
 from agent2learn import ground as ground_module
 from agent2learn import index as index_module
@@ -435,6 +436,68 @@ def ground(
         typer.echo("ground failed because local course material is unavailable", err=True)
         raise typer.Exit(code=1) from None
     typer.echo(f"grounding pack: {paths.rel_posix(pack.path, vault.root)}")
+
+
+@app.command()
+def check(
+    draft: Annotated[
+        Path,
+        typer.Argument(help="Draft file: .md, .txt, .ipynb, .py, .r, .rmd, or .tex."),
+    ],
+    course: str | None = typer.Option(
+        None, "--course", help="Course selector. Inferred from the draft location when omitted."
+    ),
+    assignment: str | None = typer.Option(
+        None, "--assignment", help="Scope the scan to one assignment's sources."
+    ),
+    output_format: str = typer.Option(
+        "md", "--format", help="Report format: md or json.", metavar="md|json"
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help=(
+            "Exit non-zero when a claim has no matching evidence or is worth comparing. "
+            "A review reminder only: a status is not proof of correctness, incorrectness, "
+            "policy compliance, or academic integrity."
+        ),
+    ),
+) -> None:
+    """Run an experimental lexical evidence scan of a draft against your own course material."""
+
+    if output_format not in {"md", "json"}:
+        typer.echo("--format must be md or json", err=True)
+        raise typer.Exit(code=2)
+    try:
+        _cfg, vault, _school = _local_vault()
+        course_dir = (
+            index_module.resolve_course(vault, course)
+            if course
+            else _infer_course_dir(vault, draft)
+        )
+        report = check_module.check(draft, course_dir, assignment=assignment)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except OSError:
+        typer.echo("check failed because local course material is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+
+    rendered = (
+        check_module.render_json(report) if output_format == "json" else check_module.render(report)
+    )
+    typer.echo(rendered, nl=False)
+    if strict and report.review_required:
+        raise typer.Exit(code=1)
+
+
+def _infer_course_dir(vault: Vault, draft: Path) -> Path:
+    """Locate the course a draft sits in, refusing to guess when it sits outside the vault."""
+
+    for parent in Path(draft).expanduser().resolve().parents:
+        if (parent / "_meta" / "content_map.json").is_file():
+            return parent
+    raise A2LError("draft is not inside a local course; pass --course")
 
 
 @app.command("open")

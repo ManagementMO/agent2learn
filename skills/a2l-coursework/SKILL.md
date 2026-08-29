@@ -28,9 +28,13 @@ permitted assistance only in cited course sources and stop rather than inventing
 If the status is `outline_unavailable`, say only that the policy was not locally checked
 and direct the user to the course outline; never treat unavailable as permission.
 
+## Assembling Sources
+
+Use `a2l ground <course> <item>` to assemble a cited grounding pack for one assignment or lab. It writes `GROUNDING.md` beside that assignment listing every file to read, with the source and twin digests that were verified when the pack was written. Read every listed file before answering. A pack contains no answer, and `a2l ground` has no solving mode; if a file you need is missing from the pack, it was never fetched, has no markdown twin, or no longer matches its recorded digest — say so instead of substituting memory.
+
 ## Checking Drafts
 
-Before running `a2l check`, verify the command exists with `a2l --help` or `a2l check --help`. If it is absent, clearly tell the user the current development engine is incomplete and that check is a staged dependency; stop there. Do not invent a substitute or run a different command.
+Before running `a2l check`, verify the command exists with `a2l --help` or `a2l check --help`. Skills can be installed without the engine, or alongside an older one. If it is absent, clearly tell the user the current development engine is incomplete and that check is a staged dependency; stop there. Do not invent a substitute or run a different command.
 
 Use `a2l check <draft-file> [--course CODE] [--assignment QUERY]` when the user wants to compare a draft with the local course vault. Present it as an Experimental lexical evidence scan, not as proof, grading, contradiction detection, or academic-policy compliance.
 

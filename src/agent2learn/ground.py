@@ -241,6 +241,18 @@ def select_sources(vault: Vault, course_dir: Path, item: str) -> tuple[Grounding
     return tuple(selected)
 
 
+def verified_sources(vault: Vault, course_dir: Path) -> tuple[GroundingSource, ...]:
+    """Return every current, provenance-backed markdown twin in one course.
+
+    ``a2l check`` uses this when a draft is not scoped to one assignment.  It applies the same
+    provenance and freshness rules as a grounding pack, so an unscoped scan cannot cite material a
+    scoped pack would have refused.
+    """
+
+    verified = _verified_sources(vault, course_dir)
+    return tuple(_source(verified[key], role="course_material") for key in sorted(verified))
+
+
 def write_grounding_pack(vault: Vault, course: str, item: str) -> GroundingPack:
     """Write ``GROUNDING.md`` beside the assignment and return the pack it recorded."""
 
@@ -591,5 +603,6 @@ __all__ = [
     "resolve_item",
     "select_sources",
     "tok",
+    "verified_sources",
     "write_grounding_pack",
 ]

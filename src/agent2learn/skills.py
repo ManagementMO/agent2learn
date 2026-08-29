@@ -84,9 +84,12 @@ _CONTRACT_PHRASES = {
 _FUTURE_COMMANDS = {
     "a2l-setup": ("sync",),
     "a2l-sync": ("sync",),
-    "a2l-coursework": ("check",),
+    "a2l-coursework": ("check", "ground"),
 }
-_IMPLEMENTED_SKILL_COMMANDS = frozenset({"sync"})
+# The engine commands the public skills instruct an agent to run, and which this build provides.
+# Skills are installable without the engine, so a skill keeps its availability guard even after a
+# command lands here; the guard is only *required* while a command is missing.
+_IMPLEMENTED_SKILL_COMMANDS = frozenset({"check", "ground", "sync"})
 
 
 class SkillsInstallError(Exception):

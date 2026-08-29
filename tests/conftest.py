@@ -37,6 +37,20 @@ def strip_ansi(value: str) -> str:
     return _ANSI_ESCAPE.sub("", value)
 
 
+def flatten_help(value: str) -> str:
+    """Normalize Rich help output so a wrapped sentence can be asserted as one string.
+
+    Typer renders option help inside a bordered panel, so a long sentence arrives split across
+    lines with ``│`` gutters interleaved. Asserting on the raw text silently depends on terminal
+    width; flattening keeps the assertion about wording.
+    """
+
+    plain = strip_ansi(value)
+    for border in "│┃|╭╮╰╯─━":
+        plain = plain.replace(border, " ")
+    return re.sub(r"\s+", " ", plain).strip()
+
+
 def fixture_json(name: str) -> Any:
     return json.loads((API / name).read_text(encoding="utf-8"))
 
