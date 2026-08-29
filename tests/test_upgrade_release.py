@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import ast
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -27,6 +29,14 @@ from agent2learn.vault import Vault
 ROOT = Path(__file__).parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
 SRC = ROOT / "src" / "agent2learn"
+
+# The release job is defined `runs-on: ubuntu-latest`, so its shell steps are executed here only
+# on a POSIX shell. Running them under git-bash on a Windows runner would test an environment the
+# workflow never sees. The text assertions that pin each guard's decision run everywhere.
+posix_release_shell = pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("bash") is None,
+    reason="release workflow steps run on ubuntu-latest",
+)
 
 
 class FakeMetadata:
@@ -287,6 +297,7 @@ def _step_script(name: str) -> str:
     return "\n".join(lines)
 
 
+@posix_release_shell
 @pytest.mark.parametrize(
     ("tag", "expected_ok"), [(f"v{__version__}", True), ("v9.9.9", False), ("not-a-tag", False)]
 )
@@ -329,6 +340,7 @@ def test_the_release_refuses_to_publish_an_enabled_submission_build_by_default()
     assert script.count("exit 1") == 1
 
 
+@posix_release_shell
 def test_the_submission_guard_passes_for_this_disabled_build() -> None:
     script = _step_script("Uploads must be disabled unless the release gate authorised them")
 
