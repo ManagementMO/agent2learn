@@ -40,7 +40,8 @@ import os
 import re
 import secrets
 import stat
-from dataclasses import dataclass, field, replace
+import string
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -53,7 +54,12 @@ from agent2learn.vault import Vault
 
 SUBMISSION_RECEIPT_VERSION = 1
 CONFIRMATION_TTL_SECONDS = 300
-CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# Built from its intent rather than written out: the ambiguous glyphs are excluded so a user
+# reading a code aloud or off a screen cannot confuse I/1 or O/0. Writing the 32 characters as
+# a literal also reads as a high-entropy secret to scanners, which it is not.
+CODE_ALPHABET = "".join(
+    character for character in string.ascii_uppercase + string.digits if character not in "IO01"
+)
 CODE_LENGTH = 6
 MIN_LE_VERSION = (1, 82)
 STAGING_DIRNAME = "submit-staging"
@@ -156,7 +162,22 @@ class SubmissionReceipt:
     status: str
     outcome: str
     receipt_version: int = SUBMISSION_RECEIPT_VERSION
-    extras: dict[str, str] = field(default_factory=dict)
+
+
+def require_available(
+    cfg: config.Config | None = None, *, capability: SubmissionCapability | None = None
+) -> None:
+    """Refuse an upload before anything else happens, including authentication.
+
+    Checked first so a build with uploads disabled never sends the user through a sign-in flow for
+    a feature it will refuse anyway: "run: a2l auth" would be a false next action.
+    """
+
+    permission = capability or release_capability()
+    if not permission.available:
+        raise SubmissionRefused(permission.reason)
+    if cfg is not None and not cfg.submit_enabled:
+        raise SubmissionRefused("submission is not acknowledged · run: a2l enable-submit")
 
 
 def enable_submit(
@@ -164,9 +185,7 @@ def enable_submit(
 ) -> config.Config:
     """Record the one-time local acknowledgement. This never uploads anything."""
 
-    permission = capability or release_capability()
-    if not permission.available:
-        raise SubmissionRefused(permission.reason)
+    require_available(capability=capability)
     updated = replace(cfg, submit_enabled=True)
     config.save(updated)
     return updated
@@ -234,11 +253,7 @@ def prepare(
     sent. Replacing or editing the original afterwards cannot change them.
     """
 
-    permission = capability or release_capability()
-    if not permission.available:
-        raise SubmissionRefused(permission.reason)
-    if not cfg.submit_enabled:
-        raise SubmissionRefused("submission is not acknowledged · run: a2l enable-submit")
+    require_available(cfg, capability=capability)
 
     selected = Path(file).expanduser()
     if not paths.long_path(selected).is_file():
@@ -678,6 +693,7 @@ __all__ = [
     "enable_submit",
     "prepare",
     "release_capability",
+    "require_available",
     "render_preview",
     "safe_filename",
 ]

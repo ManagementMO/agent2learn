@@ -498,6 +498,9 @@ def enable_submit() -> None:
     """Record a one-time local acknowledgement for uploads. This never uploads anything."""
 
     try:
+        # The build-level refusal comes first: pointing at `a2l init` to enable an upload path
+        # this build does not have would be a false next action.
+        submit_module.require_available()
         cfg, _vault, _school = _local_vault()
         typer.echo(
             "Upload is the only Agent2Learn action that changes anything in LEARN.\n"
@@ -525,7 +528,11 @@ def submit(
     """Preview an upload to one LEARN Dropbox, then require your own typed confirmation."""
 
     try:
+        # Refuse before configuration and authentication: a disabled build must not send the user
+        # to `a2l init` or `a2l auth` for a path it will refuse anyway.
+        submit_module.require_available()
         cfg, vault, school = _local_vault()
+        submit_module.require_available(cfg)
         try:
             saved = session_store.load()
         except (OSError, ValueError) as exc:

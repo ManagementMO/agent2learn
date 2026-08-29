@@ -28,8 +28,61 @@ architecture.
 ## Current state — 2026-08-29
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 17 and Task 16.5 are complete as automated implementations.** Resume at Task 18.
-  Task 9's real-browser same-device validation remains a release gate.
+- **Tasks 0 through 23 are complete as automated implementations. The v0.1 command surface is
+  finished; what remains is manual and publication gating, not coding.** Task 9's real-browser
+  same-device validation and the supervised upload test remain release gates.
+  - **Tasks 18–23 landed on the `v0-1-completion` branch** (`89848b3`, `b9a2aa0`, `5de52c4`,
+    `5290a8b`, `8405cbc`, `5b24796`), taking the suite from 637 to 832 passing tests.
+  - **Task 18** — `ground.py` and `a2l ground`. A file becomes citable only when the manifest and
+    the course content map agree it came from a LEARN source ID **and** both the archived original
+    and its Markdown twin still hash to their recorded digests. Drafts, downloaded solutions,
+    untracked siblings, and generated reports are therefore unreachable. Lecture ranking sorts
+    `(-score, path)`, not `rglob` order, so packs are byte-identical across platforms. `--solve`
+    does not exist.
+  - **Task 19** — `check.py` and `a2l check`. Reuses Task 18's source set, so a claim can never
+    cite the draft itself or another student-authored answer. Scores are exact integer basis
+    points; `score_bp` is provably the floored rational form and a parametrised test pins it to
+    `exact_score`. `possible_conflict` fires only for two allowlisted templates whose token
+    sequences are otherwise identical, and a differing number never qualifies.
+    **The mandated benchmark caught a real defect:** the first implementation took 19.95 s for 100
+    claims over 50,000 lines against a 2 s target, because it built a `Citation` per scored line
+    and used `Fraction` in the hot loop. Counting overlap off the postings lists and materialising
+    only kept spans brought it to 1.77 s.
+  - **Task 20** — `submit.py`, `_release.py`, `a2l enable-submit`, `a2l submit`.
+    `SUBMISSION_AVAILABLE` is **False**, so this build refuses uploads; tests reach the path only
+    through an injected `SubmissionCapability`, never by monkeypatching the production check. Two
+    independent gates precede any POST, the exact bytes are staged before the preview so replacing
+    the original cannot change what is sent, only the documented `mysubmissions` route is used with
+    no fallback, a group Dropbox is named then refused, and read-back must match folder, filename,
+    size, and a timestamp after confirmation or the outcome is reported as unknown. The
+    confirmation code is consumed whether the POST succeeds or fails, so nothing can be retried by
+    re-confirming.
+  - **Task 21** — `install.sh` and `install.ps1`. One reviewed constants block pins uv 0.12.5 and
+    agent2learn 0.1.0; an equal-or-newer uv is reused, an older one is replaced after disclosure,
+    and an unparseable version is a hard refusal rather than a guess. Neither script accepts a
+    package, index, or URL override, needs administrator rights, or writes agent or browser state.
+    CI smokes both against the candidate build staged as a `UV_FIND_LINKS` source.
+  - **Task 22** — public documentation, written **after** Task 23 so it describes the final command
+    surface. `tests/test_docs.py` enforces the claims rather than trusting them: forbidden phrases,
+    the evidence scan never described as verification, exactly three advertised install options,
+    every documented command *and flag* existing, every implemented command documented, and no link
+    to a file that does not exist.
+  - **Task 23** — `upgrade.py`, `a2l upgrade`, `a2l completions`, and `.github/workflows/release.yml`.
+    `upgrade` is the only command that contacts the network on its own behalf; a network-sourced
+    version is validated against a narrow PEP 440 subset before becoming a subprocess argument, and
+    no call uses a shell string. The release workflow runs only on a `v*` tag, refuses a tag that
+    disagrees with the packaged version, refuses to publish a build with uploads enabled unless the
+    supervised gate was recorded, builds exactly once, and promotes those same bytes through
+    attestation, TestPyPI, and a protected PyPI environment using Trusted Publishing.
+- **ATTENTION: CI grew from 14 to 17 jobs** (`installer · ubuntu-latest|macos-latest|windows-latest`).
+  Branch protection on `main` still requires the old 14 named checks, so the required-checks list
+  needs updating in repository settings by the owner. No repository settings were changed.
+- **Tasks 18–23 were implemented by the controller directly, without reviewer subagents**, at the
+  user's instruction. Reviews are controller self-reviews plus scripted perturbation harnesses in
+  `.superpowers/sdd/2026-08-24-agent2learn-public-release/`; that is weaker than an independent
+  fresh-context review and is recorded as such in `progress.md`.
+- **Task 20 deviated from TDD:** `submit.py` was written before its tests. Compensated with a
+  12-gate perturbation harness, but recorded as a deviation rather than presented as compliance.
 - **The golden vault now exists and is the repository's regression tripwire.**
   `tests/fixtures/golden_vault.json` pins 49 files by SHA-256 after one full production
   metadata → explicit outline state → download → convert → index → snapshot → audit run against the
@@ -164,11 +217,15 @@ architecture.
   guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
-- Known open items: **Task 16.5 final review and 14-job CI are blocking Task 18.** Task 9's live
-  same-device auth still needs pass/fail records on Windows, macOS, and Linux before release;
-  `mypy` covers `src/` only (`tests/` and `tools/` have unresolved annotations); there is no coverage
-  measurement yet; three Dependabot PRs are blocked because they propose versions past the declared
-  caps and each needs a human decision.
+- Known open items, none of them coding work: the branch needs 17-job CI on GitHub and a merge to
+  `main`; branch protection's required-checks list needs updating for the three new installer jobs;
+  Task 9's live same-device auth still needs pass/fail records on Windows, macOS, and Linux; the
+  supervised non-graded upload must pass for the exact release candidate before
+  `SUBMISSION_AVAILABLE` may be flipped; the README's walkthrough recording has not been made and
+  is deliberately not linked; PyPI Trusted Publishing and the `testpypi`/`pypi` environments must be
+  configured before the release workflow can run; `mypy` covers `src/` only (`tests/` and `tools/`
+  have unresolved annotations); there is no coverage measurement yet; three Dependabot PRs propose
+  versions past the declared caps and each needs a human decision.
 - Do not publish a package, create a GitHub release, or register a production domain yet.
 - **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
   - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same

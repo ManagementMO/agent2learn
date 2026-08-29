@@ -304,22 +304,6 @@ class LineIndex:
         )
 
 
-def score(
-    claim_terms: frozenset[str],
-    source_terms: frozenset[str],
-    claim_values: frozenset[str],
-    source_values: frozenset[str],
-) -> int:
-    """Return the spec score in floored basis points for two spans."""
-
-    return score_bp(
-        len(claim_terms & source_terms),
-        len(claim_terms),
-        len(claim_values & source_values),
-        len(claim_values),
-    )
-
-
 def score_bp(matched_terms: int, total_terms: int, matched_values: int, total_values: int) -> int:
     """Return ``floor(score * 10_000)`` using integer arithmetic only.
 
@@ -1044,7 +1028,6 @@ __all__ = [
     "render_json",
     "retrieve",
     "exact_score",
-    "score",
     "score_bp",
     "segment",
     "values",

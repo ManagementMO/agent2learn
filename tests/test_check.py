@@ -18,6 +18,7 @@ from agent2learn.check import (
     CHECK_ALGORITHM_VERSION,
     DISCLOSURE,
     STRONG_MATCH_FLOOR_BP,
+    TOP_CITATIONS,
     Claim,
     LineIndex,
     ScanSource,
@@ -25,6 +26,7 @@ from agent2learn.check import (
     exact_score,
     render,
     render_json,
+    retrieve,
     score_bp,
     segment,
 )
@@ -415,3 +417,28 @@ def test_integer_scoring_equals_the_rational_definition(
                 exact_score(matched_terms, total_terms, matched_values, total_values) * 10_000
             )
             assert score_bp(matched_terms, total_terms, matched_values, total_values) == expected
+
+
+def test_the_public_retrieve_helper_matches_the_index_it_wraps(
+    fixture_course: tuple[Vault, Path], tmp_path: Path
+) -> None:
+    """`retrieve` is part of the documented interface, so it must behave like the index path."""
+    vault, course = fixture_course
+    twin = course / "content" / "MIP-Modelling.md"
+    sources = [
+        ScanSource(
+            path=twin,
+            citation_path=twin.relative_to(vault.root).as_posix(),
+            source_sha256="a" * 64,
+            derived_sha256="b" * 64,
+        )
+    ]
+    claim = Claim(line=1, text="we use binary variables y_i in {0,1}", kind="prose")
+
+    from_sequence = retrieve(claim, sources)
+    from_index = retrieve(claim, LineIndex(sources))
+
+    assert from_sequence == from_index
+    assert from_sequence[0].path.endswith("MIP-Modelling.md")
+    assert from_sequence[0].retrieval_score_bp >= STRONG_MATCH_FLOOR_BP
+    assert len(from_sequence) <= TOP_CITATIONS

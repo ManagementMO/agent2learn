@@ -540,3 +540,47 @@ def test_the_public_cli_refuses_because_the_build_disables_uploads(
 
     assert result.exit_code != 0
     assert "disabled in this build" in flatten_help(result.output)
+
+
+def test_the_cli_refuses_before_asking_the_user_to_authenticate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A disabled build must not send the user through sign-in for a feature it will refuse.
+
+    Sending them to `a2l auth` would be a false next action.
+    """
+    vault, _course = _vault(tmp_path)
+    monkeypatch.setattr(config, "load", lambda: config.Config(vault=vault.root))
+
+    def _explode() -> object:  # pragma: no cover - must never be reached
+        raise AssertionError("submit loaded a session before refusing")
+
+    monkeypatch.setattr("agent2learn.cli.session_store.load", _explode)
+    payload = _payload(tmp_path)
+
+    result = CliRunner().invoke(app, ["submit", "COURSE101", "Lab 4", str(payload)])
+
+    assert result.exit_code != 0
+    output = flatten_help(result.output)
+    assert "disabled in this build" in output
+    assert "a2l auth" not in output
+
+
+def test_a_disabled_build_refuses_before_it_asks_for_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Neither command may point at `a2l init` for an upload path this build does not have."""
+
+    def _explode() -> object:  # pragma: no cover - must never be reached
+        raise AssertionError("configuration was loaded before refusing")
+
+    monkeypatch.setattr(config, "load", _explode)
+    runner = CliRunner()
+
+    for argv in (["enable-submit"], ["submit", "COURSE101", "Lab 4", "draft.md"]):
+        result = runner.invoke(app, argv)
+        output = flatten_help(result.output)
+        assert result.exit_code != 0, argv
+        assert "disabled in this build" in output, argv
+        assert "a2l init" not in output, argv
+        assert "a2l auth" not in output, argv
