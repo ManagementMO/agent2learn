@@ -104,6 +104,64 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
           "$BIN/python" tools/smoke_installed_skills.py
 
+  installers:
+    # Proves the published one-command install path against the candidate wheel, never against
+    # PyPI. The local index is configured only in this process, and the installers themselves
+    # expose no way to point at an arbitrary package: the version they install is embedded.
+    name: installer · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+
+      - name: Build the candidate wheel
+        run: uv build
+
+      # A flat directory of candidate artifacts is a find-links source, not a simple index, and
+      # UV_FIND_LINKS scopes it to this job only. Dependencies still resolve normally; the point
+      # is that `agent2learn` itself can only come from the candidate build, because no release
+      # of it exists on PyPI. The installers cannot be pointed anywhere by a flag.
+      - name: Stage the candidate build as an isolated local source
+        run: |
+          set -euo pipefail
+          INDEX="$RUNNER_TEMP/a2l-candidate"
+          mkdir -p "$INDEX"
+          cp dist/*.whl dist/*.tar.gz "$INDEX/"
+          echo "UV_FIND_LINKS=$INDEX" >> "$GITHUB_ENV"
+
+      - name: Non-interactive install.sh keeps its hands off onboarding
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          output="$(bash install.sh 2>&1 | tee /dev/stderr)"
+          grep -Fq "run in a terminal: a2l init" <<< "$output"
+          grep -Fq "verified: " <<< "$output"
+          grep -Fq "$(uv run python -c 'import agent2learn; print(agent2learn.__version__)')" \
+            <<< "$output"
+
+      - name: Non-interactive install.ps1 keeps its hands off onboarding
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $output = (& ./install.ps1 | Out-String)
+          Write-Output $output
+          if ($output -notmatch 'run in a terminal: a2l init') { throw "missing handoff" }
+          if ($output -notmatch 'verified: ') { throw "missing verification" }
+
+      - name: The installers stay pinned and offer no package override
+        run: uv run pytest tests/test_installers.py -q
+
   dependencies:
     # The lock is the authority for release artifacts. This job exists to detect stale
     # bounds: it resolves WITHOUT the lock, so a dependency that has moved past our
