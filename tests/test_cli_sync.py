@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from click.utils import strip_ansi
+from conftest import strip_ansi
 from typer.testing import CliRunner
 
 from agent2learn import cli, config

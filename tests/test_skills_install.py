@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from click.utils import strip_ansi
+from conftest import strip_ansi
 from typer.testing import CliRunner
 
 from agent2learn import config, skills

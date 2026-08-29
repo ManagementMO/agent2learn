@@ -30,6 +30,12 @@ LP = "1.62"
 COURSE_A_OU = 111111
 COURSE_B_OU = 222222
 
+_ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+
+
+def strip_ansi(value: str) -> str:
+    return _ANSI_ESCAPE.sub("", value)
+
 
 def fixture_json(name: str) -> Any:
     return json.loads((API / name).read_text(encoding="utf-8"))
