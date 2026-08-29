@@ -2119,13 +2119,16 @@ Doctor could miss tracked `.a2l/private` and submission-receipt state.
 - [x] **Step 5b — final-review corrections.** Share one downloadable-topic predicate between ingest
       and estimates; implement the documented 200-character whole-PDF OCR trigger; and require
       saved initializer selection state so sync cannot silently broaden to every active course.
-      Commit `20cf4c9`; scoped re-review pending.
-- [ ] **Step 6 — final branch evidence.** The local candidate has **636 passing / 4 skipped / zero
-      warnings**, strict Ruff/format/mypy success, byte-reproducible fixtures, current notices, and a
-      local isolated-wheel smoke. Before checking this box: complete a fresh whole-branch review,
-      run all release gates, and—only after push is explicitly authorized—prove the **49-entry**
-      full-production golden candidate and installed-wheel smoke on all 14 CI jobs. Live three-OS
-      authentication and outline validation remain manual release gates.
+      Commit `20cf4c9`; scoped re-review clean.
+- [x] **Step 6 — final branch evidence.** The completed branch has **637 passing / 4 skipped / zero
+      warnings** locally, strict Ruff/format/mypy success, byte-reproducible fixtures, current
+      notices, an isolated-wheel smoke, and clean independent whole-branch reviews. The first pushed
+      matrix exposed forced-color assertions and an older gitleaks compatibility gap; commits
+      `40280a9` and `f5b00c5` fixed both without weakening the checks. All 14 jobs then passed in
+      [CI run 33226466258](https://github.com/ManagementMO/agent2learn/actions/runs/33226466258),
+      including the **49-entry** full-production golden candidate and installed-wheel smoke on
+      Windows, macOS, and Linux. Live three-OS authentication and outline validation remain manual
+      release gates.
 
 Do not begin Task 18 until Step 6 is complete or the user explicitly accepts a documented blocker.
 

@@ -25,13 +25,11 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-08-28
+## Current state — 2026-08-29
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
-- **Tasks 0 through 17 are complete as automated implementations.** A post-Task-17 **Task 16.5
-  integration-hardening candidate** is locally implemented and independently reviewed, but its
-  final whole-branch review and 14-job CI proof remain open. Do not resume Task 18 until those gates
-  close. Task 9's real-browser same-device validation remains a release gate.
+- **Tasks 0 through 17 and Task 16.5 are complete as automated implementations.** Resume at Task 18.
+  Task 9's real-browser same-device validation remains a release gate.
 - **The golden vault now exists and is the repository's regression tripwire.**
   `tests/fixtures/golden_vault.json` pins 49 files by SHA-256 after one full production
   metadata → explicit outline state → download → convert → index → snapshot → audit run against the
@@ -136,7 +134,7 @@ architecture.
   non-TTY-refusing, stale-plan-bound, symlink-safe, and allowlisted down to explicit files and
   structured records. Generated JSON rewrites are atomic, generated content is distinguishable
   from user files, and logical-deletion limits are stated in the preview.
-- **Task 16.5 candidate** — closes the system-level gap between completed libraries and the public
+- **Task 16.5 complete** — closes the system-level gap between completed libraries and the public
   product. `pipeline.py` is now the one metadata-first sync sequence used by `a2l sync`, `a2l init`,
   and the golden harness; it writes explicit outline/policy state, downloads by saved scope,
   converts all current local sources, refreshes indexes, writes one snapshot, and audits. Fresh
@@ -144,9 +142,10 @@ architecture.
   fails closed on unreadable/tracked private Git state and opens the required prefilled issue form.
   Deadlines use Waterloo local time, priority estimates share ingest's 200,000,000-byte planner,
   declined new terms are remembered without changing selection, notebook cells have deterministic
-  IDs, and installed-wheel skill discovery is a matrix smoke. Local evidence: 636 passed / 4
-  skipped / zero warnings; independent per-task reviews clean. Final whole-branch review and 14-job
-  CI remain required before this paragraph may say complete.
+  IDs, and installed-wheel skill discovery is a matrix smoke. Final evidence: 637 passed / 4
+  skipped / zero warnings locally; independent whole-branch review clean; all 14 jobs passed in
+  [CI run 33226466258](https://github.com/ManagementMO/agent2learn/actions/runs/33226466258), including
+  the 49-entry golden vault and installed-wheel smoke on Windows, macOS, and Linux.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,
