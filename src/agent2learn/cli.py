@@ -24,6 +24,7 @@ import typer
 from agent2learn import __version__, clock, config, console, paths
 from agent2learn import calendar as calendar_module
 from agent2learn import doctor as doctor_module
+from agent2learn import ground as ground_module
 from agent2learn import index as index_module
 from agent2learn import pipeline as pipeline_module
 from agent2learn import privacy as privacy_module
@@ -413,6 +414,27 @@ def where(
         ]
         target = ", ".join(value for value in locations if value) or "metadata only"
         typer.echo(f"{match.course} · {match.title} [{match.kind}] · {target}")
+
+
+@app.command()
+def ground(
+    course: str = typer.Argument(
+        ..., help="Course code, course folder, name, or term-qualified selector."
+    ),
+    item: str = typer.Argument(..., help="Assignment or lab name, such as Lab4 or 'Lab 4'."),
+) -> None:
+    """Assemble a cited grounding pack from current, provenance-backed class material."""
+
+    try:
+        _cfg, vault, _school = _local_vault()
+        pack = ground_module.write_grounding_pack(vault, course, item)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except OSError:
+        typer.echo("ground failed because local course material is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"grounding pack: {paths.rel_posix(pack.path, vault.root)}")
 
 
 @app.command("open")
