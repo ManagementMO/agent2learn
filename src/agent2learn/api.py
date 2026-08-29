@@ -244,6 +244,31 @@ class Client:
             if response is not None:
                 response.close()
 
+    def post_once(
+        self,
+        path: str,
+        body: bytes,
+        *,
+        content_type: str,
+    ) -> Response:
+        """Send exactly one mutating POST with an explicit length and no transport retry.
+
+        The caller owns the decision to mutate anything on LEARN, so this deliberately exposes no
+        retry, no redirect replay, and no endpoint fallback: a transient failure returns to the
+        caller with the request having been attempted exactly once.
+        """
+
+        if not isinstance(body, bytes):
+            raise ValueError("submission body must be bytes")
+        return self._request(
+            "POST",
+            path,
+            headers={"Content-Type": content_type, "Content-Length": str(len(body))},
+            stream=False,
+            mutating=True,
+            data=body,
+        )
+
     def _request(
         self,
         method: str,
@@ -252,6 +277,7 @@ class Client:
         headers: Mapping[str, str] | None = None,
         stream: bool,
         mutating: bool = False,
+        data: bytes | None = None,
     ) -> Response:
         """Issue a request with explicit redirects, retry, timeout, and egress policy."""
 
@@ -279,6 +305,7 @@ class Client:
                 timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
                 allow_redirects=False,
                 stream=stream,
+                data=data,
             )
 
             if response.status_code == 304:

@@ -32,6 +32,7 @@ from agent2learn import privacy as privacy_module
 from agent2learn import session as session_store
 from agent2learn import skills as skills_module
 from agent2learn import snapshot as snapshot_module
+from agent2learn import submit as submit_module
 from agent2learn.api import Client
 from agent2learn.auth import authenticate
 from agent2learn.auth import clear_profile as remove_profile
@@ -489,6 +490,77 @@ def check(
     typer.echo(rendered, nl=False)
     if strict and report.review_required:
         raise typer.Exit(code=1)
+
+
+@app.command("enable-submit")
+def enable_submit() -> None:
+    """Record a one-time local acknowledgement for uploads. This never uploads anything."""
+
+    try:
+        cfg, _vault, _school = _local_vault()
+        typer.echo(
+            "Upload is the only Agent2Learn action that changes anything in LEARN.\n"
+            "This acknowledgement alone never uploads: every file still needs a fresh\n"
+            "confirmation typed at your own terminal, and the preview always comes first."
+        )
+        submit_module.enable_submit(cfg)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except (OSError, ValueError):
+        typer.echo("enable-submit failed because local configuration is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo("submission acknowledged; each upload still requires your confirmation")
+
+
+@app.command()
+def submit(
+    course: Annotated[
+        str, typer.Argument(help="Course code, folder, name, or term-qualified selector.")
+    ],
+    item: Annotated[str, typer.Argument(help="Exact LEARN Dropbox folder name.")],
+    file: Annotated[Path, typer.Argument(help="The finished local file to upload.")],
+) -> None:
+    """Preview an upload to one LEARN Dropbox, then require your own typed confirmation."""
+
+    try:
+        cfg, vault, school = _local_vault()
+        try:
+            saved = session_store.load()
+        except (OSError, ValueError) as exc:
+            raise AuthenticationError("stored session is unreadable · run: a2l auth") from exc
+        if saved is None:
+            raise NotConfigured("no saved session · run: a2l auth")
+        client = Client(school, saved)
+        calibration = calibrate(client)
+        preview = submit_module.prepare(
+            vault,
+            client,
+            cfg,
+            course=course,
+            item=item,
+            file=file,
+            le_version=calibration.le,
+        )
+        typer.echo(submit_module.render_preview(preview), nl=False)
+        if not _interactive_terminal():
+            typer.echo("no controlling terminal: stopping at the preview", err=True)
+            raise typer.Exit(code=1)
+        phrase = typer.prompt("Type the phrase above to upload", default="")
+        receipt = submit_module.confirm_and_upload(
+            vault,
+            client,
+            preview,
+            phrase=phrase,
+            interactive=True,
+        )
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    except (OSError, ValueError):
+        typer.echo("submit failed because local state is unavailable", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"upload {receipt.status}: {receipt.outcome}")
 
 
 def _infer_course_dir(vault: Vault, draft: Path) -> Path:
