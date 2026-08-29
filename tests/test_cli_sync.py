@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from click.utils import strip_ansi
 from typer.testing import CliRunner
 
 from agent2learn import cli, config
@@ -69,28 +70,31 @@ def _configured_sync(
 
 def test_top_level_help_exposes_sync() -> None:
     result = CliRunner().invoke(cli.app, ["--help"])
+    output = strip_ansi(result.output)
 
     assert result.exit_code == 0
-    assert " sync " in result.output
+    assert " sync " in output
 
 
 def test_sync_help_exposes_only_public_scope_and_media_options() -> None:
     result = CliRunner().invoke(cli.app, ["sync", "--help"])
+    output = strip_ansi(result.output)
 
-    assert result.exit_code == 0, result.output
-    assert "--all" in result.output
-    assert "--priority" in result.output
-    assert "--include-media" in result.output
-    assert "--include-grades" not in result.output
-    assert "--include-discussions" not in result.output
-    assert "saved configuration" in result.output.casefold()
+    assert result.exit_code == 0, output
+    assert "--all" in output
+    assert "--priority" in output
+    assert "--include-media" in output
+    assert "--include-grades" not in output
+    assert "--include-discussions" not in output
+    assert "saved configuration" in output.casefold()
 
 
 def test_sync_rejects_all_and_priority_together() -> None:
     result = CliRunner().invoke(cli.app, ["sync", "--all", "--priority"])
+    output = strip_ansi(result.output)
 
     assert result.exit_code == 2
-    assert "--all and --priority are mutually exclusive" in result.output
+    assert "--all and --priority are mutually exclusive" in output
 
 
 def test_sync_uses_persisted_scope_and_configured_sensitive_categories(

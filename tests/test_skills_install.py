@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
 import pytest
+from click.utils import strip_ansi
 from typer.testing import CliRunner
 
 from agent2learn import config, skills
@@ -1029,9 +1031,10 @@ def test_repository_validator_enforces_staged_command_guards(tmp_path: Path) -> 
 
 def test_future_command_skills_guard_against_the_current_development_cli() -> None:
     help_result = CliRunner().invoke(app, ["--help"])
+    output = strip_ansi(help_result.output)
     assert help_result.exit_code == 0
-    assert " sync " in help_result.output
-    assert " check " not in help_result.output
+    assert " sync " in output
+    assert " check " not in output
 
     errors = skills.validate_skill_behavior_contracts(
         Path.cwd(), available_commands={"auth", "courses", "doctor", "fetch", "skills", "sync"}
@@ -1115,11 +1118,12 @@ def test_malicious_source_contract_gate_fails_when_a_prohibition_is_removed(
 
 def test_staged_command_registry_matches_actual_cli_help() -> None:
     help_result = CliRunner().invoke(app, ["--help"])
+    output = strip_ansi(help_result.output)
     assert help_result.exit_code == 0
     staged_dependencies = {
         command for values in skills._FUTURE_COMMANDS.values() for command in values
     }
-    actual = {command for command in staged_dependencies if f" {command} " in help_result.output}
+    actual = {command for command in staged_dependencies if f" {command} " in output}
     assert set(skills._IMPLEMENTED_SKILL_COMMANDS) == actual
 
 
@@ -1129,6 +1133,13 @@ def test_ci_smokes_skill_source_from_an_installed_wheel() -> None:
     assert "Installed wheel skill source smoke" in workflow
     assert "$RUNNER_TEMP/a2l-smoke-${{ matrix.os }}-${{ matrix.python }}" in workflow
     assert "tools/smoke_installed_skills.py" in workflow
+
+
+def test_ci_uses_one_current_gitleaks_version_for_incremental_and_full_scans() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    versions = re.findall(r"GITLEAKS_VERSION:\s*([^\s#]+)", workflow)
+
+    assert versions == ["8.30.1", "8.30.1"]
 
 
 def test_ci_wires_live_skills_schema_npx_and_upstream_mapping_checks() -> None:

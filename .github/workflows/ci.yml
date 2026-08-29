@@ -210,6 +210,7 @@ jobs:
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1
           GITLEAKS_CONFIG: .gitleaks.toml
           GITLEAKS_ENABLE_COMMENTS: "false"
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
@@ -219,7 +220,7 @@ jobs:
       # without echoing the secret into a public log. Cheap now; revisit if it slows.
       - name: Scan full reachable history
         env:
-          GITLEAKS_VERSION: 8.24.3 # matches the version the pinned action installs
+          GITLEAKS_VERSION: 8.30.1 # matches the version selected for the pinned action
         run: |
           set -euo pipefail
           curl -sSL -o /tmp/gitleaks.tar.gz \
