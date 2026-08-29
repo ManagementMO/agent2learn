@@ -9,7 +9,6 @@ runner.
 from __future__ import annotations
 
 import os
-import pty
 import re
 import selectors
 import shutil
@@ -28,8 +27,12 @@ PS1 = ROOT / "install.ps1"
 UV_VERSION = "0.12.5"
 HANDOFF = "run in a terminal: a2l init"
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="install.sh behaviour needs bash"
+# install.sh behaviour needs a POSIX shell and POSIX tools. Windows is covered by install.ps1,
+# which the CI installer job smokes directly. The contract tests below are pure text checks and
+# deliberately run everywhere, including Windows.
+posix_shell_only = pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("bash") is None,
+    reason="install.sh behaviour needs a POSIX shell",
 )
 
 
@@ -254,6 +257,7 @@ def test_the_windows_installer_explains_reopening_an_open_terminal() -> None:
 # --------------------------------------------------------------------------------------
 
 
+@posix_shell_only
 def test_an_absent_uv_is_installed_from_the_pinned_installer(tmp_path: Path) -> None:
     result, calls = _run(tmp_path, uv_version=None)
 
@@ -263,6 +267,7 @@ def test_an_absent_uv_is_installed_from_the_pinned_installer(tmp_path: Path) -> 
     assert HANDOFF in result.stdout
 
 
+@posix_shell_only
 def test_an_older_uv_is_replaced_and_disclosed(tmp_path: Path) -> None:
     result, calls = _run(tmp_path, uv_version="0.11.0")
 
@@ -271,6 +276,7 @@ def test_an_older_uv_is_replaced_and_disclosed(tmp_path: Path) -> None:
     assert "0.11.0" in result.stdout
 
 
+@posix_shell_only
 @pytest.mark.parametrize("version", ["0.12.5", "0.13.0", "1.0.0"])
 def test_an_equal_or_newer_uv_is_reused(tmp_path: Path, version: str) -> None:
     result, calls = _run(tmp_path, uv_version=version)
@@ -280,6 +286,7 @@ def test_an_equal_or_newer_uv_is_reused(tmp_path: Path, version: str) -> None:
     assert "curl" not in calls
 
 
+@posix_shell_only
 def test_a_malformed_uv_version_fails_with_one_actionable_message(tmp_path: Path) -> None:
     result, calls = _run(tmp_path, uv_version="banana")
 
@@ -292,6 +299,7 @@ def test_a_malformed_uv_version_fails_with_one_actionable_message(tmp_path: Path
     assert combined.casefold().count("https://astral.sh") <= 1
 
 
+@posix_shell_only
 def test_the_installer_previews_before_it_changes_anything(tmp_path: Path) -> None:
     result, _calls = _run(tmp_path, uv_version=None)
 
@@ -304,6 +312,7 @@ def test_the_installer_previews_before_it_changes_anything(tmp_path: Path) -> No
     assert any("does not create a vault" in line for line in lines[preview_at:action_at])
 
 
+@posix_shell_only
 def test_a_non_interactive_run_stops_after_verification(tmp_path: Path) -> None:
     result, calls = _run(tmp_path, uv_version=UV_VERSION)
 
@@ -313,6 +322,7 @@ def test_a_non_interactive_run_stops_after_verification(tmp_path: Path) -> None:
     assert "ONBOARDING-STARTED" not in result.stdout
 
 
+@posix_shell_only
 def test_a_version_mismatch_after_install_is_an_error(tmp_path: Path) -> None:
     result, _calls = _run(tmp_path, uv_version=UV_VERSION, a2l_version="9.9.9")
 
@@ -320,6 +330,7 @@ def test_a_version_mismatch_after_install_is_an_error(tmp_path: Path) -> None:
     assert "9.9.9" in result.stdout + result.stderr
 
 
+@posix_shell_only
 def test_running_the_installer_twice_is_idempotent(tmp_path: Path) -> None:
     first, _calls = _run(tmp_path, uv_version=UV_VERSION)
     second, _again = _run(tmp_path, uv_version=UV_VERSION)
@@ -328,9 +339,11 @@ def test_running_the_installer_twice_is_idempotent(tmp_path: Path) -> None:
     assert second.returncode == 0, second.stderr
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="pty is POSIX only")
+@posix_shell_only
 def test_an_interactive_run_proceeds_into_onboarding(tmp_path: Path) -> None:
     """With a real terminal on both ends the installer hands straight to consentful onboarding."""
+    import pty  # Unix only, so it is imported inside the POSIX-gated test.
+
     record = tmp_path / "calls.log"
     record.write_text("", encoding="utf-8")
     binary = _fake_bin(tmp_path, uv_version=UV_VERSION, record=record)
