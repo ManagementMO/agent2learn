@@ -53,7 +53,9 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          declared="$(uv run python -c 'import agent2learn; print(agent2learn.__version__)')"
+          # tr -d '\r': a bash shell on a Windows runner would otherwise compare "0.1.0\r"
+          # against "0.1.0" and refuse a correct tag.
+          declared="$(uv run python -c 'import agent2learn; print(agent2learn.__version__)' | tr -d '\r')"
           tag="${GITHUB_REF_NAME#v}"
           if [ "$declared" != "$tag" ]; then
             echo "tag $GITHUB_REF_NAME does not match declared version $declared" >&2
@@ -67,7 +69,7 @@ jobs:
       - name: Uploads must be disabled unless the release gate authorised them
         run: |
           set -euo pipefail
-          enabled="$(uv run python -c 'from agent2learn import _release; print(_release.SUBMISSION_AVAILABLE)')"
+          enabled="$(uv run python -c 'from agent2learn import _release; print(_release.SUBMISSION_AVAILABLE)' | tr -d '\r')"
           if [ "$enabled" != "False" ]; then
             if [ "${A2L_SUBMISSION_RELEASE_AUTHORISED:-}" != "yes" ]; then
               echo "SUBMISSION_AVAILABLE is True but the supervised upload gate was not recorded" >&2
