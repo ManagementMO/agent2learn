@@ -1,0 +1,50 @@
+# Agent2Learn
+
+> A local-first CLI that turns the material available through a University of Waterloo student's own
+> LEARN (D2L Brightspace) account into a durable local vault — original files beside Markdown twins,
+> a stable index, and citations that resolve to ordinary paths and line numbers — so a coding agent
+> can quote a course instead of guessing about it. Reads the student's own account only, over
+> ordinary GET requests against D2L's student API. Discussions and grades are off by default,
+> licensed eTextbooks and library e-resources are never downloaded, there is no telemetry and no
+> passive version check, and uploads are disabled in this build and always require a confirmation
+> phrase typed at the user's own terminal. `a2l check` reports what lexical retrieval matched in the
+> student's own course files, with citations; it does not grade work or establish correctness.
+> Not affiliated with the University of Waterloo or D2L Corporation.
+
+## Start here
+
+- [README](README.md): what it is, the three supported install options, what it does and does not
+  do, and the privacy defaults.
+- [Install guide for agents](docs/install.md): the same install content written as instructions to
+  an agent, including what an agent must not do on the user's behalf.
+- [Disclaimer](DISCLAIMER.md): non-affiliation and the user's responsibility for course rules.
+
+## Using it
+
+- [FAQ](docs/FAQ.md): PATH and "command not found", Windows terminals and long paths, missing
+  Tesseract, disk usage, moving the vault, uninstalling, grades on and off, why disabling collection
+  differs from purging, why submission may stay release-disabled, and the difference between an
+  upload preview and a verified upload.
+- [Authentication](docs/AUTHENTICATION.md): the dedicated browser profile, same-device cookie
+  scoping, Duo, keyring versus file fallback, expiry exit code 75, `--paste`, `--clear-profile`, and
+  recovery paths that never involve sending credentials to anyone.
+
+## Data and safety
+
+- [Privacy](docs/PRIVACY.md): a table of what is stored and where, every external network action and
+  who is contacted, report redaction, and the exact deletion commands with their honest limits.
+- [Security policy](SECURITY.md): how to report a vulnerability.
+- [Third-party notices](THIRD_PARTY_NOTICES.md): dependency licences.
+
+## Extending and deciding
+
+- [Porting to another school](docs/PORTING.md): the `School` protocol, `uwaterloo.py` as the worked
+  reference, every required field and method, and how to test an adapter offline.
+- [Deferred decisions](docs/FUTURE.md): what was deliberately left out of v0.1 and what evidence
+  would justify revisiting it, including the historical converter record.
+- [Launch gates](docs/LAUNCH.md): the checks that must pass before anything is published.
+
+## Optional
+
+- [Implementation context](AGENTS.md): the internal contributor briefing, authoritative for
+  contributors and unnecessary for users.

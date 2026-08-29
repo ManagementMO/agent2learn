@@ -4,7 +4,7 @@
   "groupings": [
     {
       "title": "Agent2Learn",
-      "description": "Skills for setting up, syncing, studying from, and doing coursework with a cited local Agent2Learn vault.",
+      "description": "Skills for setting up, syncing, studying from, and doing coursework with a cited local Agent2Learn vault. These are skill documents only: they describe the a2l command-line engine, which they do not install. Install Agent2Learn separately from https://github.com/ManagementMO/agent2learn before the commands they describe will exist.",
       "skills": [
         "a2l-setup",
         "a2l-sync",

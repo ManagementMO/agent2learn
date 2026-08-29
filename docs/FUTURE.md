@@ -38,7 +38,11 @@ backend**.
 
 **Revisit when:** any converter work happens. This is close to free.
 
-### `pymupdf4llm` as an alternate backend
+### Historical converter record: `pymupdf4llm` as an alternate backend
+
+**This entry is the historical record of a converter decision, kept so it is not relitigated from
+memory.** `pymupdf4llm` remains a viable *downstream* backend for users who prefer its output and
+who independently accept its AGPL terms. Agent2Learn does not ship or support it in v0.1.
 
 It recovers **more raw content** on the private corpus (100% baseline vs 96.4%) and does more
 selective per-region OCR than a whole-page threshold. It was not shipped because:
@@ -65,10 +69,16 @@ Documented so nobody rediscovers it: on OCR'd pages the alternate emits `andthe`
 
 ## Distribution and packaging
 
-### Vendor plugin manifests (Claude Code, Codex)
+### Vendor plugin manifests (Claude Code, Codex) and an MCP server
 
-v0.1 ships exactly one engine and one canonical `skills/` source. A `.claude-plugin/` manifest,
-marketplace listing, or MCP server would each be a second surface to keep in sync.
+**v0.1 keeps one Python engine and one canonical `skills/` source, on purpose.** Vendor plugins and
+npm runtimes are deferred, not rejected: a `.claude-plugin/` manifest, a marketplace listing, or an
+MCP server for live queries would each be a second surface to keep in sync with the engine, and a
+skills document that drifts from the CLI is worse than no plugin at all.
+
+A **Claude Code plugin** — slash commands plus a `SessionStart` briefing — is the strongest v0.2
+candidate, because it needs no new runtime and no second copy of the skills. An **MCP server** for
+live queries is the next candidate after that.
 
 **Revisit when:** the skills are stable and a specific marketplace has enough reach to justify the
 duplication.
