@@ -33,6 +33,7 @@ from agent2learn import session as session_store
 from agent2learn import skills as skills_module
 from agent2learn import snapshot as snapshot_module
 from agent2learn import submit as submit_module
+from agent2learn import upgrade as upgrade_module
 from agent2learn.api import Client
 from agent2learn.auth import authenticate
 from agent2learn.auth import clear_profile as remove_profile
@@ -561,6 +562,56 @@ def submit(
         typer.echo("submit failed because local state is unavailable", err=True)
         raise typer.Exit(code=1) from None
     typer.echo(f"upload {receipt.status}: {receipt.outcome}")
+
+
+@app.command()
+def upgrade(
+    check: bool = typer.Option(
+        False, "--check", help="Report the installed and latest versions without installing."
+    ),
+) -> None:
+    """Check for a newer Agent2Learn and install it.
+
+    This is the only command that contacts the network on its own behalf. It reads
+    https://pypi.org/pypi/agent2learn/json once, when you run it. Agent2Learn performs no
+    background version checks and sends no telemetry, so there is nothing to opt out of.
+    """
+
+    try:
+        latest = upgrade_module.latest_version()
+        plan = upgrade_module.plan_upgrade(
+            installed=upgrade_module.current_version(), latest=latest
+        )
+        typer.echo(upgrade_module.render_plan(plan), nl=False)
+        if check or not plan.needed:
+            return
+        upgrade_module.apply_upgrade(plan)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    typer.echo(f"upgraded to {plan.latest}")
+
+
+@app.command()
+def completions(
+    shell: Annotated[str, typer.Argument(help="One of: bash, zsh, fish, powershell.")],
+) -> None:
+    """Print a shell completion script for a2l to standard output.
+
+    Nothing is installed and no shell profile is edited: pipe or redirect the output yourself, so
+    the change to your shell stays yours to make and to undo.
+    """
+
+    shells = upgrade_module.completion_shells()
+    if shell not in shells:
+        typer.echo(f"unsupported shell: {shell}; choose one of {', '.join(shells)}", err=True)
+        raise typer.Exit(code=2)
+    try:
+        script = upgrade_module.completion_script(shell)
+    except A2LError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=exc.exit_code) from None
+    typer.echo(script, nl=False)
 
 
 def _infer_course_dir(vault: Vault, draft: Path) -> Path:

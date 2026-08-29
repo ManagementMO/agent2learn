@@ -1,0 +1,190 @@
+# Tag-triggered release. It builds the artifacts exactly once and then promotes those same bytes,
+# so what is verified, attested, and published is provably one build rather than three.
+#
+# Every action is pinned to a full commit SHA with the human-readable release in a comment. The
+# four SHAs added for this workflow were resolved through the GitHub API on 2026-08-28 by reading
+# the tag ref and, for the annotated tag on pypa/gh-action-pypi-publish, dereferencing it to its
+# commit — not copied from documentation.
+#
+# Publishing uses PyPI Trusted Publishing. There is no API token anywhere in this file, and
+# `id-token: write` is granted only to the two jobs that mint an OIDC token, never at top level.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Least privilege by default. Individual jobs add only what they need.
+permissions:
+  contents: read
+
+concurrency:
+  # Never let two runs for the same tag publish concurrently.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: build and verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync locked environment
+        run: uv sync --frozen --all-extras --dev
+
+      # A tag that disagrees with the packaged version would publish something nobody reviewed
+      # under a name people trust. Check it before anything is built.
+      - name: The tag must match the declared version
+        id: version
+        run: |
+          set -euo pipefail
+          declared="$(uv run python -c 'import agent2learn; print(agent2learn.__version__)')"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$declared" != "$tag" ]; then
+            echo "tag $GITHUB_REF_NAME does not match declared version $declared" >&2
+            exit 1
+          fi
+          echo "version=$declared" >> "$GITHUB_OUTPUT"
+
+      # The published default must be the reviewed one. Enabling the mutating submission path is a
+      # deliberate, separately authorised act, so a build that flips it cannot be released by
+      # simply pushing a tag.
+      - name: Uploads must be disabled unless the release gate authorised them
+        run: |
+          set -euo pipefail
+          enabled="$(uv run python -c 'from agent2learn import _release; print(_release.SUBMISSION_AVAILABLE)')"
+          if [ "$enabled" != "False" ]; then
+            if [ "${A2L_SUBMISSION_RELEASE_AUTHORISED:-}" != "yes" ]; then
+              echo "SUBMISSION_AVAILABLE is True but the supervised upload gate was not recorded" >&2
+              exit 1
+            fi
+            echo "::warning::publishing a build with SUBMISSION_AVAILABLE=True"
+          fi
+        env:
+          A2L_SUBMISSION_RELEASE_AUTHORISED: ${{ vars.A2L_SUBMISSION_RELEASE_AUTHORISED }}
+
+      - name: Full gate set
+        run: |
+          set -euo pipefail
+          uv run ruff check .
+          uv run ruff format --check src tests tools
+          uv run mypy src
+          uv run pytest -q
+          uv run python tools/generate_fixtures.py --check
+          uv run python tools/check_notices.py
+
+      # Build once. Everything downstream consumes this artifact.
+      - name: Build
+        run: uv build
+
+      - name: Metadata must render on PyPI
+        run: uvx --from twine twine check --strict dist/*
+
+      - name: Record the artifact hashes
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY' | tee dist/SHA256SUMS.txt
+          import hashlib
+          from pathlib import Path
+
+          for path in sorted(Path("dist").iterdir()):
+              if path.name == "SHA256SUMS.txt":
+                  continue
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              print(f"{digest}  {path.name}")
+          PY
+
+      - name: Generate an SBOM for the released dependency set
+        run: |
+          set -euo pipefail
+          uv run cyclonedx-py environment --output-format JSON --outfile dist/sbom.cdx.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-artifacts
+          path: dist/
+          if-no-files-found: error
+
+  attest:
+    name: attest provenance
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts
+          path: dist
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "dist/*.whl,dist/*.tar.gz"
+
+  testpypi:
+    name: publish to TestPyPI
+    needs: [build, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: testpypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts
+          path: dist
+
+      # The SBOM and hash list are release evidence, not distribution files.
+      - name: Keep only distributions
+        run: rm -f dist/SHA256SUMS.txt dist/sbom.cdx.json
+
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  pypi:
+    name: publish to PyPI
+    needs: [build, attest, testpypi]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # A protected environment is the human gate: the reviewer approving this deployment is what
+    # turns a pushed tag into a public release.
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts
+          path: dist
+
+      - name: Confirm the promoted bytes still match the recorded hashes
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+          rm -f SHA256SUMS.txt sbom.cdx.json
+
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
