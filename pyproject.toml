@@ -16,6 +16,10 @@ license-files = ["LICENSE"]
 # diff, regenerates the golden vault, and verifies bytes on all three operating systems.
 dependencies = [
     "typer>=0.15,<1",
+    # Typer's command objects are Click groups at runtime. Keep Click explicit rather than
+    # relying on an incidental transitive dependency (the strict doctor CLI-contract test
+    # imports ``click.Group`` directly).
+    "click>=8.2,<9",
     "rich>=13,<15",
     "requests>=2.32,<3",
     "platformdirs>=4.2,<5",

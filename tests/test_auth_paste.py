@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import json
+import sys
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import TextIO, cast
+from typing import Protocol, TextIO, cast
 
 import pytest
 from typer.testing import CliRunner
@@ -15,13 +17,15 @@ from agent2learn import session
 from agent2learn.auth import paste
 from agent2learn.cli import app
 
-try:
-    import termios
-except ImportError:  # pragma: no cover - only Windows lacks termios
-    termios = None  # type: ignore[assignment]
-
 BASE_URL = "https://learn.example.invalid"
 HARVESTED_AT = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+
+
+class _TermiosConstants(Protocol):
+    """The POSIX terminal constants asserted by the hidden-input test."""
+
+    ECHO: int
+    ICANON: int
 
 
 def _expected_session() -> session.Session:
@@ -211,10 +215,14 @@ def test_hidden_reader_refuses_piped_stdin_without_reading_it() -> None:
         )
 
 
-@pytest.mark.skipif(termios is None, reason="POSIX terminal API is unavailable on Windows")
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX terminal API is unavailable on Windows")
 def test_posix_hidden_reader_disables_and_restores_echo_even_on_interrupt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The collection-time marker prevents this import on Windows. Resolve it dynamically so the
+    # test module is still type-checkable there, where typeshed does not expose ``termios``.
+    termios = cast(_TermiosConstants, importlib.import_module("termios"))
+
     class FakeInput:
         def fileno(self) -> int:
             return 17

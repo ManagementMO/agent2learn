@@ -8,6 +8,7 @@ runner.
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import selectors
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Protocol, cast
 
 import pytest
 
@@ -34,6 +36,12 @@ posix_shell_only = pytest.mark.skipif(
     sys.platform == "win32" or shutil.which("bash") is None,
     reason="install.sh behaviour needs a POSIX shell",
 )
+
+
+class _PtyModule(Protocol):
+    """The single POSIX API exercised by the interactive installer test."""
+
+    def openpty(self) -> tuple[int, int]: ...
 
 
 def _read(path: Path) -> str:
@@ -342,7 +350,9 @@ def test_running_the_installer_twice_is_idempotent(tmp_path: Path) -> None:
 @posix_shell_only
 def test_an_interactive_run_proceeds_into_onboarding(tmp_path: Path) -> None:
     """With a real terminal on both ends the installer hands straight to consentful onboarding."""
-    import pty  # Unix only, so it is imported inside the POSIX-gated test.
+    # The collection-time POSIX marker prevents this import on Windows. Resolve it dynamically so
+    # the same test module remains type-checkable under Windows' platform stubs.
+    pty = cast(_PtyModule, importlib.import_module("pty"))
 
     record = tmp_path / "calls.log"
     record.write_text("", encoding="utf-8")
