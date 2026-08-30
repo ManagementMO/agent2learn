@@ -24,11 +24,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
-import requests
+from requests import PreparedRequest, Response
 from requests.adapters import HTTPAdapter
+
+if TYPE_CHECKING:
+    from requests._types import CertType, TimeoutType, VerifyType
 
 from agent2learn import clock
 from agent2learn.api import Client
@@ -55,13 +58,21 @@ class _CanonicalOriginAdapter(HTTPAdapter):
         self._actual = actual
         super().__init__()
 
-    def send(self, request: Any, **kwargs: Any) -> Any:
+    def send(
+        self,
+        request: PreparedRequest,
+        stream: bool = False,
+        timeout: TimeoutType = None,
+        verify: VerifyType = True,
+        cert: CertType = None,
+        proxies: dict[str, str] | None = None,
+    ) -> Response:
         if request.url and request.url.startswith(self._canonical):
             request.url = self._actual + request.url[len(self._canonical) :]
-        return super().send(request, **kwargs)
+        return super().send(request, stream, timeout, verify, cert, proxies)
 
 
-@dataclass(frozen=True)
+@dataclass
 class GoldenSchool:
     """A school pointed at the synthetic server, with Waterloo's real exclusion policy.
 
@@ -92,15 +103,6 @@ class GoldenSchool:
         return CONSERVATIVE_TOPIC_EXCLUSION_POLICY
 
 
-@dataclass(frozen=True)
-class GoldenSession:
-    base_url: str
-    xsrf: str | None = None
-
-    def requests_cookies(self) -> requests.cookies.RequestsCookieJar:
-        return requests.cookies.RequestsCookieJar()
-
-
 @pytest.fixture
 def frozen_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[datetime]:
     """Freeze the shared clock seam so every generated timestamp is reproducible."""
@@ -122,7 +124,9 @@ def run_full_pipeline(
     monkeypatch.setattr("agent2learn.api.JITTER_MAX", 0.0)
 
     school = GoldenSchool(CANONICAL_ORIGIN)
-    client = Client(school, GoldenSession(CANONICAL_ORIGIN), workers=1)
+    from agent2learn.session import Session
+
+    client = Client(school, Session(CANONICAL_ORIGIN, (), None, FROZEN_NOW, None), workers=1)
     client._transport.mount(CANONICAL_ORIGIN, _CanonicalOriginAdapter(CANONICAL_ORIGIN, base_url))
 
     Vault.claim(root)

@@ -8,10 +8,12 @@ proves the CLI's ordering and persistence contract rather than duplicating brows
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from typer.testing import CliRunner
@@ -33,6 +35,12 @@ class InitWorld:
     metadata_calls: list[dict[str, object]]
     file_calls: list[dict[str, object]]
     auth_backends: list[str]
+
+
+@dataclass
+class _FakeClient:
+    courses: list[CourseRef]
+    calibration: Calibration | None = None
 
 
 def _isolated_dirs(root: Path) -> SimpleNamespace:
@@ -186,11 +194,11 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
         world.auth_backends.append(backend)
         return fake_session
 
-    def fake_client(_school: object, _session: object) -> object:
+    def fake_client(_school: object, _session: object) -> _FakeClient:
         world.events.append("client")
-        return SimpleNamespace(courses=world.courses)
+        return _FakeClient(world.courses)
 
-    def fake_calibrate(client: object) -> Calibration:
+    def fake_calibrate(client: _FakeClient) -> Calibration:
         world.events.append("discovery")
         calibration = _calibration(world.courses)
         client.calibration = calibration
@@ -203,7 +211,7 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
         school: object,
         *,
         term: str | None = None,
-        only: object = None,
+        only: Iterable[int | str] | None = None,
         include_grades: bool = False,
         create_snapshot: bool = True,
     ) -> MetadataReport:
@@ -221,7 +229,7 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
         school: object,
         *,
         term: str | None = None,
-        only: object = None,
+        only: Iterable[int | str] | None = None,
         scope: str = "all",
         include_media: bool = False,
         **kwargs: object,
@@ -253,22 +261,24 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
     def fake_pipeline(*args: object, **kwargs: object) -> object:
         file_report = FileReport()
         if kwargs.get("download_files", True):
-            file_report = fake_files(*args, **kwargs)
+            file_report = cast(Callable[..., FileReport], fake_files)(*args, **kwargs)
         return SimpleNamespace(files=file_report, exit_code=0, errors=())
+
+    def record_destination(**kwargs: object) -> tuple[Destination, ...]:
+        world.events.append("skill_preview")
+        project = cast(Path, kwargs["project"])
+        return (
+            Destination(
+                path=project / ".agents" / "skills",
+                agents=("Claude Code", "Codex"),
+            ),
+        )
 
     monkeypatch.setattr(cli.pipeline_module, "run_pipeline", fake_pipeline)
     monkeypatch.setattr(
         cli.skills_module,
         "detect_destinations",
-        lambda **kwargs: (
-            world.events.append("skill_preview")
-            or (
-                Destination(
-                    path=kwargs["project"] / ".agents" / "skills",
-                    agents=("Claude Code", "Codex"),
-                ),
-            )
-        ),
+        record_destination,
     )
     monkeypatch.setattr(
         cli.skills_module,
@@ -282,7 +292,10 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
 
 
 def _state(root: Path) -> dict[str, object]:
-    return json.loads(root.joinpath(".a2l", "init.json").read_text(encoding="utf-8"))
+    return cast(
+        dict[str, object],
+        json.loads(root.joinpath(".a2l", "init.json").read_text(encoding="utf-8")),
+    )
 
 
 def test_init_noninteractive_has_no_side_effects_and_hands_off_to_tty(
@@ -515,7 +528,7 @@ def test_init_full_reuses_production_pipeline_with_completed_metadata(
     _prepare_world(monkeypatch, tmp_path)
     calls: list[dict[str, object]] = []
     snapshot_flags: list[object] = []
-    metadata_ingest = cli.ingest_metadata
+    metadata_ingest: Callable[..., MetadataReport] = cli.ingest_metadata
 
     def metadata_without_snapshot(*args: object, **kwargs: object) -> MetadataReport:
         snapshot_flags.append(kwargs.get("create_snapshot"))
@@ -570,7 +583,7 @@ def test_init_opt_in_grades_and_full_files_after_estimate(
     world = _prepare_world(monkeypatch, tmp_path)
     original_estimator = cli._print_file_estimates
 
-    def recording_estimate(report: MetadataReport | None) -> None:
+    def recording_estimate(report: Iterable[object]) -> None:
         world.events.append("estimate")
         original_estimator(report)
 

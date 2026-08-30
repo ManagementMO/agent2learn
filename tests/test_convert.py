@@ -204,9 +204,13 @@ def test_pdf_ocr_threshold_is_strict_and_uses_external_ocr_only(
     document = _FakePdf((eighty, seventy_nine))
     ocr_calls: list[bytes] = []
 
+    def read_ocr(image: bytes) -> str:
+        ocr_calls.append(image)
+        return "OCR replacement"
+
     backend = PdfOxideBackend(
         document_factory=lambda _source: document,
-        ocr_reader=lambda image: ocr_calls.append(image) or "OCR replacement",
+        ocr_reader=read_ocr,
     )
     source = tmp_path / "synthetic.pdf"
     source.write_bytes(b"%PDF-synthetic")
@@ -227,9 +231,14 @@ def test_pdf_under_200_total_text_characters_forces_ocr_even_with_80_words(
     assert len(sparse) < 200
     document = _FakePdf((sparse,))
     ocr_calls: list[bytes] = []
+
+    def read_ocr(image: bytes) -> str:
+        ocr_calls.append(image)
+        return "OCR recovered content"
+
     backend = PdfOxideBackend(
         document_factory=lambda _source: document,
-        ocr_reader=lambda image: ocr_calls.append(image) or "OCR recovered content",
+        ocr_reader=read_ocr,
     )
     source = tmp_path / "sparse.pdf"
     source.write_bytes(b"%PDF-synthetic")

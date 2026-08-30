@@ -6,12 +6,12 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import quote
 
 from agent2learn import config, paths
-from agent2learn.api import Client
 from agent2learn.errors import A2LError, NotConfigured
+from agent2learn.schools import School
 
 _CALIBRATION_FILENAME = "calibration.json"
 _SCHEMA_VERSION = 1
@@ -42,7 +42,20 @@ class Calibration:
     calibrated_at: str | None = None
 
 
-def calibrate(client: Client) -> Calibration:
+class CalibrationClient(Protocol):
+    """The small mutable client surface needed during calibration."""
+
+    @property
+    def school(self) -> School: ...
+
+    lp_version: str | None
+    le_version: str | None
+    download_template: str | None
+
+    def get_json(self, path: str) -> object: ...
+
+
+def calibrate(client: CalibrationClient) -> Calibration:
     """Discover versions, verify the session, enumerate enrolments, and persist the result.
 
     Calibration intentionally makes no content, file, grades, or discussion request.  A download
@@ -133,7 +146,7 @@ def _versions(raw: Any) -> tuple[str, str]:
     return lp, le
 
 
-def _enumerate_courses(client: Client, lp: str) -> list[CourseRef]:
+def _enumerate_courses(client: CalibrationClient, lp: str) -> list[CourseRef]:
     courses: list[CourseRef] = []
     bookmark: str | None = None
     seen_bookmarks: set[str] = set()
@@ -171,7 +184,7 @@ def _enumerate_courses(client: Client, lp: str) -> list[CourseRef]:
     return sorted(courses, key=lambda course: (course.code.casefold(), course.org_unit_id))
 
 
-def _course_from_item(client: Client, raw: object) -> CourseRef | None:
+def _course_from_item(client: CalibrationClient, raw: object) -> CourseRef | None:
     if not isinstance(raw, dict):
         raise A2LError("enrolment item is invalid")
     org_unit = raw.get("OrgUnit")

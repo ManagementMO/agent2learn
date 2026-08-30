@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from agent2learn import config
@@ -48,7 +49,7 @@ def _write_calibration(state: Path) -> None:
 
 
 def test_courses_requires_calibration_and_prints_one_safe_next_command(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(config, "state_dir", lambda: tmp_path)
 
@@ -61,7 +62,7 @@ def test_courses_requires_calibration_and_prints_one_safe_next_command(
 
 
 def test_courses_default_is_active_academic_and_json_is_deterministic(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(config, "state_dir", lambda: tmp_path)
     _write_calibration(tmp_path)
@@ -85,7 +86,7 @@ def test_courses_default_is_active_academic_and_json_is_deterministic(
 
 
 def test_courses_all_terms_includes_inactive_offerings_and_summary(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(config, "state_dir", lambda: tmp_path)
     _write_calibration(tmp_path)

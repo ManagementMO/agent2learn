@@ -16,7 +16,7 @@ BASE_URL = "https://learn.example.invalid"
 
 
 def _sample_session(*, unrelated: bool = False) -> session.Session:
-    cookies = (
+    cookies: tuple[session.SessionCookie, ...] = (
         session.SessionCookie(
             name="d2lSessionVal",
             value="synthetic-session",

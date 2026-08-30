@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from ingest_support import FakeClient, course
+from ingest_support import DownloadHandler, FakeClient, course
 
 from agent2learn import ingest as ingest_module
 from agent2learn.api import DownloadError, DownloadResult
@@ -60,7 +60,9 @@ def _map_files(root: Path) -> list[Path]:
 def _map(root: Path) -> dict[str, object]:
     paths = _map_files(root)
     assert len(paths) == 1
-    return json.loads(paths[0].read_text(encoding="utf-8"))
+    raw = json.loads(paths[0].read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
 
 
 def _topic_rows(root: Path) -> list[dict[str, object]]:
@@ -133,7 +135,9 @@ def test_metadata_refuses_a_linked_course_directory_without_writing_outside_vaul
     assert not list(outside.rglob("*"))
 
 
-def _handler_for(payloads: dict[str, bytes], *, last_modified: str | None = None):
+def _handler_for(
+    payloads: dict[str, bytes], *, last_modified: str | None = None
+) -> DownloadHandler:
     def download(url: str, temp: Path, prior: object | None) -> DownloadResult:
         del prior
         key = urlsplit(url).path.rsplit("/", 1)[-1]
@@ -279,7 +283,7 @@ def test_interrupted_stream_preserves_previous_file_and_manifest(tmp_path: Path)
 
     after = Vault(tmp_path).entry("uwaterloo:111111:topic:1")
     assert after == before
-    assert Vault(tmp_path).materialized(after).read_bytes() == before_bytes  # type: ignore[arg-type]
+    assert Vault(tmp_path).materialized(after).read_bytes() == before_bytes
     assert not list(tmp_path.rglob("*.part"))
 
 
@@ -924,13 +928,18 @@ def test_unknown_size_stays_metadata_only_until_confirmed_one_file_fetch(tmp_pat
         fetch_topic(fake_client, vault, fake_client.school, "1")
 
     confirmations: list[int | None] = []
+
+    def confirm_large(size: int | None) -> bool:
+        confirmations.append(size)
+        return True
+
     result = fetch_topic(
         fake_client,
         vault,
         fake_client.school,
         "1",
         allow_large=True,
-        confirm=lambda size: confirmations.append(size) or True,
+        confirm=confirm_large,
     )
     assert confirmations == [None]
     assert result.source_path is not None

@@ -67,6 +67,8 @@ description and the one that survives a hostile reading.
       enabling the release capability. Group submissions, closed folders, and large files remain
       unvalidated, so the shipped default stays disabled behind `a2l enable-submit` plus a per-file
       interactive confirmation, and launch copy says exactly that.
+      The exact human procedure and separate POST/read-back PASS criteria are recorded in
+      [`docs/SUBMISSION_VALIDATION.md`](SUBMISSION_VALIDATION.md).
 - [ ] The dependency/license review, third-party notices, SBOM, secret scan, and synthetic fixture
       review are signed off for the exact release artifacts.
 - [x] The private 262-PDF converter acceptance corpus passed at the shipped 80-words-per-page

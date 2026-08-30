@@ -7,8 +7,11 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Iterator
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TextIO, cast
 
 import pytest
 from platformdirs import PlatformDirs
@@ -17,9 +20,9 @@ from agent2learn import __version__, config, console
 from agent2learn.errors import A2LError, NotConfigured, SessionExpired
 
 
-class _Stream(io.StringIO):
+class _Stream:
     def __init__(self, *, tty: bool, encoding: str) -> None:
-        super().__init__()
+        self._buffer = io.StringIO()
         self._tty = tty
         self._encoding = encoding
 
@@ -29,6 +32,15 @@ class _Stream(io.StringIO):
 
     def isatty(self) -> bool:
         return self._tty
+
+    def write(self, value: str) -> int:
+        return self._buffer.write(value)
+
+    def flush(self) -> None:
+        self._buffer.flush()
+
+    def getvalue(self) -> str:
+        return self._buffer.getvalue()
 
 
 def _temporary_dirs(root: Path) -> SimpleNamespace:
@@ -48,7 +60,7 @@ def isolated_dirs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleName
 
 
 @pytest.fixture
-def isolated_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def isolated_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
     directories = _temporary_dirs(tmp_path)
     monkeypatch.setattr(config, "DIRS", directories)
     yield directories.user_log_path
@@ -282,7 +294,7 @@ def test_error_taxonomy_has_stable_exit_codes() -> None:
 def test_ascii_glyphs_are_used_when_stream_cannot_encode_checkmark() -> None:
     stream = _Stream(tty=True, encoding="ascii")
 
-    assert console._glyphs_for(stream) == {
+    assert console._glyphs_for(cast(TextIO, stream)) == {
         "ok": "[ok]",
         "warn": "[!]",
         "fail": "[x]",
@@ -293,7 +305,7 @@ def test_ascii_glyphs_are_used_when_stream_cannot_encode_checkmark() -> None:
 def test_unicode_glyphs_are_used_when_stream_supports_them() -> None:
     stream = _Stream(tty=True, encoding="utf-8")
 
-    assert console._glyphs_for(stream) == {
+    assert console._glyphs_for(cast(TextIO, stream)) == {
         "ok": "✓",
         "warn": "⚠",
         "fail": "✗",
@@ -329,7 +341,7 @@ def test_rotating_log_handler_is_bounded_and_allowlisted(isolated_logs: Path) ->
     handlers = [handler for handler in logger.handlers if isinstance(handler, logging.Handler)]
 
     assert len(handlers) == 1
-    handler = handlers[0]
+    handler = cast(RotatingFileHandler, handlers[0])
     assert handler.maxBytes == 1_048_576
     assert handler.backupCount == 4
     assert config.log_path() == isolated_logs / "a2l.log"

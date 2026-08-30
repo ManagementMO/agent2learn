@@ -7,6 +7,7 @@ import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import IO, Any, cast
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -118,12 +119,13 @@ def test_render_uses_the_safe_default_next_command_when_everything_passes() -> N
 
 def test_every_next_command_names_a_registered_cli_command() -> None:
     """Doctor recovery output cannot route a user to a command the CLI does not expose."""
+    from click import Group
     from typer.main import get_command
     from typer.testing import CliRunner
 
     from agent2learn.cli import app
 
-    registered = set(get_command(app).commands)
+    registered = set(cast(Group, get_command(app)).commands)
     assert set(doctor._REGISTERED_CLI_COMMANDS) <= registered
     scenarios = [
         [doctor.Check("Environment", "healthy", "ok", "fine")],
@@ -581,9 +583,35 @@ def test_real_v4_index_invokes_the_bounded_git_ls_files_fallback(
     real_run = subprocess.run
     calls: list[tuple[list[str], dict[str, object]]] = []
 
-    def record_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
-        calls.append((command, kwargs))
-        return real_run(command, **kwargs)  # type: ignore[arg-type,return-value]
+    def record_run(
+        command: list[str],
+        *,
+        stdin: int | IO[Any] | None = None,
+        stdout: int | IO[Any] | None = None,
+        stderr: int | IO[Any] | None = None,
+        check: bool = False,
+        shell: bool = False,
+        timeout: float | None = None,
+    ) -> subprocess.CompletedProcess[bytes]:
+        command_list = command
+        kwargs: dict[str, object] = {
+            "stdin": stdin,
+            "stdout": stdout,
+            "stderr": stderr,
+            "check": check,
+            "shell": shell,
+            "timeout": timeout,
+        }
+        calls.append((command_list, kwargs))
+        return real_run(
+            command_list,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            check=check,
+            shell=shell,
+            timeout=timeout,
+        )
 
     monkeypatch.setattr(doctor.subprocess, "run", record_run)
 

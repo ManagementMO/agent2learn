@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from ingest_support import FakeClient, course
@@ -149,8 +149,11 @@ class _UnavailablePageSource:
 
 
 def _status_rows(metadata: MetadataReport) -> list[dict[str, object]]:
-    return json.loads(
-        (metadata.courses[0].directory / "_meta" / "outlines.json").read_text(encoding="utf-8")
+    return cast(
+        list[dict[str, object]],
+        json.loads(
+            (metadata.courses[0].directory / "_meta" / "outlines.json").read_text(encoding="utf-8")
+        ),
     )
 
 
@@ -162,7 +165,9 @@ def test_multiple_outlines_reject_a_single_borrowed_browser_before_rendering(
     borrowed = outlines.CDPOutlineBrowser(connection)
 
     with pytest.raises(TypeError, match="OutlineBrowserFactory"):
-        outlines.ingest_outlines(borrowed, vault, UWaterloo(), metadata)
+        outlines.ingest_outlines(
+            cast(outlines.OutlineBrowserFactory, borrowed), vault, UWaterloo(), metadata
+        )
 
     assert connection.events == []
 

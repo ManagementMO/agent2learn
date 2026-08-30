@@ -107,8 +107,9 @@ architecture.
      each guard's decision still run everywhere.
 - **Tasks 18–23 were implemented by the controller directly, without reviewer subagents**, at the
   user's instruction. Reviews are controller self-reviews plus scripted perturbation harnesses in
-  `.superpowers/sdd/2026-08-24-agent2learn-public-release/`; that is weaker than an independent
-  fresh-context review and is recorded as such in `progress.md`.
+  [`tools/perturb/`](tools/perturb/); the three tracked scripts now mutate and prove all 30
+  submission, installer, and upgrade/release guards load-bearing. This is still weaker than an
+  independent fresh-context review and is recorded as such in `progress.md`.
 - **Task 20 deviated from TDD:** `submit.py` was written before its tests. Compensated with a
   12-gate perturbation harness, but recorded as a deviation rather than presented as compliance.
 - **The golden vault now exists and is the repository's regression tripwire.**
@@ -238,7 +239,8 @@ architecture.
   cover the discovered failures; they do not waive Task 9 live validation or any later release
   gate.
 - **Run the gates before believing a change is done:** `uv sync --frozen --all-extras --dev` then
-  `uv run ruff check .`, `uv run ruff format --check src tests tools`, `uv run mypy src`, `uv run pytest -q`,
+  `uv run ruff check .`, `uv run ruff format --check src tests tools`, `uv run mypy src tests tools`, `uv run pytest -q`,
+  `uv run pytest --cov=agent2learn --cov-branch --cov-report=term-missing`,
   `uv run python tools/generate_fixtures.py --check`, `uv run python tools/check_notices.py`.
 - **Verify a new gate by making it fail.** Every safety check added so far was confirmed by
   perturbation — seven fixture mutations, a notices-drift injection, a deliberately-broken offline
@@ -252,8 +254,10 @@ architecture.
   still needs owner-side setup, while the GitHub `testpypi` and `pypi` environments now exist with
   required owner review and administrator bypass disabled; GitHub private vulnerability reporting,
   Dependabot alerts, and Dependabot security updates are enabled (2026-08-30); `mypy` covers
-  `src/` only (`tests/` and `tools/` have unresolved annotations); there is no coverage measurement
-  yet; three Dependabot PRs propose versions past the declared caps and each needs a human decision.
+  `src/`, `tests/`, and `tools/`; coverage is measured in `docs/COVERAGE.md` with a 77.5% branch
+  floor in CI;
+  three Dependabot PRs propose versions past the declared caps; their recommendations are in
+  `docs/DEPENDABOT_REVIEW.md`, but each still needs a human merge/hold decision.
 - Do not publish a package, create a GitHub release, or register a production domain yet.
 - **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
   - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same

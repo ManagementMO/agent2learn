@@ -20,8 +20,9 @@ import subprocess
 import sys
 import warnings
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import nbformat
 import pytest
@@ -39,6 +40,7 @@ JSON_FILES = sorted(API.glob("*.json"))
 # --------------------------------------------------------------------------------------
 ALLOWED_IDENTITY_TOKENS = {
     "Alex",
+    "Alex Example",
     "Example",
     "aexample",
     "99999999",
@@ -70,7 +72,7 @@ ALLOWED_TIMESTAMPS = {
 }
 
 
-def _walk(node: Any, path: str = "$"):
+def _walk(node: Any, path: str = "$") -> Iterator[tuple[str, Any]]:
     """Yield (json-path, value) for every scalar in a decoded document."""
     if isinstance(node, dict):
         for k, v in node.items():
@@ -82,7 +84,7 @@ def _walk(node: Any, path: str = "$"):
         yield path, node
 
 
-def _strings(node: Any):
+def _strings(node: Any) -> Iterator[tuple[str, str]]:
     for p, v in _walk(node):
         if isinstance(v, str):
             yield p, v
@@ -100,7 +102,7 @@ def _shannon(s: str) -> float:
 # Per-endpoint key contracts. Unknown keys fail: schema drift must be a review, not an
 # accident.
 # --------------------------------------------------------------------------------------
-def _keys(obj: dict) -> set[str]:
+def _keys(obj: dict[str, Any]) -> set[str]:
     return set(obj.keys())
 
 
@@ -173,11 +175,37 @@ def test_top_level_keys_match_contract(path: Path) -> None:
             assert not unknown, f"{path.name}[{i}]: unknown keys {sorted(unknown)}"
 
 
+def test_submission_fixture_matches_documented_entity_dropbox_shape() -> None:
+    """Keep the read-back fixture anchored to D2L's EntityDropbox response contract."""
+    records = load(API / "submissions_readback_course101.json")
+    assert isinstance(records, list) and len(records) == 1
+    record = records[0]
+    assert isinstance(record, dict)
+    entity = record.get("Entity")
+    assert isinstance(entity, dict)
+    assert entity.get("EntityType") == "User"
+    assert isinstance(entity.get("EntityId"), int)
+    submissions = record.get("Submissions")
+    assert isinstance(submissions, list) and len(submissions) == 1
+    submission = submissions[0]
+    assert isinstance(submission, dict)
+    submitted_by = submission.get("SubmittedBy")
+    assert isinstance(submitted_by, dict)
+    assert isinstance(submitted_by.get("Id"), str)
+    assert submission.get("SubmissionDate") in ALLOWED_TIMESTAMPS
+    files = submission.get("Files")
+    assert isinstance(files, list) and len(files) == 1
+    file = files[0]
+    assert isinstance(file, dict)
+    assert isinstance(file.get("FileName"), str)
+    assert isinstance(file.get("Size"), int)
+
+
 @pytest.mark.parametrize(
     "path", [p for p in JSON_FILES if p.name.startswith("content_toc")], ids=lambda p: p.name
 )
 def test_toc_modules_and_topics_match_contract(path: Path) -> None:
-    def check_module(m: dict, where: str) -> None:
+    def check_module(m: dict[str, Any], where: str) -> None:
         unknown = _keys(m) - MODULE_KEYS
         assert not unknown, f"{where}: unknown module keys {sorted(unknown)}"
         assert isinstance(m["ModuleId"], int)
@@ -201,7 +229,7 @@ def test_topic_ids_are_unique_across_the_corpus() -> None:
         if not path.name.startswith("content_toc"):
             continue
 
-        def collect(m: dict, src: str = path.name) -> None:
+        def collect(m: dict[str, Any], src: str = path.name) -> None:
             for t in m["Topics"]:
                 assert t["TopicId"] not in seen, (
                     f"TopicId {t['TopicId']} appears in both {seen.get(t['TopicId'])} and {src}"
@@ -363,7 +391,7 @@ def test_toc_contains_every_required_adversarial_case() -> None:
     urls: list[str] = []
     kinds: list[str] = []
 
-    def collect(m: dict) -> None:
+    def collect(m: dict[str, Any]) -> None:
         titles.append(m["Title"])
         for t in m["Topics"]:
             titles.append(t["Title"])
@@ -401,7 +429,11 @@ def test_notebook_fixture_has_deterministic_ids_and_needs_no_implicit_repair() -
 
     with warnings.catch_warnings(record=True) as captured:
         warnings.simplefilter("always")
-        notebook = nbformat.reads(json.dumps(raw), as_version=4)
+        # nbformat's runtime parser is untyped; validation below is the contract this test owns.
+        notebook = cast(
+            nbformat.NotebookNode,
+            nbformat.reads(json.dumps(raw), as_version=4),  # type: ignore[no-untyped-call]
+        )
         nbformat.validate(notebook)
 
     assert not [item for item in captured if issubclass(item.category, MissingIDFieldWarning)]

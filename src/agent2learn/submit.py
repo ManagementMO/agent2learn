@@ -679,7 +679,7 @@ def _verify(client: SubmissionTransport, preview: SubmissionPreview, confirmed_a
         raise SubmissionUnverified("read-back was not a submission list; confirm in LEARN")
 
     matches = []
-    for entry in _iter_files(records):
+    for entry in _iter_files(records, expected_user_id=_current_user_id(client)):
         filename = entry.get("FileName")
         if (
             isinstance(filename, str)
@@ -713,7 +713,9 @@ def _verify(client: SubmissionTransport, preview: SubmissionPreview, confirmed_a
     return "read-back matched folder, filename, size, and a timestamp after confirmation"
 
 
-def _iter_files(records: list[object]) -> list[dict[str, object]]:
+def _iter_files(
+    records: list[object], *, expected_user_id: str | None = None
+) -> list[dict[str, object]]:
     files: list[dict[str, object]] = []
     for record in records:
         if not isinstance(record, dict):
@@ -726,6 +728,18 @@ def _iter_files(records: list[object]) -> list[dict[str, object]]:
             # this check even though the route scopes it, so a route or server-shape regression
             # cannot silently attribute a teammate's file.
             continue
+        entity_id = entity.get("EntityId") if isinstance(entity, dict) else None
+        invalid_user_attribution = False
+        entity_user_id: str | None = None
+        if entity is not None:
+            if entity_id is not None and (
+                isinstance(entity_id, bool) or not isinstance(entity_id, int)
+            ):
+                invalid_user_attribution = True
+            elif isinstance(entity_id, int):
+                entity_user_id = str(entity_id)
+            if expected_user_id is not None and entity_user_id not in (None, expected_user_id):
+                invalid_user_attribution = True
         # D2L has returned both an outer Entity -> Submissions -> Files collection and a direct
         # submission object in older compatible projections.  Accept only these two documented
         # shapes; do not recursively walk arbitrary response data.
@@ -757,6 +771,23 @@ def _iter_files(records: list[object]) -> list[dict[str, object]]:
                         merged["_a2l_invalid_folder_identifier"] = True
                     if len(set(valid_folder_values)) > 1:
                         merged["_a2l_conflicting_folder_identifiers"] = True
+                    submitted_by = submission.get("SubmittedBy")
+                    if submitted_by is not None:
+                        if not isinstance(submitted_by, dict):
+                            invalid_user_attribution = True
+                        else:
+                            submitted_id = submitted_by.get("Id")
+                            if not isinstance(submitted_id, str) or not submitted_id:
+                                invalid_user_attribution = True
+                            elif entity_user_id is not None and submitted_id != entity_user_id:
+                                # D2L's EntityDropbox shape identifies both the owning entity and
+                                # the submitter.  A disagreement is not attributable to this
+                                # current-user route, even before considering the session ID.
+                                invalid_user_attribution = True
+                            elif expected_user_id is not None and submitted_id != expected_user_id:
+                                invalid_user_attribution = True
+                    if invalid_user_attribution:
+                        merged["_a2l_invalid_user_attribution"] = True
                     for key in ("FolderId", "DropboxFolderId"):
                         if key not in merged:
                             if key in submission:
@@ -770,8 +801,10 @@ def _iter_files(records: list[object]) -> list[dict[str, object]]:
 def _folder_matches(entry: dict[str, object], folder_id: int) -> bool:
     """Accept an omitted folder field only because the current-user route scopes it."""
 
-    if entry.get("_a2l_invalid_folder_identifier") or entry.get(
-        "_a2l_conflicting_folder_identifiers"
+    if (
+        entry.get("_a2l_invalid_folder_identifier")
+        or entry.get("_a2l_conflicting_folder_identifiers")
+        or entry.get("_a2l_invalid_user_attribution")
     ):
         return False
     supplied: list[int] = []
@@ -783,6 +816,20 @@ def _folder_matches(entry: dict[str, object], folder_id: int) -> bool:
             return False
         supplied.append(value)
     return not supplied or all(value == folder_id for value in supplied)
+
+
+def _current_user_id(client: SubmissionTransport) -> str | None:
+    """Return the verified session identity when the transport exposes one.
+
+    The ``mysubmissions`` route is already scoped by D2L to the current user.  The additional
+    session check is deliberately opportunistic because the narrow transport protocol used by
+    tests and integrations need not expose session internals; when available, it catches a
+    response whose entity or submitter disagrees with the identity verified during authentication.
+    """
+
+    session = getattr(client, "session", None)
+    value = getattr(session, "user_id", None)
+    return value if isinstance(value, str) and value else None
 
 
 def _receipt(

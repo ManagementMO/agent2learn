@@ -103,7 +103,9 @@ def test_calendar_is_valid_deterministic_and_timezone_explicit(tmp_path: Path) -
     assert len(uids) == len(set(uids)) == 5
 
 
-def test_calendar_does_not_depend_on_machine_timezone(tmp_path: Path, monkeypatch) -> None:
+def test_calendar_does_not_depend_on_machine_timezone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     if not hasattr(time, "tzset"):
         pytest.skip("the platform does not expose tzset")
 

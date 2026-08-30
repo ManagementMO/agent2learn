@@ -150,7 +150,7 @@ def test_manifest_round_trip_reconstructs_derived_artifact(tmp_path: Path) -> No
 def test_manifest_rejects_invalid_entry_fields(
     tmp_path: Path, field: str, value: object, message: str
 ) -> None:
-    payload = {
+    payload: dict[str, object] = {
         "path": "T/C/a.pdf",
         "sha256": "0" * 64,
         "source_id": "2",
@@ -230,10 +230,16 @@ def test_manifest_reports_filesystem_read_failure_as_a2l_error(
     (state / "manifest.json").write_text("{}\n", encoding="utf-8")
     paths.atomic_write_text(state / "VERSION", "1\n")
 
-    def denied(*args: object, **kwargs: object) -> object:
-        if args and str(args[0]).endswith("manifest.json"):
+    def denied(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: str = "r",
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> object:
+        if str(file).endswith("manifest.json"):
             raise PermissionError("manifest denied")
-        return builtins.open(*args, **kwargs)
+        return builtins.open(file, mode, encoding=encoding, newline=newline)
 
     monkeypatch.setattr(vault_module, "open", denied, raising=False)
 
@@ -243,7 +249,7 @@ def test_manifest_reports_filesystem_read_failure_as_a2l_error(
 
 def test_derived_artifact_requires_matching_source_hash_and_safe_metadata(tmp_path: Path) -> None:
     entry = _entry()
-    raw = {
+    raw: dict[str, object] = {
         "path": entry.path,
         "sha256": entry.sha256,
         "source_id": entry.source_id,
@@ -270,7 +276,7 @@ def test_derived_artifact_requires_matching_source_hash_and_safe_metadata(tmp_pa
 
 def test_derived_artifact_rejects_unsafe_path_and_hash(tmp_path: Path) -> None:
     entry = _entry()
-    raw = {
+    raw: dict[str, object] = {
         "path": entry.path,
         "sha256": entry.sha256,
         "source_id": entry.source_id,
@@ -297,7 +303,7 @@ def test_derived_artifact_rejects_unsafe_path_and_hash(tmp_path: Path) -> None:
 
 def test_manifest_rejects_non_mapping_derived_data(tmp_path: Path) -> None:
     entry = _entry()
-    raw = {
+    raw: dict[str, object] = {
         "path": entry.path,
         "sha256": entry.sha256,
         "source_id": entry.source_id,

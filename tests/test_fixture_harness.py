@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 import requests
@@ -97,7 +98,7 @@ def test_binary_downloads_arrive_byte_identical(
 
 
 def test_downloaded_zip_is_still_a_valid_archive(
-    synthetic_api: SyntheticAPI, no_network: None, tmp_path
+    synthetic_api: SyntheticAPI, no_network: None, tmp_path: Path
 ) -> None:
     url = f"{synthetic_api.base_url}/content/enforced/{COURSE_A_OU}-COURSE101/site.html.zip"
     dest = tmp_path / "site.html.zip"

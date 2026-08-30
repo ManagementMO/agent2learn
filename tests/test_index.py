@@ -256,7 +256,8 @@ def test_unchanged_source_path_never_retrusts_a_modified_markdown_twin(tmp_path:
 
     ingest._mark_topic_source_only(vault, course_dir, topic, UWaterloo())
 
-    row = ingest._read_content_map(course_dir)["topics"][0]
+    rows = ingest._map_topics(ingest._read_content_map(course_dir))
+    row = rows[0]
     assert isinstance(row, dict)
     assert row["availability"] == "integrity_gap"
     assert row["path"] is None

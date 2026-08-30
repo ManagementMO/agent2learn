@@ -19,7 +19,11 @@
           }
         ],
         "Id": 400001,
-        "SubmissionDate": "2026-01-19T14:00:00.000Z"
+        "SubmissionDate": "2026-01-19T14:00:00.000Z",
+        "SubmittedBy": {
+          "DisplayName": "Alex Example",
+          "Id": "99999999"
+        }
       }
     ]
   }

@@ -94,7 +94,7 @@ def whoami() -> object:
     }
 
 
-def _enrollment(ou: int, code: str, name: str, section: str) -> dict:
+def _enrollment(ou: int, code: str, name: str, section: str) -> dict[str, object]:
     return {
         "OrgUnit": {
             "Id": ou,
@@ -141,7 +141,7 @@ def _topic(
     kind: str = "File",
     modified: str = T0,
     size: int | None = 878,
-) -> dict:
+) -> dict[str, object]:
     """One TOC topic.
 
     ``Size`` matters more than it looks: a topic whose length is unknown stays
@@ -328,6 +328,7 @@ def submissions_readback() -> object:
             "Submissions": [
                 {
                     "Id": 400001,
+                    "SubmittedBy": {"Id": STUDENT_ID, "DisplayName": "Alex Example"},
                     "SubmissionDate": T2,
                     "Comment": {"Text": "", "Html": ""},
                     "Files": [{"FileId": 300001, "FileName": "submission.txt", "Size": 307}],
@@ -337,7 +338,7 @@ def submissions_readback() -> object:
     ]
 
 
-def news_a() -> object:
+def news_a() -> list[dict[str, object]]:
     return [
         {
             "Id": 200001,
@@ -370,7 +371,7 @@ def news_a() -> object:
     ]
 
 
-def news_a_withdrawn() -> object:
+def news_a_withdrawn() -> list[dict[str, object]]:
     """Same feed with the middle item absent. Two consecutive absences mark it withdrawn."""
     return [item for item in news_a() if item["Id"] != 200002]
 

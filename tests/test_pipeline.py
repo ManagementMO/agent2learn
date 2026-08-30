@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypeVar
 
 import pytest
 from ingest_support import FakeClient, course
@@ -23,6 +23,9 @@ from agent2learn.vault import Vault
 
 def _pipeline() -> Any:
     return importlib.import_module("agent2learn.pipeline")
+
+
+_T = TypeVar("_T")
 
 
 class _UnusedOutlineFactory:
@@ -48,40 +51,44 @@ def test_pipeline_exposes_metadata_before_every_expensive_phase(
     events: list[str] = []
     metadata = MetadataReport(courses=(), topic_count=4, deadline_count=2)
 
+    def record(event: str, value: _T) -> _T:
+        events.append(event)
+        return value
+
     monkeypatch.setattr(
         pipeline,
         "ingest_metadata",
-        lambda *_args, **_kwargs: events.append("metadata") or metadata,
+        lambda *_args, **_kwargs: record("metadata", metadata),
     )
     monkeypatch.setattr(
         pipeline,
         "ingest_outlines",
-        lambda *_args, **_kwargs: events.append("outlines") or OutlineReport(),
+        lambda *_args, **_kwargs: record("outlines", OutlineReport()),
     )
     monkeypatch.setattr(
         pipeline,
         "ingest_files",
-        lambda *_args, **_kwargs: events.append("files") or FileReport(),
+        lambda *_args, **_kwargs: record("files", FileReport()),
     )
     monkeypatch.setattr(
         pipeline,
         "convert_vault",
-        lambda *_args, **_kwargs: events.append("conversion") or ConversionReport(),
+        lambda *_args, **_kwargs: record("conversion", ConversionReport()),
     )
     monkeypatch.setattr(
         pipeline,
         "refresh_indexes",
-        lambda *_args, **_kwargs: events.append("indexes") or 0,
+        lambda *_args, **_kwargs: record("indexes", 0),
     )
     monkeypatch.setattr(
         pipeline,
         "write_snapshot",
-        lambda *_args, **_kwargs: events.append("snapshot") or tmp_path / ".a2l/snapshot.json",
+        lambda *_args, **_kwargs: record("snapshot", tmp_path / ".a2l/snapshot.json"),
     )
     monkeypatch.setattr(
         pipeline,
         "write_audit",
-        lambda *_args, **_kwargs: events.append("audit") or tmp_path / ".a2l/AUDIT.md",
+        lambda *_args, **_kwargs: record("audit", tmp_path / ".a2l/AUDIT.md"),
     )
 
     report = pipeline.run_pipeline(

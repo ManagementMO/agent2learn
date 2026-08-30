@@ -24,14 +24,14 @@ from hashlib import sha256
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from requests import RequestException
 
 from agent2learn import api, clock, paths, snapshot
 from agent2learn import index as course_index
-from agent2learn.api import Client, DownloadError, DownloadResult
+from agent2learn.api import DownloadError, DownloadResult
 from agent2learn.calibrate import CourseRef, calibrate, load_calibration
 from agent2learn.errors import A2LError, NotConfigured, SessionExpired
 from agent2learn.schools import (
@@ -190,8 +190,36 @@ class _PendingInstall:
     revision_preserved: bool
 
 
+class IngestClient(Protocol):
+    """The small calibrated client surface required by the ingest pipeline.
+
+    Keeping this as a protocol lets the offline fixture client exercise the same code paths as the
+    real HTTP client without pretending that a test double is an authenticated ``api.Client``.
+    """
+
+    @property
+    def school(self) -> School: ...
+
+    lp_version: str | None
+    le_version: str | None
+    download_template: str | None
+
+    def get_json(self, path: str) -> object: ...
+
+    def download(
+        self,
+        url: str,
+        temp: Path,
+        *,
+        prior: ManifestEntry | None = None,
+        max_bytes: int | None = api.DEFAULT_MAX_BYTES,
+        is_html_topic: bool = False,
+        root: Path | None = None,
+    ) -> DownloadResult: ...
+
+
 def ingest_metadata(
-    client: Client,
+    client: IngestClient,
     vault: Vault,
     school: School,
     *,
@@ -456,7 +484,7 @@ def select_priority_topics(
 
 
 def ingest_files(
-    client: Client,
+    client: IngestClient,
     vault: Vault,
     school: School,
     *,
@@ -607,7 +635,7 @@ def ingest_files(
 
 
 def fetch_topic(
-    client: Client,
+    client: IngestClient,
     vault: Vault,
     school: School,
     topic: str,
@@ -661,7 +689,7 @@ def fetch_topic(
 
 
 def _selected_courses(
-    client: Client,
+    client: IngestClient,
     *,
     term: str | None,
     only: Iterable[int | str] | None,
@@ -743,21 +771,21 @@ def _course_directory(vault: Vault, school: School, course: CourseRef) -> Path:
     return vault.root / paths.safe_name(term_label) / paths.safe_name(course_label)
 
 
-def _toc_path(client: Client, course: CourseRef) -> str:
+def _toc_path(client: IngestClient, course: CourseRef) -> str:
     le = getattr(client, "le_version", None)
     if not isinstance(le, str) or not le:
         raise A2LError("LE API version is not calibrated")
     return f"/d2l/api/le/{le}/{course.org_unit_id}/content/toc"
 
 
-def _endpoint_path(client: Client, course: CourseRef, endpoint: str) -> str:
+def _endpoint_path(client: IngestClient, course: CourseRef, endpoint: str) -> str:
     le = getattr(client, "le_version", None)
     if not isinstance(le, str) or not le:
         raise A2LError("LE API version is not calibrated")
     return f"/d2l/api/le/{le}/{course.org_unit_id}/{endpoint}"
 
 
-def _fetch_one(client: Client, path: str) -> tuple[object, bool, Exception | None]:
+def _fetch_one(client: IngestClient, path: str) -> tuple[object, bool, Exception | None]:
     try:
         return client.get_json(path), True, None
     except SessionExpired:
@@ -766,7 +794,9 @@ def _fetch_one(client: Client, path: str) -> tuple[object, bool, Exception | Non
         return {}, False, exc
 
 
-def _fetch_collection(client: Client, path: str) -> tuple[list[object], bool, Exception | None]:
+def _fetch_collection(
+    client: IngestClient, path: str
+) -> tuple[list[object], bool, Exception | None]:
     values: list[object] = []
     seen: set[str] = set()
     current = path
@@ -1557,7 +1587,7 @@ def _is_priority(topic: TopicRecord) -> bool:
 
 
 def _ingest_one_topic(
-    client: Client,
+    client: IngestClient,
     vault: Vault,
     school: School,
     course_dir: Path,
@@ -1892,7 +1922,7 @@ def _manifest_entry_for_install(
 
 
 def _download_with_candidates(
-    client: Client,
+    client: IngestClient,
     school: School,
     topic: TopicRecord,
     temporary: Path,
@@ -1926,7 +1956,7 @@ def _download_with_candidates(
     raise DownloadError("no first-party download route was available")
 
 
-def _download_candidates(client: Client, school: School, topic: TopicRecord) -> list[str]:
+def _download_candidates(client: IngestClient, school: School, topic: TopicRecord) -> list[str]:
     base = school.base_url.rstrip("/")
     le = getattr(client, "le_version", None)
     ou = topic.course_org_unit_id
@@ -2680,7 +2710,7 @@ def _safe_error(stage: str, exc: BaseException) -> str:
 
 
 def _ingest_discussions(
-    client: Client,
+    client: IngestClient,
     course: CourseRef,
     course_dir: Path,
     vault: Vault,

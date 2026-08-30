@@ -38,6 +38,7 @@ notebook = ["nbformat>=5.10,<6"]
 dev = [
     # >=9.0.3: 8.4.2 carries PYSEC-2026-1845, and a <9 cap would pin us below the fix.
     "pytest>=9.0.3,<10",
+    "pytest-cov>=6,<8",
     "pytest-httpserver>=1.1,<2",
     "ruff>=0.8,<1",
     "mypy>=1.13,<2",
@@ -75,6 +76,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.11"
 strict = true
 warn_unreachable = true
+mypy_path = ["src"]
+# Tests deliberately monkeypatch implementation-module imports (for example, ``paths`` and
+# ``session_module``). They are real Python module attributes, so retain that runtime export model
+# instead of scattering ignores over the test suite.
+implicit_reexport = true
 
 [tool.uv.build-backend]
 data = { data = "skills" }
@@ -89,3 +95,11 @@ addopts = "-q"
 markers = [
   "benchmark: measured performance budget, enforced only with A2L_BENCHMARK_STRICT",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["agent2learn"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 77.5

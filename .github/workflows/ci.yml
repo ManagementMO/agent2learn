@@ -75,10 +75,14 @@ jobs:
         # Match mypy's grammar and stdlib surface to the interpreter/dependency
         # environment in this matrix job. The project default remains 3.11 so
         # the standalone gate still checks the minimum supported Python version.
-        run: uv run mypy --python-version "${{ matrix.python }}" src
+        run: uv run mypy --python-version "${{ matrix.python }}" src tests tools
 
       - name: Tests
         run: uv run pytest -q
+
+      - name: Coverage (one representative matrix job)
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: uv run pytest --cov=agent2learn --cov-branch --cov-report=term-missing
 
       - name: Build sdist and wheel
         run: uv build

@@ -103,9 +103,19 @@ def test_new_browser_uses_persistent_loopback_profile_and_ephemeral_port(
         def poll(self) -> None:
             return None
 
-    process = FakeProcess()
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 0
 
-    def fake_popen(args: list[str], **kwargs: object) -> FakeProcess:
+        def terminate(self) -> None:
+            return
+
+        def kill(self) -> None:
+            return
+
+    process: cdp._OwnedProcess = FakeProcess()
+
+    def fake_popen(args: list[str], **kwargs: object) -> cdp._OwnedProcess:
         calls.append((args, kwargs))
         (profile / "DevToolsActivePort").write_text("43123\n/devtools/browser/synthetic\n")
         return process
@@ -145,10 +155,13 @@ def test_owned_browser_is_terminated_when_endpoint_acquisition_times_out(
             self.terminated = False
             self.wait_calls = 0
 
-        def poll(self) -> None:
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def poll(self) -> int | None:
             return None
 
-        def terminate(self) -> None:
+        def kill(self) -> None:
             self.terminated = True
 
         def wait(self, timeout: float | None = None) -> int:
@@ -276,10 +289,16 @@ def test_owned_browser_is_terminated_when_cdp_close_fails(
         def terminate(self) -> None:
             self.terminated = True
 
+        def poll(self) -> int | None:
+            return None
+
+        def kill(self) -> None:
+            self.terminated = True
+
     process = FakeProcess()
     monkeypatch.setattr(cdp, "_CDPConnection", FakeConnection)
 
-    cdp._close_owned_browser(endpoint, process)  # type: ignore[arg-type]
+    cdp._close_owned_browser(endpoint, process)
 
     assert process.terminated is True
     assert process.wait_calls == 2

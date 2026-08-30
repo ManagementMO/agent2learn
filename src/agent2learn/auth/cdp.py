@@ -14,7 +14,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -70,6 +70,18 @@ class DebugEndpoint:
 
     port: int
     browser_websocket_url: str
+
+
+class _OwnedProcess(Protocol):
+    """The bounded process lifecycle surface used for an Agent2Learn-owned browser."""
+
+    def poll(self) -> int | None: ...
+
+    def wait(self, timeout: float | None = None) -> int: ...
+
+    def terminate(self) -> None: ...
+
+    def kill(self) -> None: ...
 
 
 class _CDPConnection:
@@ -189,7 +201,7 @@ class DedicatedPageFactory:
 
     def __init__(self) -> None:
         self._endpoint: DebugEndpoint | None = None
-        self._process: subprocess.Popen[bytes] | None = None
+        self._process: _OwnedProcess | None = None
         self._owned = False
         self._closed = False
 
@@ -251,8 +263,14 @@ class DedicatedPageFactory:
         return endpoint
 
 
+class _CDPRequestSender(Protocol):
+    """The one CDP operation needed by the request-boundary auth gate."""
+
+    def send_without_wait(self, method: str, params: dict[str, object] | None = None) -> None: ...
+
+
 class _AuthGate:
-    def __init__(self, connection: _CDPConnection, school: School) -> None:
+    def __init__(self, connection: _CDPRequestSender, school: School) -> None:
         self.connection = connection
         self.school = school
         self.blocked_host: str | None = None
@@ -383,7 +401,7 @@ def profile_path() -> Path:
     return config.data_dir() / "browser-profile"
 
 
-def _acquire_endpoint(profile: Path) -> tuple[DebugEndpoint, subprocess.Popen[bytes] | None, bool]:
+def _acquire_endpoint(profile: Path) -> tuple[DebugEndpoint, _OwnedProcess | None, bool]:
     _validate_profile_path(profile)
     active_port = profile / "DevToolsActivePort"
     if paths.is_link(active_port):
@@ -638,7 +656,7 @@ def _evaluated_identifier(result: dict[str, Any]) -> str | None:
     return identifier if isinstance(identifier, str) and identifier else None
 
 
-def _close_owned_browser(endpoint: DebugEndpoint, process: subprocess.Popen[bytes] | None) -> None:
+def _close_owned_browser(endpoint: DebugEndpoint, process: _OwnedProcess | None) -> None:
     if process is None:
         return
     connection: _CDPConnection | None = None
@@ -660,7 +678,7 @@ def _close_owned_browser(endpoint: DebugEndpoint, process: subprocess.Popen[byte
         raise AuthenticationError("dedicated browser process status could not be read") from exc
 
 
-def _terminate_owned_process(process: subprocess.Popen[bytes]) -> None:
+def _terminate_owned_process(process: _OwnedProcess) -> None:
     """Bound cleanup for a browser process Agent2Learn launched itself."""
     with suppress(OSError, subprocess.SubprocessError):
         process.terminate()

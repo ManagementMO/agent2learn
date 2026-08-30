@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from agent2learn import config, skills
 from agent2learn.cli import app
-from agent2learn.doctor import report, run_checks
+from agent2learn.doctor import Check, report, run_checks
 from agent2learn.vault import Vault
 
 EXPECTED_SKILLS = ("a2l-setup", "a2l-sync", "a2l-study", "a2l-coursework")
@@ -79,7 +79,7 @@ def _make_vault(root: Path) -> Vault:
     return Vault(root)
 
 
-def _skills_check(vault: Vault) -> object:
+def _skills_check(vault: Vault) -> Check:
     return next(
         check
         for check in run_checks(config.Config(vault=vault.root), vault)
@@ -202,12 +202,16 @@ def test_install_requires_one_consent_and_writes_nothing_before_consent(tmp_path
     project.joinpath(".agents").mkdir(parents=True)
     previews: list[str] = []
 
+    def reject(preview: str) -> bool:
+        previews.append(preview)
+        return False
+
     result = skills.install(
         scope="project",
         project=project,
         home=tmp_path / "home",
         source_root=source,
-        confirm=lambda preview: previews.append(preview) or False,
+        confirm=reject,
     )
 
     assert result.cancelled is True
@@ -732,13 +736,17 @@ def test_force_preview_shows_managed_updates_and_preserved_local_files(tmp_path:
     )
     previews: list[str] = []
 
+    def reject(preview: str) -> bool:
+        previews.append(preview)
+        return False
+
     skills.install(
         scope="project",
         project=project,
         home=tmp_path / "home",
         source_root=source,
         force=True,
-        confirm=lambda preview: previews.append(preview) or False,
+        confirm=reject,
     )
 
     assert "a2l-setup/SKILL.md: update managed file" in previews[0]

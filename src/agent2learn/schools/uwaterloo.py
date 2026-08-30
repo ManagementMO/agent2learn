@@ -13,11 +13,11 @@ _SEASONS = {1: "Winter", 5: "Spring", 9: "Fall"}
 class UWaterloo:
     """Rules for Waterloo's LEARN instance and academic term codes."""
 
-    id = "uwaterloo"
-    name = "University of Waterloo"
-    base_url = "https://learn.uwaterloo.ca"
-    timezone = "America/Toronto"
-    auth_hint = "WatIAM + Duo"
+    id: str = "uwaterloo"
+    name: str = "University of Waterloo"
+    base_url: str = "https://learn.uwaterloo.ca"
+    timezone: str = "America/Toronto"
+    auth_hint: str = "WatIAM + Duo"
 
     def term_from_offering(self, code: str) -> str | None:
         """Return the last four-digit Waterloo term code in the offering string."""

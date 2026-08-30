@@ -7,7 +7,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import requests
@@ -17,6 +17,7 @@ from werkzeug.wrappers import Response as WerkzeugResponse
 from agent2learn import api, config
 from agent2learn.calibrate import Calibration, calibrate, load_calibration
 from agent2learn.errors import A2LError, NotConfigured, SessionExpired
+from agent2learn.session import Session
 from agent2learn.vault import ManifestEntry
 
 
@@ -46,6 +47,8 @@ class LocalSchool:
 
 @dataclass
 class LocalSession:
+    """An intentionally unvalidated HTTP session for the local test server."""
+
     base_url: str
     xsrf: str | None = None
 
@@ -56,7 +59,7 @@ class LocalSession:
 def _client(synthetic_api: SyntheticAPI) -> api.Client:
     school = LocalSchool(synthetic_api.base_url)
     session = LocalSession(synthetic_api.base_url)
-    return api.Client(school, session)
+    return api.Client(school, cast(Session, session))
 
 
 def _prior() -> ManifestEntry:
@@ -621,7 +624,7 @@ def test_lookalike_and_mixed_case_idn_origins_are_not_confused(
     base = "https://Learn.Exämple"
     school = LocalSchool(base)
     session = LocalSession(base)
-    client = api.Client(school, session)
+    client = api.Client(school, cast(Session, session))
     transport = FakeTransport()
     monkeypatch.setattr(client, "_transport", transport)
 

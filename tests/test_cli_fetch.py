@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from typer.testing import CliRunner
 
 from agent2learn import cli as cli_module
@@ -13,7 +14,7 @@ from agent2learn.cli import app
 from agent2learn.ingest import FetchReport
 
 
-def test_fetch_requires_a_saved_session(tmp_path: Path, monkeypatch) -> None:
+def test_fetch_requires_a_saved_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config, "load", lambda: config.Config(vault=tmp_path))
     monkeypatch.setattr(session, "load", lambda: None)
 
@@ -25,7 +26,7 @@ def test_fetch_requires_a_saved_session(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_fetch_reports_unreadable_session_without_echoing_a_path(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(config, "load", lambda: config.Config(vault=tmp_path))
 
@@ -41,7 +42,9 @@ def test_fetch_reports_unreadable_session_without_echoing_a_path(
     assert "/private/student/session.json" not in result.output
 
 
-def test_auth_check_reports_unreadable_session_without_echoing_a_path(monkeypatch) -> None:
+def test_auth_check_reports_unreadable_session_without_echoing_a_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def unreadable() -> object:
         raise PermissionError("/private/student/session.json")
 
@@ -54,7 +57,9 @@ def test_auth_check_reports_unreadable_session_without_echoing_a_path(monkeypatc
     assert "/private/student/session.json" not in result.output
 
 
-def test_fetch_reports_unreadable_config_without_echoing_a_path(monkeypatch) -> None:
+def test_fetch_reports_unreadable_config_without_echoing_a_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def unreadable() -> object:
         raise PermissionError("/private/student/config.json")
 
@@ -67,13 +72,17 @@ def test_fetch_reports_unreadable_config_without_echoing_a_path(monkeypatch) -> 
     assert "/private/student/config.json" not in result.output
 
 
-def test_fetch_prints_only_the_verified_citation_path(tmp_path: Path, monkeypatch) -> None:
+def test_fetch_prints_only_the_verified_citation_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(config, "load", lambda: config.Config(vault=tmp_path))
     monkeypatch.setattr(session, "load", lambda: object())
     monkeypatch.setattr("agent2learn.cli.Client", lambda school, saved: object())
     calls: list[str] = []
 
-    def fake_fetch(client, vault, school, topic, **kwargs) -> FetchReport:
+    def fake_fetch(
+        client: object, vault: object, school: object, topic: str, **kwargs: object
+    ) -> FetchReport:
         del client, vault, school, kwargs
         calls.append(topic)
         return FetchReport(
@@ -94,7 +103,7 @@ def test_fetch_prints_only_the_verified_citation_path(tmp_path: Path, monkeypatc
 
 
 def test_large_fetch_confirmation_uses_the_long_path_disk_boundary(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(config, "load", lambda: config.Config(vault=tmp_path))
     monkeypatch.setattr(session, "load", lambda: object())
@@ -103,16 +112,21 @@ def test_large_fetch_confirmation_uses_the_long_path_disk_boundary(
     extended = tmp_path / "extended-vault"
     disk_paths: list[object] = []
     monkeypatch.setattr(cli_module.paths, "long_path", lambda path: extended)
-    monkeypatch.setattr(
-        cli_module.shutil,
-        "disk_usage",
-        lambda path: disk_paths.append(path) or SimpleNamespace(free=10_000),
-    )
+
+    def record_disk_usage(path: Path) -> SimpleNamespace:
+        disk_paths.append(path)
+        return SimpleNamespace(free=10_000)
+
+    monkeypatch.setattr(cli_module.shutil, "disk_usage", record_disk_usage)
     monkeypatch.setattr(cli_module.typer, "confirm", lambda *args, **kwargs: True)
 
-    def fake_fetch(client, vault, school, topic, **kwargs) -> FetchReport:
+    def fake_fetch(
+        client: object, vault: object, school: object, topic: str, **kwargs: object
+    ) -> FetchReport:
         del client, vault, school, topic
-        assert kwargs["confirm"](1) is True
+        confirm = kwargs["confirm"]
+        assert callable(confirm)
+        assert confirm(1) is True
         return FetchReport(
             source_key="uwaterloo:111111:topic:123",
             availability="metadata_only",

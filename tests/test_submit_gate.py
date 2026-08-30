@@ -9,13 +9,17 @@ from pathlib import Path
 
 import pytest
 from conftest import flatten_help
+from requests import HTTPError
 from typer.testing import CliRunner
 
 from agent2learn import _release, clock, config, submit
+from agent2learn.api import DownloadError
 from agent2learn.cli import app
+from agent2learn.errors import SessionExpired
 from agent2learn.index import write_content_map
 from agent2learn.submit import (
     CONFIRMATION_TTL_SECONDS,
+    SubmissionBody,
     SubmissionCapability,
     SubmissionRefused,
     SubmissionUnverified,
@@ -44,6 +48,7 @@ class RecordingTransport:
         status: int = 200,
         readback_error: Exception | None = None,
         post_error: Exception | None = None,
+        user_id: str | None = None,
     ) -> None:
         self.folders = (
             folders
@@ -54,6 +59,7 @@ class RecordingTransport:
         self.status = status
         self.readback_error = readback_error
         self.post_error = post_error
+        self.session = type("SessionProjection", (), {"user_id": user_id})()
         self.closed_responses = 0
         self.gets: list[str] = []
         self.posts: list[tuple[str, bytes, str]] = []
@@ -66,7 +72,7 @@ class RecordingTransport:
             raise self.readback_error
         return self.readback if self.readback is not None else []
 
-    def post_once(self, path: str, body: bytes, *, content_type: str) -> object:
+    def post_once(self, path: str, body: bytes | SubmissionBody, *, content_type: str) -> object:
         if self.post_error is not None:
             raise self.post_error
         payload = body if isinstance(body, bytes) else b"".join(body)
@@ -352,6 +358,8 @@ def test_an_unsupported_le_version_keeps_submission_disabled(tmp_path: Path) -> 
 def test_read_back_failures_are_unverified_and_never_retry(tmp_path: Path) -> None:
     cases: list[tuple[str, RecordingTransport]] = [
         ("missing", RecordingTransport(readback=[])),
+        ("non-list object", RecordingTransport(readback={"Submissions": []})),
+        ("html body", RecordingTransport(readback="<html><title>Sign In</title></html>")),
         (
             "stale",
             RecordingTransport(
@@ -388,6 +396,10 @@ def test_read_back_failures_are_unverified_and_never_retry(tmp_path: Path) -> No
                 ]
             ),
         ),
+        ("http-404", RecordingTransport(readback_error=HTTPError("404 Not Found"))),
+        ("http-500", RecordingTransport(readback_error=HTTPError("500 Server Error"))),
+        ("html response", RecordingTransport(readback_error=SessionExpired("login page"))),
+        ("malformed response", RecordingTransport(readback_error=DownloadError("invalid JSON"))),
         ("unreadable", RecordingTransport(readback_error=OSError("network down"))),
     ]
 
@@ -405,10 +417,26 @@ def test_read_back_failures_are_unverified_and_never_retry(tmp_path: Path) -> No
                 capability=ENABLED,
             )
         assert len(transport.posts) == 1, label
+        assert transport.gets.count(preview.target.readback) == 1, label
         receipts = sorted((vault.state() / "submissions").glob("*.json"))
         assert len(receipts) == 1, label
         payload = json.loads(receipts[0].read_text(encoding="utf-8"))
         assert payload["status"] == "verification_unknown", label
+
+
+def test_non_list_readback_is_rejected_at_shape_boundary(tmp_path: Path) -> None:
+    transport = RecordingTransport(readback={"Submissions": []})
+    vault, preview = _preview(tmp_path, transport)
+
+    with pytest.raises(SubmissionUnverified, match="not a submission list"):
+        confirm_and_upload(
+            vault,
+            transport,
+            preview,
+            phrase=preview.phrase,
+            interactive=True,
+            capability=ENABLED,
+        )
 
 
 def test_readback_uses_current_user_route_and_nested_submission_shape(tmp_path: Path) -> None:
@@ -434,6 +462,38 @@ def test_readback_uses_current_user_route_and_nested_submission_shape(tmp_path: 
     assert receipt.status == "verified"
     assert transport.gets[-1].endswith("/submissions/mysubmissions/")
     assert transport.closed_responses == 1
+
+
+def test_readback_rejects_a_submission_attributed_to_another_user(tmp_path: Path) -> None:
+    transport = RecordingTransport(
+        readback=[
+            {
+                "Entity": {"EntityId": 99999999, "EntityType": "User"},
+                "Submissions": [
+                    {
+                        "SubmittedBy": {"Id": "11111111", "DisplayName": "Other Student"},
+                        "SubmissionDate": "2999-01-01T00:00:00Z",
+                        "Files": [{"FileName": "report.pdf", "Size": 13}],
+                    }
+                ],
+            }
+        ],
+        user_id="99999999",
+    )
+    vault, preview = _preview(tmp_path, transport)
+
+    with pytest.raises(SubmissionUnverified):
+        confirm_and_upload(
+            vault,
+            transport,
+            preview,
+            phrase=preview.phrase,
+            interactive=True,
+            capability=ENABLED,
+        )
+
+    assert len(transport.posts) == 1
+    assert transport.gets.count(preview.target.readback) == 1
 
 
 def test_readback_rejects_conflicting_folder_identifiers(tmp_path: Path) -> None:

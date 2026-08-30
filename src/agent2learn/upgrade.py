@@ -26,10 +26,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.request import Request, urlopen
 
-# Typer generates completion scripts here but does not re-export the helper, so mypy cannot see
-# it. The narrow ignore is backed by a test that renders a script for every supported shell, which
-# fails loudly if a Typer upgrade moves or removes this function.
-from typer.completion import get_completion_script  # type: ignore[attr-defined]
+# Typer's completion helper is intentionally imported from its public completion module. The
+# completion tests render every supported shell, so a Typer change that removes it fails loudly.
+from typer.completion import get_completion_script
 
 from agent2learn import __version__
 from agent2learn.errors import A2LError

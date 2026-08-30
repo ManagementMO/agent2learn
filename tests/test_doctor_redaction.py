@@ -32,7 +32,9 @@ COOKIE_VALUE = "s3cr3t-session-value-that-must-never-appear"  # pragma: allowlis
 
 
 @pytest.fixture
-def loaded_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[object, Vault]:
+def loaded_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[config_module.Config, Vault]:
     """A vault and config carrying every category the report is required to redact."""
     home = tmp_path / "home"
     vault_root = home / "agent2learn"
@@ -87,7 +89,7 @@ def _session() -> Session:
 
 
 def test_report_leaks_nothing(
-    loaded_environment: tuple[object, Vault], monkeypatch: pytest.MonkeyPatch
+    loaded_environment: tuple[config_module.Config, Vault], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg, vault = loaded_environment
     monkeypatch.setattr(doctor.session_module, "load", _session)
@@ -114,7 +116,7 @@ def test_report_leaks_nothing(
 
 
 def test_report_is_built_from_an_allowlist_not_a_denylist(
-    loaded_environment: tuple[object, Vault], monkeypatch: pytest.MonkeyPatch
+    loaded_environment: tuple[config_module.Config, Vault], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A check invented later must not be able to leak by default.
 
@@ -144,7 +146,7 @@ def test_report_is_built_from_an_allowlist_not_a_denylist(
 
 
 def test_report_does_not_trust_an_opted_in_public_note(
-    loaded_environment: tuple[object, Vault], monkeypatch: pytest.MonkeyPatch
+    loaded_environment: tuple[config_module.Config, Vault], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg, vault = loaded_environment
     monkeypatch.setattr(doctor.session_module, "load", lambda: None)
@@ -178,7 +180,7 @@ def test_report_does_not_trust_an_opted_in_public_note(
 
 
 def test_report_never_contains_grades_or_cookie_material(
-    loaded_environment: tuple[object, Vault], monkeypatch: pytest.MonkeyPatch
+    loaded_environment: tuple[config_module.Config, Vault], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg, vault = loaded_environment
     monkeypatch.setattr(doctor.session_module, "load", _session)
@@ -193,7 +195,7 @@ def test_report_never_contains_grades_or_cookie_material(
 
 
 def test_absolute_paths_are_replaced_with_a_tilde_everywhere(
-    loaded_environment: tuple[object, Vault], monkeypatch: pytest.MonkeyPatch
+    loaded_environment: tuple[config_module.Config, Vault], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg, vault = loaded_environment
     monkeypatch.setattr(doctor.session_module, "load", lambda: None)
@@ -208,7 +210,7 @@ def test_absolute_paths_are_replaced_with_a_tilde_everywhere(
 
 
 def test_render_is_human_readable_and_may_show_local_paths(
-    loaded_environment: tuple[object, Vault], monkeypatch: pytest.MonkeyPatch
+    loaded_environment: tuple[config_module.Config, Vault], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`render` is for the user's own terminal, so it is allowed what `report` is not.
 

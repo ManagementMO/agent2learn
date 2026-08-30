@@ -174,7 +174,9 @@ def test_snapshot_does_not_silently_drop_invalid_metadata_items(tmp_path: Path) 
         write_snapshot(vault, [course], include_grades=False, timestamp="2026-08-25T00:00:00Z")
 
 
-def test_snapshot_does_not_hide_unreadable_metadata_as_empty(tmp_path: Path, monkeypatch) -> None:
+def test_snapshot_does_not_hide_unreadable_metadata_as_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     vault = Vault(tmp_path)
     course = tmp_path / "Term" / "COURSE_1"
     meta = course / "_meta"

@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from agent2learn.api import DownloadResult
 from agent2learn.calibrate import CourseRef
 from agent2learn.schools.uwaterloo import UWaterloo
+from agent2learn.vault import ManifestEntry
 
 
 @dataclass
@@ -37,8 +38,8 @@ class FakeClient:
     ) -> None:
         self.school = UWaterloo()
         self.session = FakeSession()
-        self.lp_version = "1.62"
-        self.le_version = "1.96"
+        self.lp_version: str | None = "1.62"
+        self.le_version: str | None = "1.96"
         self.download_template: str | None = None
         self.courses = list(courses)
         self.tocs = dict(tocs or {})
@@ -67,8 +68,8 @@ class FakeClient:
         url: str,
         temp: Path,
         *,
-        prior: object | None = None,
-        max_bytes: int = 2_147_483_648,
+        prior: ManifestEntry | None = None,
+        max_bytes: int | None = 2_147_483_648,
         is_html_topic: bool = False,
         root: Path | None = None,
     ) -> DownloadResult:
@@ -77,7 +78,7 @@ class FakeClient:
         return self.download_handler(url, temp, prior)
 
     @staticmethod
-    def _default_download(url: str, temp: Path, prior: object | None) -> DownloadResult:
+    def _default_download(url: str, temp: Path, prior: ManifestEntry | None) -> DownloadResult:
         del prior
         payload = f"synthetic source for {urlsplit(url).path}".encode()
         temp.parent.mkdir(parents=True, exist_ok=True)

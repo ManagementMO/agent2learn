@@ -502,9 +502,15 @@ def test_fsync_file_uses_a_windows_compatible_handle(
     opened_modes: list[str] = []
     real_open = builtins.open
 
-    def recording_open(file: object, mode: str = "r", *args: object, **kwargs: object) -> object:
+    def recording_open(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: str = "r",
+        *args: object,
+        **kwargs: object,
+    ) -> object:
         opened_modes.append(mode)
-        return real_open(file, mode, *args, **kwargs)
+        del args, kwargs
+        return real_open(file, mode)
 
     monkeypatch.setattr(builtins, "open", recording_open)
     paths._fsync_file(source)

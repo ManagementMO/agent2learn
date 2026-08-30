@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from agent2learn import config
@@ -12,7 +13,7 @@ from agent2learn.cli import app
 from agent2learn.vault import Vault
 
 
-def _configured_vault(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
+def _configured_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     root = Vault.claim(tmp_path)
     course = root / "Spring 2026" / "COURSE101_1265"
     metadata = course / "_meta"
@@ -48,7 +49,9 @@ def _configured_vault(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     return root, course
 
 
-def test_where_and_open_are_local_and_redaction_safe(tmp_path: Path, monkeypatch) -> None:
+def test_where_and_open_are_local_and_redaction_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, _course = _configured_vault(tmp_path, monkeypatch)
     opened: list[Path] = []
     monkeypatch.setattr("agent2learn.cli.paths.reveal", opened.append)
@@ -65,7 +68,9 @@ def test_where_and_open_are_local_and_redaction_safe(tmp_path: Path, monkeypatch
     assert opened == [root / "Spring 2026" / "COURSE101_1265"]
 
 
-def test_privacy_purge_cli_previews_but_non_tty_cannot_mutate(tmp_path: Path, monkeypatch) -> None:
+def test_privacy_purge_cli_previews_but_non_tty_cannot_mutate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, course = _configured_vault(tmp_path, monkeypatch)
     grade_path = course / "_meta" / "my_grades.json"
     grade_path.write_text('[{"id": "g1", "displayed": "97%"}]\n', encoding="utf-8")
@@ -80,7 +85,9 @@ def test_privacy_purge_cli_previews_but_non_tty_cannot_mutate(tmp_path: Path, mo
     assert str(root) not in result.output
 
 
-def test_privacy_status_does_not_echo_sensitive_values(tmp_path: Path, monkeypatch) -> None:
+def test_privacy_status_does_not_echo_sensitive_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _root, course = _configured_vault(tmp_path, monkeypatch)
     (course / "_meta" / "my_grades.json").write_text(
         '[{"id": "g1", "displayed": "97%"}]\n', encoding="utf-8"

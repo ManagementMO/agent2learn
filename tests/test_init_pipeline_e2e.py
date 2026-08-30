@@ -9,7 +9,7 @@ from typing import Any
 
 from golden_support import (
     CANONICAL_ORIGIN,
-    GoldenSession,
+    FROZEN_NOW,
     _CanonicalOriginAdapter,
     frozen_clock,  # noqa: F401
 )
@@ -18,6 +18,7 @@ from typer.testing import CliRunner
 from agent2learn import cli, config
 from agent2learn.api import Client as RealClient
 from agent2learn.schools._base import CONSERVATIVE_TOPIC_EXCLUSION_POLICY
+from agent2learn.session import Session
 
 
 class _SyntheticWaterloo:
@@ -66,7 +67,7 @@ def test_full_init_through_public_cli_produces_verified_twins_and_audit(
     monkeypatch.setattr(
         cli,
         "authenticate",
-        lambda _school, *, backend: GoldenSession(CANONICAL_ORIGIN),
+        lambda _school, *, backend: Session(CANONICAL_ORIGIN, (), None, FROZEN_NOW, None),
     )
     monkeypatch.setattr(cli.skills_module, "detect_installed_agents", lambda: ())
     monkeypatch.setattr(cli.skills_module, "detect_destinations", lambda **_kwargs: ())

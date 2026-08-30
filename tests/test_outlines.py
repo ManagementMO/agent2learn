@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -49,14 +50,14 @@ def _toc(topic: dict[str, object]) -> dict[str, object]:
 class FakeOutlineBrowser:
     def __init__(self, result: OutlinePage | BaseException) -> None:
         self.result = result
-        self.calls: list[tuple[str, tuple[str, ...], float]] = []
+        self.calls: list[tuple[str, Sequence[str], float]] = []
         self.closed = 0
 
     def render_outline(
         self,
         url: str,
         *,
-        allowed_hosts: tuple[str, ...],
+        allowed_hosts: Sequence[str],
         timeout: float,
     ) -> OutlinePage:
         self.calls.append((url, allowed_hosts, timeout))

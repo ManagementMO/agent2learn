@@ -96,7 +96,7 @@ jobs:
           set -euo pipefail
           uv run ruff check .
           uv run ruff format --check src tests tools
-          uv run mypy src
+          uv run mypy src tests tools
           uv run pip-audit --progress-spinner off
           uv run pytest -q
           uv run python tools/generate_fixtures.py --check

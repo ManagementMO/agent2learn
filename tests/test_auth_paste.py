@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import TextIO, cast
 
 import pytest
 from typer.testing import CliRunner
@@ -205,7 +206,9 @@ def test_hidden_reader_refuses_piped_stdin_without_reading_it() -> None:
             raise AssertionError("piped input must not be read")
 
     with pytest.raises(paste.PasteError, match="controlling TTY"):
-        paste.read_hidden_multiline(input_stream=Piped(), output_stream=Piped())
+        paste.read_hidden_multiline(
+            input_stream=cast(TextIO, Piped()), output_stream=cast(TextIO, Piped())
+        )
 
 
 @pytest.mark.skipif(termios is None, reason="POSIX terminal API is unavailable on Windows")
@@ -230,7 +233,8 @@ def test_posix_hidden_reader_disables_and_restores_echo_even_on_interrupt(
 
     with pytest.raises(KeyboardInterrupt):
         paste._read_posix_hidden(
-            FakeInput(), SimpleNamespace(write=lambda _value: None, flush=lambda: None)
+            cast(TextIO, FakeInput()),
+            cast(TextIO, SimpleNamespace(write=lambda _value: None, flush=lambda: None)),
         )
 
     assert len(calls) == 2
@@ -243,7 +247,7 @@ def test_windows_hidden_reader_collects_input_without_echo(monkeypatch: pytest.M
     fake_msvcrt = SimpleNamespace(getwch=lambda: next(characters))
     monkeypatch.setattr(paste, "msvcrt", fake_msvcrt)
 
-    output = SimpleNamespace(write=lambda _value: None, flush=lambda: None)
+    output = cast(TextIO, SimpleNamespace(write=lambda _value: None, flush=lambda: None))
     assert paste._read_windows_hidden(output) == "secret\n"
 
 
