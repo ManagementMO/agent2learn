@@ -103,7 +103,7 @@ def write_audit(vault: Vault, *, timestamp: str | None = None) -> Path:
     audits = audit_vault(vault)
     stamp = timestamp if timestamp is not None else clock.stamp()
     destination = vault.state() / "AUDIT.md"
-    paths.atomic_write_text(destination, _render(audits, stamp))
+    paths.atomic_write_text(destination, _render(audits, stamp), root=vault.root)
     return destination
 
 

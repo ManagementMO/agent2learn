@@ -43,6 +43,7 @@ class RecordingTransport:
         readback: object | None = None,
         status: int = 200,
         readback_error: Exception | None = None,
+        post_error: Exception | None = None,
     ) -> None:
         self.folders = (
             folders
@@ -52,6 +53,8 @@ class RecordingTransport:
         self.readback = readback
         self.status = status
         self.readback_error = readback_error
+        self.post_error = post_error
+        self.closed_responses = 0
         self.gets: list[str] = []
         self.posts: list[tuple[str, bytes, str]] = []
 
@@ -64,10 +67,18 @@ class RecordingTransport:
         return self.readback if self.readback is not None else []
 
     def post_once(self, path: str, body: bytes, *, content_type: str) -> object:
-        self.posts.append((path, body, content_type))
+        if self.post_error is not None:
+            raise self.post_error
+        payload = body if isinstance(body, bytes) else b"".join(body)
+        self.posts.append((path, payload, content_type))
+
+        owner = self
 
         class _Response:
-            status_code = self.status
+            status_code = owner.status
+
+            def close(self) -> None:
+                owner.closed_responses += 1
 
         return _Response()
 
@@ -397,7 +408,128 @@ def test_read_back_failures_are_unverified_and_never_retry(tmp_path: Path) -> No
         receipts = sorted((vault.state() / "submissions").glob("*.json"))
         assert len(receipts) == 1, label
         payload = json.loads(receipts[0].read_text(encoding="utf-8"))
-        assert payload["status"] == "unknown", label
+        assert payload["status"] == "verification_unknown", label
+
+
+def test_readback_uses_current_user_route_and_nested_submission_shape(tmp_path: Path) -> None:
+    transport = RecordingTransport(
+        readback=[
+            {
+                "Entity": {"EntityId": 99999999, "EntityType": "User"},
+                "Submissions": [
+                    {
+                        "SubmissionDate": "2999-01-01T00:00:00.000Z",
+                        "Files": [{"FileName": "report.pdf", "Size": 13}],
+                    }
+                ],
+            }
+        ]
+    )
+    vault, preview = _preview(tmp_path, transport)
+
+    receipt = confirm_and_upload(
+        vault, transport, preview, phrase=preview.phrase, interactive=True, capability=ENABLED
+    )
+
+    assert receipt.status == "verified"
+    assert transport.gets[-1].endswith("/submissions/mysubmissions/")
+    assert transport.closed_responses == 1
+
+
+def test_readback_rejects_conflicting_folder_identifiers(tmp_path: Path) -> None:
+    transport = RecordingTransport(
+        readback=[
+            {
+                "FolderId": FOLDER_ID + 1,
+                "Submissions": [
+                    {
+                        "SubmissionDate": "2999-01-01T00:00:00Z",
+                        "Files": [
+                            {
+                                "FileName": "report.pdf",
+                                "Size": 13,
+                                "FolderId": FOLDER_ID,
+                                "DropboxFolderId": FOLDER_ID + 1,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    )
+    vault, preview = _preview(tmp_path, transport)
+
+    with pytest.raises(SubmissionUnverified):
+        confirm_and_upload(
+            vault,
+            transport,
+            preview,
+            phrase=preview.phrase,
+            interactive=True,
+            capability=ENABLED,
+        )
+
+
+def test_readback_rejects_folder_conflicts_across_nested_containers(tmp_path: Path) -> None:
+    transport = RecordingTransport(
+        readback=[
+            {
+                "FolderId": FOLDER_ID + 1,
+                "Submissions": [
+                    {
+                        "FolderId": FOLDER_ID,
+                        "SubmissionDate": "2999-01-01T00:00:00Z",
+                        "Files": [{"FileName": "report.pdf", "Size": 13}],
+                    }
+                ],
+            }
+        ]
+    )
+    vault, preview = _preview(tmp_path, transport)
+
+    with pytest.raises(SubmissionUnverified):
+        confirm_and_upload(
+            vault,
+            transport,
+            preview,
+            phrase=preview.phrase,
+            interactive=True,
+            capability=ENABLED,
+        )
+
+
+def test_post_transport_failure_writes_unknown_receipt_and_removes_stage(tmp_path: Path) -> None:
+    transport = RecordingTransport(post_error=OSError("connection reset"))
+    vault, preview = _preview(tmp_path, transport)
+    staged = preview.staged.path
+
+    with pytest.raises(SubmissionUnverified, match="could not verify"):
+        confirm_and_upload(
+            vault, transport, preview, phrase=preview.phrase, interactive=True, capability=ENABLED
+        )
+
+    receipts = sorted((vault.state() / "submissions").glob("*.json"))
+    assert len(receipts) == 1
+    payload = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert payload["status"] == "verification_unknown"
+    assert payload["post_attempted"] is True
+    assert payload["post_at"]
+    assert payload["readback_at"] is None
+    assert payload["http_status_class"] == "unknown"
+    assert not staged.exists()
+
+
+def test_submit_staging_symlink_is_refused_without_copying_outside_vault(tmp_path: Path) -> None:
+    vault, _course = _vault(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    staging = vault.state() / submit.STAGING_DIRNAME
+    staging.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises((SubmissionRefused, ValueError), match="link|symlink"):
+        submit._stage(vault, _payload(tmp_path))
+
+    assert not list(outside.iterdir())
 
 
 def test_a_receipt_records_the_outcome_without_leaking_anything(tmp_path: Path) -> None:
@@ -435,6 +567,10 @@ def test_a_receipt_records_the_outcome_without_leaking_anything(tmp_path: Path) 
         "folder_id",
         "location",
         "outcome",
+        "post_attempted",
+        "post_at",
+        "readback_at",
+        "http_status_class",
         "receipt_version",
         "selected_path",
         "sha256",

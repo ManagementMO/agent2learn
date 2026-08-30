@@ -22,6 +22,7 @@ from agent2learn.check import (
     Claim,
     LineIndex,
     ScanSource,
+    _possible_conflict,
     check,
     exact_score,
     render,
@@ -236,6 +237,18 @@ def test_opposite_polarity_is_offered_for_comparison(
     report = check(_draft(tmp_path, "The dual is not bounded at optimality."), course)
 
     assert report.findings[0].status == "possible_conflict"
+
+
+@pytest.mark.parametrize(
+    ("claim", "source"),
+    [
+        ("the algorithm never converges rapidly", "the algorithm converges rapidly"),
+        ("the algorithm cannot converge rapidly", "the algorithm converges rapidly"),
+        ("the algorithm converges without a bound", "the algorithm converges a bound"),
+    ],
+)
+def test_broad_lexical_negation_is_not_a_possible_conflict(claim: str, source: str) -> None:
+    assert _possible_conflict(claim, source) is False
 
 
 def test_a_differing_number_alone_is_never_a_conflict(

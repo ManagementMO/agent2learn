@@ -24,4 +24,5 @@ repos:
         exclude: ^tests/fixtures/files/
       - id: mixed-line-ending
         args: ["--fix=lf"]
-        exclude: ^tests/fixtures/files/
+        # PowerShell installers intentionally follow .gitattributes' CRLF contract.
+        exclude: ^(?:tests/fixtures/files/|.*\.ps1$)

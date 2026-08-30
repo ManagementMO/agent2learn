@@ -161,8 +161,14 @@ def write_ics(
 
     if paths.is_link(destination) or paths.has_link_component(destination.parent):
         raise A2LError("calendar destination must not contain a symlink")
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
-    paths.atomic_write_text(destination, render_ics(vault, school, now=now))
+    try:
+        destination.relative_to(vault.root)
+    except ValueError:
+        bound_root = None
+    else:
+        bound_root = vault.root
+    paths.ensure_dir(destination.parent, root=bound_root)
+    paths.atomic_write_text(destination, render_ics(vault, school, now=now), root=bound_root)
     return destination
 
 

@@ -20,10 +20,12 @@ _POLICY_START = "<!-- a2l:ai-policy:start -->"
 _POLICY_END = "<!-- a2l:ai-policy:end -->"
 
 
-def surface_ai_policy(course_dir: Path, outline: Path | None) -> dict[str, object]:
+def surface_ai_policy(
+    course_dir: Path, outline: Path | None, *, root: Path | None = None
+) -> dict[str, object]:
     """Record a local observation without classifying, scoring, or enforcing a policy."""
     record = _scan_outline(course_dir, outline)
-    _write_record(course_dir, record)
+    _write_record(course_dir, record, root=root)
     return record
 
 
@@ -103,38 +105,43 @@ def _unavailable() -> dict[str, object]:
     }
 
 
-def _write_record(course_dir: Path, record: dict[str, object]) -> None:
+def _write_record(course_dir: Path, record: dict[str, object], *, root: Path | None = None) -> None:
     destination = course_dir / "_meta" / "ai_policy.json"
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+    paths.ensure_dir(destination.parent, root=root)
     paths.atomic_write_text(
         destination,
         json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n",
+        root=root,
     )
-    _surface_index_line(course_dir, record)
+    _surface_index_line(course_dir, record, root=root)
 
 
-def surface_course_ai_policy(course_dir: Path, outlines: Sequence[Path]) -> dict[str, object]:
+def surface_course_ai_policy(
+    course_dir: Path, outlines: Sequence[Path], *, root: Path | None = None
+) -> dict[str, object]:
     """Record the first found clause across successful local outline renders.
 
     All supplied paths were successfully rendered by the outline boundary.  An empty set is
     therefore unavailable coverage; a non-empty set with no keyword is a scanned no-match.
     """
     if not outlines:
-        return surface_ai_policy(course_dir, None)
+        return surface_ai_policy(course_dir, None, root=root)
     last: dict[str, object] | None = None
     for outline in sorted(outlines, key=lambda value: value.as_posix()):
         record = _scan_outline(course_dir, outline)
         if record["status"] == "found":
-            _write_record(course_dir, record)
+            _write_record(course_dir, record, root=root)
             return record
         last = record
     assert last is not None
-    _write_record(course_dir, last)
+    _write_record(course_dir, last, root=root)
     return last
 
 
-def _surface_index_line(course_dir: Path, record: dict[str, object]) -> None:
+def _surface_index_line(
+    course_dir: Path, record: dict[str, object], *, root: Path | None = None
+) -> None:
     index = course_dir / "INDEX.md"
     try:
         with open(os.fspath(paths.long_path(index)), encoding="utf-8", newline="") as handle:
@@ -172,4 +179,4 @@ def _surface_index_line(course_dir: Path, record: dict[str, object]) -> None:
             "",
         ]
     )
-    paths.atomic_write_text(index, "\n".join(cleaned))
+    paths.atomic_write_text(index, "\n".join(cleaned), root=root)

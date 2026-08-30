@@ -767,10 +767,12 @@ def test_force_refresh_copy_failure_leaves_prior_managed_content_intact(
     )
     real_atomic_write_bytes = skills.paths.atomic_write_bytes
 
-    def fail_on_skill_write(path: Path, data: bytes, *, retries: int = 5) -> None:
+    def fail_on_skill_write(
+        path: Path, data: bytes, *, root: Path | None = None, retries: int = 5
+    ) -> None:
         if path.name == "SKILL.md":
             raise OSError("simulated copy failure")
-        real_atomic_write_bytes(path, data, retries=retries)
+        real_atomic_write_bytes(path, data, root=root, retries=retries)
 
     monkeypatch.setattr(skills.paths, "atomic_write_bytes", fail_on_skill_write)
 

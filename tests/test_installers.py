@@ -392,3 +392,15 @@ def test_ci_smokes_both_installers_against_the_candidate_build() -> None:
     assert "uv build" in workflow
     for os_name in ("ubuntu-latest", "macos-latest", "windows-latest"):
         assert os_name in workflow
+
+
+def test_ci_candidate_index_wins_over_a_same_version_public_release() -> None:
+    """The installer smoke must prove the bytes it installs, not only the version string."""
+    for workflow_name in ("ci.yml", "release.yml"):
+        workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+
+        assert '"simple" / "agent2learn" / "index.html"' in workflow, workflow_name
+        assert "sha256=" in workflow, workflow_name
+        assert "UV_INDEX=" in workflow, workflow_name
+        assert "UV_DEFAULT_INDEX=https://pypi.org/simple" in workflow, workflow_name
+        assert "UV_INDEX_STRATEGY=first-index" in workflow, workflow_name

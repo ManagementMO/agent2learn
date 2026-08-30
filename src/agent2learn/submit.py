@@ -41,8 +41,10 @@ import re
 import secrets
 import stat
 import string
+import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from typing import Protocol
@@ -99,7 +101,74 @@ class SubmissionTransport(Protocol):
 
     def get_json(self, path: str) -> object: ...
 
-    def post_once(self, path: str, body: bytes, *, content_type: str) -> object: ...
+    def post_once(
+        self, path: str, body: bytes | SubmissionBody, *, content_type: str
+    ) -> object: ...
+
+
+@dataclass(frozen=True)
+class SubmissionBody:
+    """A repeatable multipart body streamed from the private staging file.
+
+    The body exposes its exact byte length for the API client's explicit ``Content-Length`` while
+    keeping the potentially large file payload out of memory.  Iteration is repeatable so a test
+    transport can inspect it and Requests can consume it once for the actual POST.
+    """
+
+    path: Path
+    filename: str
+    size: int
+    boundary: str
+    root: Path | None = None
+
+    @property
+    def content_length(self) -> int:
+        return len(self._prefix()) + self.size + len(self._suffix())
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield self._prefix()
+        if self.root is not None and paths.has_link_component(self.path, root=self.root):
+            raise SubmissionRefused("the staged path contains a symlink or junction")
+        if paths.is_link(self.path):
+            raise SubmissionRefused("the staged path contains a symlink or junction")
+        descriptor = os.open(
+            os.fspath(paths.long_path(self.path)), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        )
+        try:
+            file_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(file_stat.st_mode) or getattr(file_stat, "st_nlink", 1) != 1:
+                raise SubmissionRefused("the staged file is no longer a private regular file")
+            with os.fdopen(descriptor, "rb") as handle:
+                descriptor = -1
+                yield from iter(lambda: handle.read(1024 * 1024), b"")
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+        yield self._suffix()
+
+    def _prefix(self) -> bytes:
+        safe = safe_filename(self.filename)
+        descriptor = json.dumps({"Text": "", "HTML": None}, separators=(",", ":"))
+        marker = f"--{self.boundary}".encode()
+        return (
+            b"\r\n".join(
+                [
+                    marker,
+                    b'Content-Disposition: form-data; name=""',
+                    b"Content-Type: application/json",
+                    b"",
+                    descriptor.encode("utf-8"),
+                    marker,
+                    f'Content-Disposition: form-data; name=""; filename="{safe}"'.encode(),
+                    b"Content-Type: application/octet-stream",
+                    b"",
+                ]
+            )
+            + b"\r\n"
+        )
+
+    def _suffix(self) -> bytes:
+        return f"\r\n--{self.boundary}--\r\n".encode()
 
 
 @dataclass(frozen=True)
@@ -158,6 +227,10 @@ class SubmissionReceipt:
     location: str
     selected_path: str | None
     confirmed_at: str
+    post_attempted: bool
+    post_at: str | None
+    readback_at: str | None
+    http_status_class: str
     completed_at: str
     status: str
     outcome: str
@@ -202,10 +275,13 @@ def build_submission_body(filename: str, payload: bytes, *, boundary: str) -> by
 
     if not isinstance(payload, bytes):
         raise ValueError("submission payload must be bytes")
-    safe = safe_filename(filename)
+    # Reuse the streaming framing so the legacy helper and the production upload have byte-for-byte
+    # identical multipart syntax.  ``SubmissionBody`` only opens its path during iteration; this
+    # in-memory compatibility helper supplies a temporary one-shot payload instead.
     descriptor = json.dumps({"Text": "", "HTML": None}, separators=(",", ":"))
     marker = f"--{boundary}".encode()
-    return b"\r\n".join(
+    safe_name = safe_filename(filename)
+    prefix = b"\r\n".join(
         [
             marker,
             b'Content-Disposition: form-data; name=""',
@@ -213,14 +289,12 @@ def build_submission_body(filename: str, payload: bytes, *, boundary: str) -> by
             b"",
             descriptor.encode("utf-8"),
             marker,
-            f'Content-Disposition: form-data; name=""; filename="{safe}"'.encode(),
+            (f'Content-Disposition: form-data; name=""; filename="{safe_name}"'.encode()),
             b"Content-Type: application/octet-stream",
-            b"",
-            payload,
-            f"--{boundary}--".encode(),
             b"",
         ]
     )
+    return prefix + b"\r\n" + payload + f"\r\n--{boundary}--\r\n".encode()
 
 
 def safe_filename(filename: str) -> str:
@@ -254,21 +328,36 @@ def prepare(
     """
 
     require_available(cfg, capability=capability)
+    # Preparation is a lifecycle boundary: stale opaque parts are removed before a new preview,
+    # and a linked staging directory fails closed instead of redirecting bytes outside the vault.
+    cleanup_staging(vault)
 
     selected = Path(file).expanduser()
     if not paths.long_path(selected).is_file():
         raise SubmissionRefused("the file to submit does not exist")
     if paths.is_link(selected):
         raise SubmissionRefused("refusing to submit through a symlink")
+    # Validate the header identity before creating any staging bytes; a control character in a
+    # local filename must be a pre-upload refusal, not an attempted request that later fails while
+    # the multipart body is being streamed.
+    safe_filename(selected.name)
 
     course_dir = course_index.resolve_course(vault, course)
+    if paths.has_link_component(course_dir, root=vault.root):
+        raise SubmissionRefused("course path contains a symlink or junction")
     target = _resolve_target(client, vault, course_dir, item, le_version)
     if target.group_submission:
         raise SubmissionRefused(
             f"{target.group_note} · group submission is unsupported in v0.1; submit in LEARN"
         )
     staged = _stage(vault, selected)
-    return SubmissionPreview(target=target, staged=staged, code=_code())
+    try:
+        return SubmissionPreview(target=target, staged=staged, code=_code())
+    except BaseException:
+        # Keep the post-staging lifecycle closed even if code generation or preview construction
+        # fails before a ``SubmissionPreview`` exists for the caller to discard.
+        _discard(staged)
+        raise
 
 
 def render_preview(preview: SubmissionPreview) -> str:
@@ -340,33 +429,90 @@ def confirm_and_upload(
 
     preview.consumed = True
     confirmed_at = clock.stamp()
-    body = build_submission_body(
-        preview.staged.filename,
-        _read_staged(preview.staged),
-        boundary=_boundary(),
-    )
-    boundary = _boundary_of(body)
+    attempted = False
+    post_at: str | None = None
+    readback_at: str | None = None
+    http_status_class = "unknown"
+    outcome: str | None = None
     try:
+        _validate_staged(vault, preview.staged)
+        boundary = _boundary()
+        body = SubmissionBody(
+            path=preview.staged.path,
+            filename=preview.staged.filename,
+            size=preview.staged.size,
+            boundary=boundary,
+            root=vault.root,
+        )
+        post_at = clock.stamp()
+        attempted = True
         response = client.post_once(
             preview.target.endpoint,
             body,
             content_type=f"multipart/mixed; boundary={boundary}",
         )
-        status = getattr(response, "status_code", 0)
-        if not 200 <= int(status) < 300:
-            raise SubmissionUnverified(
-                f"upload returned status {status}; check LEARN before trying again"
-            )
+        try:
+            status = getattr(response, "status_code", 0)
+            http_status_class = _status_class(status)
+            if not 200 <= int(status) < 300:
+                raise SubmissionUnverified(
+                    f"upload returned status {status}; check LEARN before trying again"
+                )
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+        readback_at = clock.stamp()
         outcome = _verify(client, preview, confirmed_at)
     except SubmissionUnverified as exc:
-        receipt = _receipt(preview, confirmed_at, status="unknown", outcome=str(exc))
-        _write_receipt(vault, receipt)
-        _discard(preview.staged)
+        if attempted:
+            receipt = _receipt(
+                preview,
+                confirmed_at,
+                post_attempted=True,
+                post_at=post_at,
+                readback_at=readback_at,
+                http_status_class=http_status_class,
+                status="verification_unknown",
+                outcome=str(exc),
+            )
+            _write_receipt(vault, receipt)
+        raise
+    except BaseException as exc:
+        if attempted:
+            receipt = _receipt(
+                preview,
+                confirmed_at,
+                post_attempted=True,
+                post_at=post_at,
+                readback_at=readback_at,
+                http_status_class=http_status_class,
+                status="verification_unknown",
+                outcome=(
+                    "upload attempt outcome could not be verified; inspect LEARN before "
+                    "resubmitting"
+                ),
+            )
+            _write_receipt(vault, receipt)
+            raise SubmissionUnverified(
+                "upload was attempted but could not verify the outcome; inspect LEARN before "
+                "resubmitting"
+            ) from exc
         raise
     finally:
         _discard(preview.staged)
 
-    receipt = _receipt(preview, confirmed_at, status="verified", outcome=outcome)
+    assert outcome is not None
+    receipt = _receipt(
+        preview,
+        confirmed_at,
+        post_attempted=True,
+        post_at=post_at,
+        readback_at=readback_at,
+        http_status_class=http_status_class,
+        status="verified",
+        outcome=outcome,
+    )
     _write_receipt(vault, receipt)
     return receipt
 
@@ -375,6 +521,8 @@ def cleanup_staging(vault: Vault, *, now: datetime | None = None) -> int:
     """Remove expired staged files, scanning only the exact staging directory."""
 
     directory = _staging_dir(vault)
+    if paths.has_link_component(directory, root=vault.root):
+        raise A2LError("submission staging path contains a symlink or junction")
     moment = now or clock.now()
     removed = 0
     try:
@@ -422,7 +570,7 @@ def _resolve_target(
         )
     folder = matches[0]
     folder_id = folder.get("Id")
-    if not isinstance(folder_id, int):
+    if isinstance(folder_id, bool) or not isinstance(folder_id, int):
         raise SubmissionRefused("the Dropbox folder has no usable id")
     group_type = folder.get("GroupTypeId")
     group = group_type is not None
@@ -437,7 +585,13 @@ def _resolve_target(
             f"/d2l/api/le/{le_version}/{org_unit_id}/dropbox/folders/{folder_id}"
             "/submissions/mysubmissions/"
         ),
-        readback=f"/d2l/api/le/{le_version}/{org_unit_id}/dropbox/folders/{folder_id}/submissions/",
+        # The ``mysubmissions`` projection is the only route that proves the current user's
+        # upload.  The unqualified ``submissions`` route enumerates entities and is not sufficient
+        # for attribution.
+        readback=(
+            f"/d2l/api/le/{le_version}/{org_unit_id}/dropbox/folders/{folder_id}"
+            "/submissions/mysubmissions/"
+        ),
         group_submission=group,
         group_note=(
             f"group Dropbox (group type {group_type}), visible to your group" if group else None
@@ -461,18 +615,44 @@ def _require_supported_le(le_version: str | None) -> None:
 
 def _stage(vault: Vault, selected: Path) -> StagedFile:
     directory = _staging_dir(vault)
-    paths.ensure_dir(directory)
-    destination = directory / f"{secrets.token_hex(16)}.part"
+    try:
+        paths.ensure_dir(directory, root=vault.root)
+    except ValueError as exc:
+        raise SubmissionRefused("submission staging path contains a symlink or junction") from exc
+    if paths.has_link_component(directory, root=vault.root):
+        raise SubmissionRefused("submission staging path contains a symlink or junction")
+    file_descriptor, raw_destination = tempfile.mkstemp(
+        prefix=".a2l-", suffix=".part", dir=os.fspath(paths.long_path(directory))
+    )
+    destination = paths.plain_path(Path(raw_destination))
+    try:
+        if paths.has_link_component(destination, root=vault.root):
+            raise SubmissionRefused("submission staging path contains a symlink or junction")
+    except BaseException:
+        os.close(file_descriptor)
+        _remove(destination)
+        raise
     digest = sha256()
     size = 0
-    with (
-        open(os.fspath(paths.long_path(selected)), "rb") as source,
-        open(os.fspath(paths.long_path(destination)), "wb") as staged,
-    ):
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-            size += len(chunk)
-            staged.write(chunk)
+    descriptor_open = True
+    try:
+        with os.fdopen(file_descriptor, "wb") as staged:
+            descriptor_open = False
+            with open(os.fspath(paths.long_path(selected)), "rb") as source:
+                # ``mkstemp`` creates the part as 0600 before this copy starts.  Keep the explicit
+                # tightening for platforms/filesystems that apply a different inherited mode.
+                _tighten(destination)
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                    size += len(chunk)
+                    staged.write(chunk)
+                staged.flush()
+                os.fsync(staged.fileno())
+    except BaseException:
+        if descriptor_open:
+            os.close(file_descriptor)
+        _remove(destination)
+        raise
     _tighten(destination)
     staged_at = clock.now()
     return StagedFile(
@@ -498,20 +678,35 @@ def _verify(client: SubmissionTransport, preview: SubmissionPreview, confirmed_a
     if not isinstance(records, list):
         raise SubmissionUnverified("read-back was not a submission list; confirm in LEARN")
 
-    matches = [
-        entry
-        for entry in _iter_files(records)
-        if str(entry.get("FileName") or "") == preview.staged.filename
-    ]
+    matches = []
+    for entry in _iter_files(records):
+        filename = entry.get("FileName")
+        if (
+            isinstance(filename, str)
+            and filename == preview.staged.filename
+            and _folder_matches(entry, preview.target.folder_id)
+        ):
+            matches.append(entry)
     if not matches:
         raise SubmissionUnverified("read-back did not list the uploaded file; confirm in LEARN")
-    fresh = [entry for entry in matches if str(entry.get("SubmissionDate") or "") >= confirmed_at]
+    confirmed = _parse_instant(confirmed_at)
+    if confirmed is None:
+        raise SubmissionUnverified("confirmation timestamp was unreadable; confirm in LEARN")
+    fresh = []
+    for entry in matches:
+        submitted = _parse_instant(entry.get("SubmissionDate"))
+        if submitted is not None and submitted > confirmed:
+            fresh.append(entry)
     if len(fresh) != 1:
         raise SubmissionUnverified(
             "read-back was ambiguous or matched an earlier upload; confirm in LEARN"
         )
     reported = fresh[0].get("Size")
-    if not isinstance(reported, int) or reported != preview.staged.size:
+    if (
+        isinstance(reported, bool)
+        or not isinstance(reported, int)
+        or reported != preview.staged.size
+    ):
         raise SubmissionUnverified(
             "read-back size did not match the staged bytes; confirm in LEARN"
         )
@@ -523,16 +718,83 @@ def _iter_files(records: list[object]) -> list[dict[str, object]]:
     for record in records:
         if not isinstance(record, dict):
             continue
-        for candidate in record.get("Files") or ():
-            if isinstance(candidate, dict):
-                merged = dict(candidate)
-                merged.setdefault("SubmissionDate", record.get("SubmissionDate"))
-                files.append(merged)
+        entity = record.get("Entity")
+        if entity is not None and (
+            not isinstance(entity, dict) or entity.get("EntityType") not in (None, "User")
+        ):
+            # The current-user projection should never contain a group/entity submission.  Keep
+            # this check even though the route scopes it, so a route or server-shape regression
+            # cannot silently attribute a teammate's file.
+            continue
+        # D2L has returned both an outer Entity -> Submissions -> Files collection and a direct
+        # submission object in older compatible projections.  Accept only these two documented
+        # shapes; do not recursively walk arbitrary response data.
+        submissions: object = record.get("Submissions") if "Submissions" in record else [record]
+        if not isinstance(submissions, list):
+            continue
+        for submission in submissions:
+            if not isinstance(submission, dict):
+                continue
+            candidates = submission.get("Files")
+            if not isinstance(candidates, list):
+                continue
+            for candidate in candidates:
+                if isinstance(candidate, dict):
+                    merged = dict(candidate)
+                    merged.setdefault("SubmissionDate", submission.get("SubmissionDate"))
+                    folder_values = [
+                        container[key]
+                        for container in (record, submission, candidate)
+                        for key in ("FolderId", "DropboxFolderId")
+                        if key in container
+                    ]
+                    valid_folder_values = [
+                        value
+                        for value in folder_values
+                        if isinstance(value, int) and not isinstance(value, bool)
+                    ]
+                    if len(valid_folder_values) != len(folder_values):
+                        merged["_a2l_invalid_folder_identifier"] = True
+                    if len(set(valid_folder_values)) > 1:
+                        merged["_a2l_conflicting_folder_identifiers"] = True
+                    for key in ("FolderId", "DropboxFolderId"):
+                        if key not in merged:
+                            if key in submission:
+                                merged[key] = submission[key]
+                            elif key in record:
+                                merged[key] = record[key]
+                    files.append(merged)
     return files
 
 
+def _folder_matches(entry: dict[str, object], folder_id: int) -> bool:
+    """Accept an omitted folder field only because the current-user route scopes it."""
+
+    if entry.get("_a2l_invalid_folder_identifier") or entry.get(
+        "_a2l_conflicting_folder_identifiers"
+    ):
+        return False
+    supplied: list[int] = []
+    for key in ("FolderId", "DropboxFolderId"):
+        value = entry.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int):
+            return False
+        supplied.append(value)
+    return not supplied or all(value == folder_id for value in supplied)
+
+
 def _receipt(
-    preview: SubmissionPreview, confirmed_at: str, *, status: str, outcome: str
+    preview: SubmissionPreview,
+    confirmed_at: str,
+    *,
+    post_attempted: bool,
+    post_at: str | None,
+    readback_at: str | None,
+    http_status_class: str,
+    status: str,
+    outcome: str,
 ) -> SubmissionReceipt:
     staged = preview.staged
     inside = staged.selected_display != "external"
@@ -545,6 +807,10 @@ def _receipt(
         location="vault" if inside else "external",
         selected_path=staged.selected_display if inside else None,
         confirmed_at=confirmed_at,
+        post_attempted=post_attempted,
+        post_at=post_at,
+        readback_at=readback_at,
+        http_status_class=http_status_class,
         completed_at=clock.stamp(),
         status=status,
         outcome=outcome,
@@ -553,7 +819,10 @@ def _receipt(
 
 def _write_receipt(vault: Vault, receipt: SubmissionReceipt) -> Path:
     directory = vault.state() / RECEIPTS_DIRNAME
-    paths.ensure_dir(directory)
+    try:
+        paths.ensure_dir(directory, root=vault.root)
+    except ValueError as exc:
+        raise A2LError("submission receipt path contains a symlink or junction") from exc
     name = f"{receipt.completed_at.replace(':', '').replace('-', '')}-{receipt.folder_id}.json"
     payload = {
         "receipt_version": receipt.receipt_version,
@@ -565,6 +834,10 @@ def _write_receipt(vault: Vault, receipt: SubmissionReceipt) -> Path:
         "location": receipt.location,
         "selected_path": receipt.selected_path,
         "confirmed_at": receipt.confirmed_at,
+        "post_attempted": receipt.post_attempted,
+        "post_at": receipt.post_at,
+        "readback_at": receipt.readback_at,
+        "http_status_class": receipt.http_status_class,
         "completed_at": receipt.completed_at,
         "status": receipt.status,
         "outcome": receipt.outcome,
@@ -573,6 +846,7 @@ def _write_receipt(vault: Vault, receipt: SubmissionReceipt) -> Path:
     paths.atomic_write_text(
         destination,
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        root=vault.root,
     )
     return destination
 
@@ -626,20 +900,28 @@ def _boundary() -> str:
     return f"a2l{secrets.token_hex(16)}"
 
 
-def _boundary_of(body: bytes) -> str:
-    first = body.split(b"\r\n", 1)[0]
-    return first[2:].decode("ascii")
+def _validate_staged(vault: Vault, staged: StagedFile) -> None:
+    """Validate staged metadata without materialising the file in memory."""
 
-
-def _read_staged(staged: StagedFile) -> bytes:
+    if paths.has_link_component(staged.path, root=vault.root):
+        raise SubmissionRefused("the staged path contains a symlink or junction")
     try:
-        with open(os.fspath(paths.long_path(staged.path)), "rb") as handle:
-            payload = handle.read()
+        file_stat = os.lstat(os.fspath(paths.long_path(staged.path)))
     except OSError as exc:
         raise SubmissionRefused("the staged file is no longer readable") from exc
-    if sha256(payload).hexdigest() != staged.sha256 or len(payload) != staged.size:
+    if not stat.S_ISREG(file_stat.st_mode) or getattr(file_stat, "st_nlink", 1) != 1:
+        raise SubmissionRefused("the staged file is no longer a private regular file")
+    digest = sha256()
+    size = 0
+    try:
+        with open(os.fspath(paths.long_path(staged.path)), "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size += len(chunk)
+    except OSError as exc:
+        raise SubmissionRefused("the staged file is no longer readable") from exc
+    if size != staged.size or digest.hexdigest() != staged.sha256:
         raise SubmissionRefused("the staged bytes changed after the preview; run submit again")
-    return payload
 
 
 def _expired(staged: StagedFile) -> bool:
@@ -652,6 +934,39 @@ def _expired(staged: StagedFile) -> bool:
 
 def _discard(staged: StagedFile) -> None:
     _remove(staged.path)
+
+
+def discard_preview(preview: SubmissionPreview) -> None:
+    """Discard an unconfirmed preview and its staged bytes."""
+
+    preview.consumed = True
+    _discard(preview.staged)
+
+
+def _parse_instant(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _status_class(status: object) -> str:
+    if isinstance(status, bool) or not isinstance(status, int):
+        return "unknown"
+    if 200 <= status < 300:
+        return "2xx"
+    if 300 <= status < 400:
+        return "3xx"
+    if 400 <= status < 500:
+        return "4xx"
+    if 500 <= status < 600:
+        return "5xx"
+    return "unknown"
 
 
 def _remove(path: Path) -> None:
@@ -680,6 +995,7 @@ __all__ = [
     "MIN_LE_VERSION",
     "SUBMISSION_RECEIPT_VERSION",
     "StagedFile",
+    "SubmissionBody",
     "SubmissionCapability",
     "SubmissionPreview",
     "SubmissionReceipt",
@@ -690,6 +1006,7 @@ __all__ = [
     "build_submission_body",
     "cleanup_staging",
     "confirm_and_upload",
+    "discard_preview",
     "enable_submit",
     "prepare",
     "release_capability",

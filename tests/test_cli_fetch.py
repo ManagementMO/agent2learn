@@ -99,6 +99,7 @@ def test_large_fetch_confirmation_uses_the_long_path_disk_boundary(
     monkeypatch.setattr(config, "load", lambda: config.Config(vault=tmp_path))
     monkeypatch.setattr(session, "load", lambda: object())
     monkeypatch.setattr("agent2learn.cli.Client", lambda school, saved: object())
+    monkeypatch.setattr(cli_module, "_interactive_terminal", lambda: True)
     extended = tmp_path / "extended-vault"
     disk_paths: list[object] = []
     monkeypatch.setattr(cli_module.paths, "long_path", lambda path: extended)

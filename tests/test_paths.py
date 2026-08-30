@@ -11,6 +11,7 @@ import builtins
 import os
 import stat
 import sys
+import tempfile
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -62,6 +63,65 @@ def test_reserved_device_set_is_exactly_the_documented_windows_set() -> None:
     )
 
     assert expected == paths.RESERVED
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation may require elevation")
+def test_root_bound_writers_refuse_linked_parent_components(tmp_path: Path) -> None:
+    """Vault writers must fail closed instead of following a pre-existing symlink."""
+    root = tmp_path / "vault"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked = root / "Winter 2026"
+    linked.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="link component"):
+        paths.ensure_dir(linked / "COURSE101_1261", root=root)
+    with pytest.raises(ValueError, match="link component"):
+        paths.atomic_write_text(linked / "outside.json", "secret\n", root=root)
+
+    assert not (outside / "COURSE101_1261").exists()
+    assert not (outside / "outside.json").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink perturbation")
+def test_root_bound_atomic_write_rechecks_a_temporary_parent_before_opening(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "vault"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked = root / "linked"
+    linked.symlink_to(outside, target_is_directory=True)
+
+    fd, raw_holder = tempfile.mkstemp(dir=tmp_path)
+    os.close(fd)
+    holder = Path(raw_holder)
+    monkeypatch.setattr(
+        paths,
+        "_create_temporary_file",
+        lambda _destination, *, suffix: (linked / f"payload{suffix}", os.open(holder, os.O_RDWR)),
+    )
+
+    with pytest.raises(ValueError, match="link component"):
+        paths.atomic_write_text(root / "safe" / "state.json", "secret\n", root=root)
+
+    assert not (outside / "payload.tmp").exists()
+    assert not (root / "safe" / "state.json").exists()
+    holder.unlink()
+
+
+def test_root_bound_tree_replacement_refuses_lexical_escape(tmp_path: Path) -> None:
+    root = tmp_path / "vault"
+    root.mkdir()
+    (root / "sub").mkdir()
+    parent = root / "sub" / ".."
+    staged = parent / ".staged"
+    staged.mkdir()
+
+    with pytest.raises(ValueError, match="outside|trusted root"):
+        paths.replace_tree(parent / "..", staged, root=root)
 
 
 @pytest.mark.parametrize(

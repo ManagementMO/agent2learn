@@ -41,10 +41,11 @@ PACKAGE_NAME = "agent2learn"
 # A deliberately narrow PEP 440 subset: release segments, optional pre/post/dev suffixes. Local
 # versions and arbitrary text are refused rather than sanitised.
 _VERSION = re.compile(
-    r"^(?:[0-9]+!)?[0-9]+(?:\.[0-9]+)*"
-    r"(?:(?:a|b|rc)[0-9]+)?"
-    r"(?:\.post[0-9]+)?"
-    r"(?:\.dev[0-9]+)?$"
+    r"^(?:(?P<epoch>[0-9]+)!)?"
+    r"(?P<release>[0-9]+(?:\.[0-9]+)*)"
+    r"(?:(?P<pre_kind>a|b|rc)(?P<pre_number>[0-9]+))?"
+    r"(?:\.post(?P<post_number>[0-9]+))?"
+    r"(?:\.dev(?P<dev_number>[0-9]+))?$"
 )
 
 MetadataFetcher = Callable[[str], object]
@@ -83,7 +84,7 @@ def latest_version(*, fetch: MetadataFetcher | None = None) -> str:
     if not isinstance(info, dict):
         raise A2LError("the package index answer had no version information")
     value = info.get("version")
-    if not isinstance(value, str) or not _VERSION.match(value):
+    if not isinstance(value, str) or _VERSION.fullmatch(value) is None:
         raise A2LError("the package index reported an unreadable version")
     return value
 
@@ -91,7 +92,7 @@ def latest_version(*, fetch: MetadataFetcher | None = None) -> str:
 def resolve_target(version: str) -> str:
     """Validate a network-sourced version and return one exact pinned requirement."""
 
-    if not isinstance(version, str) or not _VERSION.match(version):
+    if not isinstance(version, str) or _VERSION.fullmatch(version) is None:
         raise A2LError("refusing to install an unrecognised version string")
     return f"{PACKAGE_NAME}=={version}"
 
@@ -146,6 +147,43 @@ def apply_upgrade(plan: UpgradePlan) -> None:
         )
 
 
+def verify_installation(version: str) -> None:
+    """Verify the command and public command surface after a tool replacement.
+
+    ``uv tool install`` can succeed while an old executable remains earlier on ``PATH`` or while
+    a broken entry point is selected.  Running the installed command as a child process catches
+    both cases without importing the current development checkout.  The help probe is a small
+    schema check for the v0.1 command surface; it prevents reporting success for a package whose
+    entry point exists but no longer exposes the commands the installer promises.
+    """
+
+    resolve_target(version)
+    try:
+        version_result = subprocess.run(
+            ["a2l", "--version"], check=False, capture_output=True, text=True
+        )
+    except FileNotFoundError:
+        raise A2LError("upgrade installed no runnable a2l command; run a2l --version") from None
+    except OSError:
+        raise A2LError("could not verify the installed a2l command") from None
+    version_output = f"{version_result.stdout}\n{version_result.stderr}"
+    version_pattern = rf"(?<![0-9A-Za-z]){re.escape(version)}(?![0-9A-Za-z])"
+    if version_result.returncode != 0 or re.search(version_pattern, version_output) is None:
+        raise A2LError(
+            f"installed a2l did not report version {version}; run a2l --version to inspect it"
+        )
+
+    try:
+        help_result = subprocess.run(["a2l", "--help"], check=False, capture_output=True, text=True)
+    except (FileNotFoundError, OSError):
+        raise A2LError("could not verify the installed a2l command surface") from None
+    help_output = f"{help_result.stdout}\n{help_result.stderr}".casefold()
+    if help_result.returncode != 0 or not all(
+        marker in help_output for marker in ("courses", "sync", "skills")
+    ):
+        raise A2LError("installed a2l command surface is incompatible; run a2l --help")
+
+
 def current_version() -> str:
     """Return the running version."""
 
@@ -157,22 +195,36 @@ def _is_newer(candidate: str, installed: str) -> bool:
 
 
 def _sort_key(version: str) -> tuple[object, ...]:
-    """Order versions well enough to answer "is this newer", without a packaging dependency.
+    """Return a PEP 440 ordering key for the accepted version subset.
 
-    Pre-release suffixes sort below the matching final release, which is the only ordering
-    subtlety that affects the answer in practice.
+    The sentinel ranks mirror the relevant PEP 440 rules without making ``packaging`` a runtime
+    dependency: development-only releases precede alpha/beta/rc releases, final releases follow
+    all pre-releases, post releases follow the final release, and a post-development release is
+    below the corresponding post release.  Trailing release zeros are insignificant (``1.0`` and
+    ``1.0.0`` therefore compare equal).
     """
 
-    head = version.split("!")[-1]
-    epoch = int(version.split("!")[0]) if "!" in version else 0
-    core, _, suffix = head.partition("a") if "a" in head else (head, "", "")
-    for marker in ("rc", "b", ".post", ".dev"):
-        if marker in head and not suffix:
-            core, _, suffix = head.partition(marker)
-    release = tuple(int(part) for part in re.findall(r"[0-9]+", core))
-    stage = 0 if suffix else 1
-    suffix_numbers = tuple(int(part) for part in re.findall(r"[0-9]+", suffix))
-    return (epoch, release, stage, suffix_numbers)
+    match = _VERSION.fullmatch(version)
+    if match is None:
+        raise A2LError("refusing to compare an unrecognised version string")
+    groups = match.groupdict()
+    release_parts = [int(part) for part in groups["release"].split(".")]
+    while len(release_parts) > 1 and release_parts[-1] == 0:
+        release_parts.pop()
+    release = tuple(release_parts)
+    pre_kind = groups["pre_kind"]
+    if pre_kind is None and groups["post_number"] is None and groups["dev_number"] is not None:
+        # A dev-only release is earlier than any named pre-release.  A post-development release
+        # (``1.0.post1.dev1``) is different: PEP 440 places it after the corresponding final.
+        pre = (-1, 0, 0)
+    elif pre_kind is None:
+        # Final releases sort after alpha, beta, and release candidates.
+        pre = (1, 0, 0)
+    else:
+        pre = (0, {"a": 0, "b": 1, "rc": 2}[pre_kind], int(groups["pre_number"]))
+    post = -1 if groups["post_number"] is None else int(groups["post_number"])
+    dev = (1, 0) if groups["dev_number"] is None else (0, int(groups["dev_number"]))
+    return (int(groups["epoch"] or 0), release, pre, post, dev)
 
 
 def _read_metadata(url: str) -> object:
@@ -233,4 +285,5 @@ __all__ = [
     "plan_upgrade",
     "render_plan",
     "resolve_target",
+    "verify_installation",
 ]

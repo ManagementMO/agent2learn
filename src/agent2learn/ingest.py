@@ -215,7 +215,10 @@ def ingest_metadata(
 
     for course in courses:
         course_dir = _course_directory(vault, school, course)
-        paths.long_path(course_dir).mkdir(parents=True, exist_ok=True)
+        try:
+            paths.ensure_dir(course_dir, root=vault.root)
+        except ValueError as exc:
+            raise A2LError("vault course path contains a link component") from exc
         try:
             toc_payload, toc_complete, toc_error = _fetch_one(client, _toc_path(client, course))
             if toc_error is not None:
@@ -249,7 +252,7 @@ def ingest_metadata(
         )
 
         if toc_complete:
-            _write_toc(course_dir, module_tree)
+            _write_toc(course_dir, module_tree, root=vault.root)
         else:
             try:
                 module_tree = _read_toc_modules(course_dir)
@@ -273,7 +276,7 @@ def ingest_metadata(
             artifact = assignment_artifacts.get(str(row.get("id")))
             if artifact is not None:
                 row.update(artifact)
-        _write_list(course_dir / "_meta" / "assignments.json", assignments_rows)
+        _write_list(course_dir / "_meta" / "assignments.json", assignments_rows, root=vault.root)
 
         news, news_complete, news_error = _fetch_collection(
             client, _endpoint_path(client, course, "news/")
@@ -287,8 +290,10 @@ def ingest_metadata(
             id_field="id",
             complete=news_complete,
         )
-        _write_list(course_dir / "_meta" / "news.json", news_rows)
-        _write_announcements(course_dir / "announcements" / "announcements.md", news_rows)
+        _write_list(course_dir / "_meta" / "news.json", news_rows, root=vault.root)
+        _write_announcements(
+            course_dir / "announcements" / "announcements.md", news_rows, root=vault.root
+        )
 
         quizzes, quizzes_complete, quizzes_error = _fetch_collection(
             client, _endpoint_path(client, course, "quizzes/")
@@ -302,7 +307,7 @@ def ingest_metadata(
             id_field="id",
             complete=quizzes_complete,
         )
-        _write_list(course_dir / "_meta" / "quizzes.json", quiz_rows)
+        _write_list(course_dir / "_meta" / "quizzes.json", quiz_rows, root=vault.root)
 
         if include_grades:
             grades, grades_complete, grades_error = _fetch_collection(
@@ -318,7 +323,7 @@ def ingest_metadata(
                     id_field="id",
                     complete=True,
                 )
-                _write_list(grades_path, grade_rows)
+                _write_list(grades_path, grade_rows, root=vault.root)
             else:
                 # Grade values are sensitive, but they still obey merge-not-replace: an
                 # incomplete response must never erase the last complete opt-in snapshot.
@@ -330,20 +335,21 @@ def ingest_metadata(
                         id_field="id",
                         complete=False,
                     )
-                    _write_list(grades_path, grade_rows)
+                    _write_list(grades_path, grade_rows, root=vault.root)
                 errors.append("grades: incomplete response")
 
         merged_topics = course_index.reconcile_content_map(vault, merged_topics)
-        _write_content_map(course_dir, merged_topics)
+        _write_content_map(course_dir, merged_topics, root=vault.root)
         _materialize_submission_only_readmes(
             assignments,
             artifacts=assignment_artifacts,
             course_dir=course_dir,
             topics=merged_topics,
+            root=vault.root,
         )
         deadline_count += sum(1 for row in assignments_rows + quiz_rows if row.get("due_date"))
         typed_topics = tuple(_topic_from_row(row, course=course) for row in merged_topics)
-        _write_index(course_dir, school=school, course=course, topics=typed_topics)
+        _write_index(course_dir, school=school, course=course, topics=typed_topics, root=vault.root)
         reports.append(
             CourseMetadata(
                 course=course,
@@ -517,6 +523,7 @@ def ingest_files(
                 _update_row_state(
                     course_dir,
                     topic.source_key,
+                    root=vault.root,
                     availability="metadata_only",
                     next_action="topic is metadata-only until explicitly fetched",
                 )
@@ -527,6 +534,7 @@ def ingest_files(
                 _update_row_state(
                     course_dir,
                     topic.source_key,
+                    root=vault.root,
                     availability="metadata_only",
                     next_action="office lock file skipped",
                 )
@@ -537,6 +545,7 @@ def ingest_files(
                 _update_row_state(
                     course_dir,
                     topic.source_key,
+                    root=vault.root,
                     availability="metadata_only",
                     next_action="media excluded; rerun with --include-media",
                 )
@@ -547,6 +556,7 @@ def ingest_files(
                 _update_row_state(
                     course_dir,
                     topic.source_key,
+                    root=vault.root,
                     availability="metadata_only",
                     next_action="topic is marked broken in LEARN",
                 )
@@ -557,6 +567,7 @@ def ingest_files(
                 _update_row_state(
                     course_dir,
                     topic.source_key,
+                    root=vault.root,
                     availability="metadata_only",
                     next_action=f"a2l fetch --allow-large {topic.source_id}",
                 )
@@ -612,7 +623,9 @@ def fetch_topic(
     course, record, course_dir = match
     if record.availability == "external_link":
         raise A2LError("external or licensed topics are link stubs and cannot be fetched")
-    if record.remote_size is None or record.remote_size > api.DEFAULT_MAX_BYTES:
+    oversized = record.remote_size is None or record.remote_size > api.DEFAULT_MAX_BYTES
+    unbounded = False
+    if oversized:
         if not allow_large:
             raise A2LError(
                 "source size is unknown or exceeds the default limit; run: "
@@ -620,6 +633,7 @@ def fetch_topic(
             )
         if confirm is None or not confirm(record.remote_size):
             raise A2LError("large-file fetch cancelled")
+        unbounded = True
 
     planned = _plan_file_paths([record], course_dir=course_dir, vault=vault, scope="all")
     if not planned or planned[0].source_path is None:
@@ -632,7 +646,7 @@ def fetch_topic(
         school,
         course_dir,
         record,
-        max_bytes=None if allow_large else api.DEFAULT_MAX_BYTES,
+        max_bytes=None if unbounded else api.DEFAULT_MAX_BYTES,
     )
     refreshed = _topic_from_row(
         _find_content_row(course_dir, record.source_key) or _topic_to_row(record), course=course
@@ -1282,8 +1296,8 @@ def _materialize_assignments(
             preserved = vault.preserve_revision(key, changed_at=clock.now())
             if preserved is None and paths.long_path(vault.materialized(prior)).exists():
                 raise A2LError("assignment instructions could not be preserved")
-        paths.long_path(source_destination.parent).mkdir(parents=True, exist_ok=True)
-        paths.atomic_write_bytes(source_destination, html_bytes)
+        paths.ensure_dir(source_destination.parent, root=vault.root)
+        paths.atomic_write_bytes(source_destination, html_bytes, root=vault.root)
 
         title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
         markdown_bytes = _richtext_markdown(title, canonical_html).encode("utf-8")
@@ -1302,8 +1316,8 @@ def _materialize_assignments(
             )
         else:
             markdown_destination = source_destination.with_suffix(".md")
-        paths.long_path(markdown_destination.parent).mkdir(parents=True, exist_ok=True)
-        paths.atomic_write_bytes(markdown_destination, markdown_bytes)
+        paths.ensure_dir(markdown_destination.parent, root=vault.root)
+        paths.atomic_write_bytes(markdown_destination, markdown_bytes, root=vault.root)
         derived = DerivedArtifact(
             path=paths.rel_posix(markdown_destination, vault.root),
             sha256=sha256(markdown_bytes).hexdigest(),
@@ -1331,6 +1345,7 @@ def _materialize_assignments(
             title=title,
             entry=entry,
             attachments=_assignment_attachment_display(assignment, school),
+            root=vault.root,
         )
         artifacts[str(assignment_id)] = {
             "instructions_html": entry.path,
@@ -1389,6 +1404,7 @@ def _write_assignment_readme(
     title: str,
     entry: ManifestEntry,
     attachments: Sequence[Mapping[str, str]],
+    root: Path | None = None,
 ) -> None:
     markdown_path = entry.derived["markdown"].path
     lines = [
@@ -1406,7 +1422,7 @@ def _write_assignment_readme(
     else:
         lines.append("- None recorded.")
     lines.append("")
-    paths.atomic_write_text(directory / "README.md", "\n".join(lines))
+    paths.atomic_write_text(directory / "README.md", "\n".join(lines), root=root)
 
 
 def _materialize_submission_only_readmes(
@@ -1415,6 +1431,7 @@ def _materialize_submission_only_readmes(
     artifacts: Mapping[str, Mapping[str, object]],
     course_dir: Path,
     topics: Sequence[Mapping[str, object]],
+    root: Path | None = None,
 ) -> None:
     """Give a Dropbox folder without RichText a generated navigation hub.
 
@@ -1431,7 +1448,7 @@ def _materialize_submission_only_readmes(
             continue
         title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
         directory = course_dir / "assignments" / paths.safe_name(f"{title} {assignment_id}")
-        paths.long_path(directory).mkdir(parents=True, exist_ok=True)
+        paths.ensure_dir(directory, root=root)
         links: list[tuple[str, str]] = []
         for topic in topics:
             if str(topic.get("title", "")).casefold() != title.casefold():
@@ -1440,7 +1457,7 @@ def _materialize_submission_only_readmes(
             source_id = topic.get("source_id")
             if isinstance(target, str) and isinstance(source_id, str):
                 links.append((source_id, _course_relative_link(target, course_dir)))
-        course_index.write_submission_readme(directory, title=title, content_links=links)
+        course_index.write_submission_readme(directory, title=title, content_links=links, root=root)
 
 
 def _materialize_external_stubs(
@@ -1465,7 +1482,9 @@ def _materialize_external_stubs(
             )
             stub = _unique_reserved(destination, reserved)
             row["stub_path"] = paths.rel_posix(stub, vault.root)
-        paths.long_path(stub.parent).mkdir(parents=True, exist_ok=True)
+        paths.ensure_dir(stub.parent, root=vault.root)
+        if paths.is_link(stub):
+            raise A2LError("external-topic stub path contains a symlink or junction")
         if not paths.long_path(stub).is_file():
             record = _topic_from_row(row, course=course)
             text = (
@@ -1476,7 +1495,7 @@ def _materialize_external_stubs(
             )
             # Keep the ordinary path as the value passed between layers; long_path belongs only
             # at filesystem boundaries, and atomic_write_text applies it internally.
-            paths.atomic_write_text(stub, text)
+            paths.atomic_write_text(stub, text, root=vault.root)
     return rows
 
 
@@ -1552,7 +1571,7 @@ def _ingest_one_topic(
     manifest = vault.manifest()
     prior = manifest.get(key)
     destination = _destination_for_topic(vault, course_dir, topic, prior)
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+    paths.ensure_dir(destination.parent, root=vault.root)
     pending = _find_pending_install(vault, destination, topic)
     if pending is not None:
         retried = _retry_pending_install(
@@ -1564,6 +1583,10 @@ def _ingest_one_topic(
         _mark_topic_source_only(vault, course_dir, topic, school)
         return "skipped"
 
+    # Revalidate immediately before reserving the download sibling; the network and manifest
+    # checks above must not leave a race window where a replaced parent redirects the part.
+    if paths.has_link_component(destination.parent, root=vault.root):
+        raise A2LError("download parent contains a link component")
     fd, raw_temp = tempfile.mkstemp(
         prefix=f".{destination.name}.",
         suffix=".part",
@@ -1574,8 +1597,13 @@ def _ingest_one_topic(
     install_attempted = False
     installed = False
     try:
+        # ``mkstemp`` is intentionally used to reserve the sibling before the network call.  The
+        # reservation is a separate filesystem boundary, so revalidate it before any download or
+        # later writer can use a parent that was swapped to a link in the meantime.
+        if paths.has_link_component(temporary, root=vault.root):
+            raise A2LError("download temporary path contains a link component")
         result = _download_with_candidates(
-            client, school, topic, temporary, prior=prior, max_bytes=max_bytes
+            client, school, topic, temporary, prior=prior, max_bytes=max_bytes, root=vault.root
         )
         if result.not_modified:
             if prior is None or not paths.long_path(vault.materialized(prior)).is_file():
@@ -1603,7 +1631,7 @@ def _ingest_one_topic(
             ),
             revision_preserved=prior is None or actual_hash == prior.sha256,
         )
-        _write_pending_install(pending)
+        _write_pending_install(pending, root=vault.root)
         install_attempted = True
         if pending.prior_sha256 is not None:
             if prior is None:
@@ -1612,9 +1640,9 @@ def _ingest_one_topic(
             if preserved is None and paths.long_path(vault.materialized(prior)).exists():
                 raise A2LError("current source could not be preserved; refusing replacement")
             pending = replace(pending, revision_preserved=True)
-            _write_pending_install(pending)
+            _write_pending_install(pending, root=vault.root)
 
-        paths.atomic_install_temp(destination, temporary)
+        paths.atomic_install_temp(destination, temporary, root=vault.root)
         installed = True
         entry = _manifest_entry_for_install(
             vault,
@@ -1647,7 +1675,7 @@ def _pending_marker_path(part: Path) -> Path:
     return part.with_name(part.name + _PENDING_MARKER_SUFFIX)
 
 
-def _write_pending_install(pending: _PendingInstall) -> None:
+def _write_pending_install(pending: _PendingInstall, *, root: Path | None = None) -> None:
     payload = {
         "version": 1,
         "source_key": pending.source_key,
@@ -1662,6 +1690,7 @@ def _write_pending_install(pending: _PendingInstall) -> None:
     paths.atomic_write_text(
         pending.marker,
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+        root=root,
     )
 
 
@@ -1819,9 +1848,9 @@ def _retry_pending_install(
         if preserved is None and paths.long_path(vault.materialized(prior)).exists():
             raise A2LError("current source could not be preserved; refusing replacement")
         pending = replace(pending, revision_preserved=True)
-        _write_pending_install(pending)
+        _write_pending_install(pending, root=vault.root)
 
-    paths.atomic_install_temp(destination, pending.part)
+    paths.atomic_install_temp(destination, pending.part, root=vault.root)
     entry = _manifest_entry_for_install(
         vault,
         topic,
@@ -1870,6 +1899,7 @@ def _download_with_candidates(
     *,
     prior: ManifestEntry | None,
     max_bytes: int | None,
+    root: Path | None = None,
 ) -> DownloadResult:
     candidates = _download_candidates(client, school, topic)
     last_error: DownloadError | None = None
@@ -1881,6 +1911,7 @@ def _download_with_candidates(
                 or (topic.url_path or "").casefold().endswith((".html", ".htm")),
             }
             kwargs["max_bytes"] = max_bytes
+            kwargs["root"] = root
             return client.download(candidate, temporary, **kwargs)  # type: ignore[arg-type]
         except SessionExpired:
             raise
@@ -1960,7 +1991,7 @@ def _mark_topic_source_only(
     # A manifest artifact record is not proof that the current twin bytes are still trusted.
     # Reconcile through the same source-and-derived hash checks used by metadata sync.
     reconciled = course_index.reconcile_content_map(vault, rows)
-    _write_content_map(course_dir, reconciled)
+    _write_content_map(course_dir, reconciled, root=vault.root)
     course = CourseRef(
         topic.course_org_unit_id,
         topic.course_code,
@@ -1971,16 +2002,18 @@ def _mark_topic_source_only(
     topics = tuple(
         _topic_from_row(row, course=course) for row in reconciled if isinstance(row, dict)
     )
-    _write_index(course_dir, school=school, course=course, topics=topics)
+    _write_index(course_dir, school=school, course=course, topics=topics, root=vault.root)
 
 
-def _update_row_state(course_dir: Path, source_key: str, **updates: object) -> None:
+def _update_row_state(
+    course_dir: Path, source_key: str, *, root: Path | None = None, **updates: object
+) -> None:
     content_map = _read_content_map(course_dir)
     rows = _map_topics(content_map)
     for row in rows:
         if isinstance(row, dict) and row.get("source_key") == source_key:
             row.update(updates)
-    _write_content_map(course_dir, rows)
+    _write_content_map(course_dir, rows, root=root)
 
 
 def _find_content_row(course_dir: Path, source_key: str) -> dict[str, object] | None:
@@ -2042,12 +2075,20 @@ def _map_topics(content_map: Mapping[str, object]) -> list[object]:
     return topics
 
 
-def _write_content_map(course_dir: Path, rows: Sequence[object]) -> None:
-    course_index.write_content_map(course_dir, rows)
+def _write_content_map(
+    course_dir: Path, rows: Sequence[object], *, root: Path | None = None
+) -> None:
+    course_index.write_content_map(course_dir, rows, root=root)
 
 
-def _write_toc(course_dir: Path, modules: Sequence[dict[str, object]]) -> None:
-    _write_json(course_dir / "_meta" / "toc.json", {"schema_version": 1, "modules": list(modules)})
+def _write_toc(
+    course_dir: Path, modules: Sequence[dict[str, object]], *, root: Path | None = None
+) -> None:
+    _write_json(
+        course_dir / "_meta" / "toc.json",
+        {"schema_version": 1, "modules": list(modules)},
+        root=root,
+    )
 
 
 def _read_toc_modules(course_dir: Path) -> list[dict[str, object]]:
@@ -2069,13 +2110,13 @@ def _read_toc_modules(course_dir: Path) -> list[dict[str, object]]:
     return [cast(dict[str, object], value) for value in modules]
 
 
-def _write_json(destination: Path, payload: object) -> None:
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+def _write_json(destination: Path, payload: object, *, root: Path | None = None) -> None:
+    paths.ensure_dir(destination.parent, root=root)
     text = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n"
     )
-    paths.atomic_write_text(destination, text)
+    paths.atomic_write_text(destination, text, root=root)
 
 
 def _read_list(destination: Path) -> list[dict[str, object]]:
@@ -2093,8 +2134,10 @@ def _read_list(destination: Path) -> list[dict[str, object]]:
     return [cast(dict[str, object], row) for row in raw]
 
 
-def _write_list(destination: Path, rows: Sequence[Mapping[str, object]]) -> None:
-    _write_json(destination, list(rows))
+def _write_list(
+    destination: Path, rows: Sequence[Mapping[str, object]], *, root: Path | None = None
+) -> None:
+    _write_json(destination, list(rows), root=root)
 
 
 def _merge_rows(
@@ -2234,8 +2277,13 @@ def _project_grades(values: Sequence[object]) -> list[dict[str, object]]:
     return rows
 
 
-def _write_announcements(destination: Path, rows: Sequence[Mapping[str, object]]) -> None:
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+def _write_announcements(
+    destination: Path,
+    rows: Sequence[Mapping[str, object]],
+    *,
+    root: Path | None = None,
+) -> None:
+    paths.ensure_dir(destination.parent, root=root)
     lines = ["# Announcements", ""]
     for row in rows:
         title = str(row.get("title") or "Untitled")
@@ -2246,7 +2294,7 @@ def _write_announcements(destination: Path, rows: Sequence[Mapping[str, object]]
         text = str(row.get("text") or "").strip()
         if text:
             lines.extend([text, ""])
-    paths.atomic_write_text(destination, "\n".join(lines).rstrip() + "\n")
+    paths.atomic_write_text(destination, "\n".join(lines).rstrip() + "\n", root=root)
 
 
 def _write_index(
@@ -2255,6 +2303,7 @@ def _write_index(
     school: School | None,
     course: CourseRef | None,
     topics: Sequence[TopicRecord] | None,
+    root: Path | None = None,
 ) -> None:
     if school is None or course is None or topics is None:
         # A file-only checkpoint updates the coverage tree without needing to retain a second
@@ -2280,6 +2329,7 @@ def _write_index(
         term_code=course.term,
         topics=[_topic_to_row(topic) for topic in topics],
         deadlines=deadlines,
+        root=root,
     )
 
 
@@ -2694,7 +2744,7 @@ def _ingest_discussions(
         incoming_rows.append(forum_row)
 
     rows = _merge_discussion_rows(existing_rows, incoming_rows)
-    _write_list(course_dir / "_meta" / "discussions.json", rows)
+    _write_list(course_dir / "_meta" / "discussions.json", rows, root=vault.root)
     markdown_lines = ["# Discussions", ""]
     for forum_row in rows:
         markdown_lines.extend([f"## {forum_row['name'] or 'Untitled forum'}", ""])
@@ -2717,21 +2767,25 @@ def _ingest_discussions(
             )
 
     discussion_dir = course_dir / "discussions"
-    paths.long_path(discussion_dir).mkdir(parents=True, exist_ok=True)
-    paths.atomic_write_text(discussion_dir / "discussions.md", "\n".join(markdown_lines))
+    paths.ensure_dir(discussion_dir, root=vault.root)
+    paths.atomic_write_text(
+        discussion_dir / "discussions.md", "\n".join(markdown_lines), root=vault.root
+    )
     return None
 
 
 def _discussion_key(vault: Vault) -> bytes:
     private = vault.state() / "private"
-    paths.long_path(private).mkdir(parents=True, exist_ok=True, mode=0o700)
+    paths.ensure_dir(private, root=vault.root, mode=0o700)
     destination = private / "discussion-hmac.key"
+    if paths.has_link_component(destination, root=vault.root):
+        raise A2LError("discussion pseudonym key path contains a link component")
     try:
         with open(os.fspath(paths.long_path(destination)), "rb") as handle:
             key = handle.read()
     except FileNotFoundError:
         key = secrets.token_bytes(32)
-        paths.atomic_write_bytes(destination, key)
+        paths.atomic_write_bytes(destination, key, root=vault.root)
     if len(key) != 32:
         raise A2LError("discussion pseudonym key is invalid")
     return key

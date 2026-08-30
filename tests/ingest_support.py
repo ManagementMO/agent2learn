@@ -70,8 +70,9 @@ class FakeClient:
         prior: object | None = None,
         max_bytes: int = 2_147_483_648,
         is_html_topic: bool = False,
+        root: Path | None = None,
     ) -> DownloadResult:
-        del max_bytes, is_html_topic
+        del max_bytes, is_html_topic, root
         self.download_calls.append(url)
         return self.download_handler(url, temp, prior)
 

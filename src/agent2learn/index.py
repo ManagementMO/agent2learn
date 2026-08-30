@@ -291,7 +291,9 @@ def read_content_map(course_dir: Path) -> dict[str, object]:
     return {"schema_version": CONTENT_MAP_VERSION, "topics": validated}
 
 
-def write_content_map(course_dir: Path, rows: Sequence[object]) -> None:
+def write_content_map(
+    course_dir: Path, rows: Sequence[object], *, root: Path | None = None
+) -> None:
     """Atomically write a canonical, stable-ID-sorted content map."""
     validated: list[dict[str, object]] = []
     for row in rows:
@@ -307,7 +309,7 @@ def write_content_map(course_dir: Path, rows: Sequence[object]) -> None:
             key=lambda row: str(row.get("source_key", "")),
         ),
     }
-    _write_json(course_dir / "_meta" / "content_map.json", payload)
+    _write_json(course_dir / "_meta" / "content_map.json", payload, root=root)
 
 
 def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str, object]]:
@@ -408,6 +410,7 @@ def write_course_index(
     term_code: str | None,
     topics: Sequence[Mapping[str, object]],
     deadlines: Sequence[tuple[str, str, str]] = (),
+    root: Path | None = None,
 ) -> None:
     """Write the portable, local-only course navigation surface."""
     lines = [
@@ -450,11 +453,15 @@ def write_course_index(
             "",
         ]
     )
-    paths.atomic_write_text(course_dir / "INDEX.md", "\n".join(lines))
+    paths.atomic_write_text(course_dir / "INDEX.md", "\n".join(lines), root=root)
 
 
 def write_submission_readme(
-    assignment_dir: Path, *, title: str, content_links: Sequence[tuple[str, str]]
+    assignment_dir: Path,
+    *,
+    title: str,
+    content_links: Sequence[tuple[str, str]],
+    root: Path | None = None,
 ) -> None:
     """Create the hub for a Dropbox folder with no rendered instructions.
 
@@ -484,7 +491,7 @@ def write_submission_readme(
     else:
         lines.append("- No matching course content recorded.")
     lines.append("")
-    paths.atomic_write_text(assignment_dir / "README.md", "\n".join(lines))
+    paths.atomic_write_text(assignment_dir / "README.md", "\n".join(lines), root=root)
 
 
 def _entry_bytes_are_current(vault: Vault, entry: ManifestEntry) -> bool:
@@ -516,13 +523,13 @@ def _course_relative_link(value: str, course_dir: Path) -> str:
     return PurePosixPath(*parts[index + 1 :]).as_posix() or "."
 
 
-def _write_json(destination: Path, payload: object) -> None:
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+def _write_json(destination: Path, payload: object, *, root: Path | None = None) -> None:
+    paths.ensure_dir(destination.parent, root=root)
     text = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n"
     )
-    paths.atomic_write_text(destination, text)
+    paths.atomic_write_text(destination, text, root=root)
 
 
 def _validate_topic_identity(row: Mapping[str, object]) -> None:

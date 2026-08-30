@@ -151,13 +151,19 @@ def ingest_outlines(
                     stop_after_cleanup_failure = True
                 status_rows.append(status)
 
-            _write_json(course_metadata.directory / "_meta" / "outlines.json", status_rows)
+            _write_json(
+                course_metadata.directory / "_meta" / "outlines.json",
+                status_rows,
+                root=vault.root,
+            )
             rendered_paths = [
                 vault.root / path
                 for row in status_rows
                 if row.get("status") == "rendered" and isinstance((path := row.get("path")), str)
             ]
-            aipolicy.surface_course_ai_policy(course_metadata.directory, rendered_paths)
+            aipolicy.surface_course_ai_policy(
+                course_metadata.directory, rendered_paths, root=vault.root
+            )
     finally:
         factory_error = _close_factory(factory)
 
@@ -317,8 +323,8 @@ def _install_outline(
         if preserved is None and prior_material_remains:
             raise ValueError("current outline revision could not be preserved")
 
-    _install_bytes(source_destination, source_bytes)
-    _install_bytes(markdown_destination, markdown_bytes)
+    _install_bytes(source_destination, source_bytes, root=vault.root)
+    _install_bytes(markdown_destination, markdown_bytes, root=vault.root)
     derived = DerivedArtifact(
         path=paths.rel_posix(markdown_destination, vault.root),
         sha256=markdown_hash,
@@ -464,12 +470,12 @@ def _outline_markdown(title: str, page: OutlinePage) -> bytes:
     return text.encode("utf-8")
 
 
-def _install_bytes(destination: Path, data: bytes) -> None:
+def _install_bytes(destination: Path, data: bytes, *, root: Path | None = None) -> None:
     # Outline bytes are generated locally and cheap to recreate.  The generated-writer cleanup
     # semantics are therefore intentional; downloaded course .part files use ingest's
     # atomic_install_temp path and survive a failed install.
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
-    paths.atomic_write_bytes(destination, data)
+    paths.ensure_dir(destination.parent, root=root)
+    paths.atomic_write_bytes(destination, data, root=root)
 
 
 def _update_topic_map(
@@ -497,11 +503,17 @@ def _update_topic_map(
                 }
             )
     rows = course_index.reconcile_content_map(vault, rows)
-    _write_content_map(metadata.directory, rows)
+    _write_content_map(metadata.directory, rows, root=vault.root)
     topics = tuple(
         _topic_from_row(row, course=metadata.course) for row in rows if isinstance(row, dict)
     )
-    _write_index(metadata.directory, school=school, course=metadata.course, topics=topics)
+    _write_index(
+        metadata.directory,
+        school=school,
+        course=metadata.course,
+        topics=topics,
+        root=vault.root,
+    )
 
 
 def _status(topic: TopicRecord, status: str, reason: str) -> dict[str, object]:
@@ -520,13 +532,13 @@ def _now() -> str:
     return clock.stamp()
 
 
-def _write_json(destination: Path, payload: object) -> None:
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+def _write_json(destination: Path, payload: object, *, root: Path | None = None) -> None:
+    paths.ensure_dir(destination.parent, root=root)
     text = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n"
     )
-    paths.atomic_write_text(destination, text)
+    paths.atomic_write_text(destination, text, root=root)
 
 
 class _PageConnectionFactory(Protocol):

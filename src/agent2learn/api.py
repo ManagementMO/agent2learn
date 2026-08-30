@@ -16,7 +16,7 @@ import re
 import shutil
 import stat
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -94,6 +94,10 @@ class Client:
         self.le_version: str | None = None
         self.download_template: str | None = None
         self._transport = requests.Session()
+        # Authenticated LEARN requests must not inherit ambient proxy, netrc, or certificate
+        # settings.  A caller that wants a proxy must configure an explicit transport rather than
+        # silently forwarding session cookies through process-wide environment state.
+        self._transport.trust_env = False
         self._transport.cookies.update(session.requests_cookies())
 
     def get_json(self, path: str) -> Any:
@@ -119,6 +123,7 @@ class Client:
         prior: ManifestEntry | None = None,
         max_bytes: int | None = DEFAULT_MAX_BYTES,
         is_html_topic: bool = False,
+        root: Path | None = None,
     ) -> DownloadResult:
         """Stream one first-party source into ``temp`` and validate it before returning.
 
@@ -133,7 +138,9 @@ class Client:
         ):
             raise ValueError("max_bytes must be a positive integer or None")
         _validate_part_path(temp)
-        paths.long_path(temp.parent).mkdir(parents=True, exist_ok=True)
+        paths.ensure_dir(temp.parent, root=root)
+        if root is not None and paths.has_link_component(temp.parent, root=root):
+            raise ValueError("download temp parent contains a link component")
 
         request_headers: dict[str, str] = {}
         if prior is not None:
@@ -157,7 +164,7 @@ class Client:
             if response.status_code == 304:
                 if prior is None:
                     raise DownloadError("304 response has no prior manifest entry")
-                _remove_part(temp)
+                _remove_part(temp, root=root)
                 return DownloadResult(
                     temp=None,
                     sha256=prior.sha256,
@@ -195,7 +202,7 @@ class Client:
             size = 0
             chunks_since_disk_check = 0
             html_probe = bytearray()
-            with _open_download_part(temp) as handle:
+            with _open_download_part(temp, root=root) as handle:
                 try:
                     for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                         if not chunk:
@@ -238,7 +245,7 @@ class Client:
                 not_modified=False,
             )
         except BaseException:
-            _remove_part(temp)
+            _remove_part(temp, root=root)
             raise
         finally:
             if response is not None:
@@ -247,7 +254,7 @@ class Client:
     def post_once(
         self,
         path: str,
-        body: bytes,
+        body: bytes | Iterable[bytes],
         *,
         content_type: str,
     ) -> Response:
@@ -258,12 +265,20 @@ class Client:
         caller with the request having been attempted exactly once.
         """
 
-        if not isinstance(body, bytes):
-            raise ValueError("submission body must be bytes")
+        content_length: int
+        if isinstance(body, bytes):
+            content_length = len(body)
+        else:
+            candidate: object = getattr(body, "content_length", None)
+            if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate < 0:
+                raise ValueError(
+                    "streaming submission body must expose a non-negative content_length"
+                )
+            content_length = candidate
         return self._request(
             "POST",
             path,
-            headers={"Content-Type": content_type, "Content-Length": str(len(body))},
+            headers={"Content-Type": content_type, "Content-Length": str(content_length)},
             stream=False,
             mutating=True,
             data=body,
@@ -277,7 +292,7 @@ class Client:
         headers: Mapping[str, str] | None = None,
         stream: bool,
         mutating: bool = False,
-        data: bytes | None = None,
+        data: bytes | Iterable[bytes] | None = None,
     ) -> Response:
         """Issue a request with explicit redirects, retry, timeout, and egress policy."""
 
@@ -461,8 +476,13 @@ def _validate_part_path(temp: Path) -> None:
         raise ValueError("download temp must not be a hard link")
 
 
-def _open_download_part(temp: Path) -> BinaryIO:
+def _open_download_part(temp: Path, *, root: Path | None = None) -> BinaryIO:
     """Open a unique part without following a replacement symlink or hard link."""
+    # The caller checks the parent before starting the request, but network latency leaves a
+    # window in which a trusted parent can be replaced.  Revalidate at the actual open boundary;
+    # O_NOFOLLOW protects the final component while this check protects the path leading to it.
+    if root is not None and paths.has_link_component(temp, root=root):
+        raise ValueError("download temp path contains a link component")
     raw_path = os.fspath(paths.long_path(temp))
     try:
         prior_stat = os.lstat(raw_path)
@@ -500,7 +520,13 @@ def _open_download_part(temp: Path) -> BinaryIO:
         raise
 
 
-def _remove_part(temp: Path) -> None:
+def _remove_part(temp: Path, *, root: Path | None = None) -> None:
+    if root is not None:
+        try:
+            if paths.has_link_component(temp, root=root):
+                return
+        except (OSError, ValueError):
+            return
     try:
         os.unlink(os.fspath(paths.long_path(temp)))
     except OSError:

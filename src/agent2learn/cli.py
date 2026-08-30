@@ -527,6 +527,7 @@ def submit(
 ) -> None:
     """Preview an upload to one LEARN Dropbox, then require your own typed confirmation."""
 
+    preview: submit_module.SubmissionPreview | None = None
     try:
         # Refuse before configuration and authentication: a disabled build must not send the user
         # to `a2l init` or `a2l auth` for a path it will refuse anyway.
@@ -568,6 +569,9 @@ def submit(
     except (OSError, ValueError):
         typer.echo("submit failed because local state is unavailable", err=True)
         raise typer.Exit(code=1) from None
+    finally:
+        if preview is not None and not preview.consumed:
+            submit_module.discard_preview(preview)
     typer.echo(f"upload {receipt.status}: {receipt.outcome}")
 
 
@@ -592,11 +596,57 @@ def upgrade(
         typer.echo(upgrade_module.render_plan(plan), nl=False)
         if check or not plan.needed:
             return
+        if not _interactive_terminal():
+            raise A2LError(
+                "upgrade requires a controlling terminal for confirmation; run it interactively"
+            )
+        if not typer.confirm(f"Install Agent2Learn {plan.latest} now?", default=False):
+            raise A2LError("upgrade cancelled; nothing was installed")
         upgrade_module.apply_upgrade(plan)
+        upgrade_module.verify_installation(plan.latest)
+        _offer_stale_project_skill_refresh()
     except A2LError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=exc.exit_code) from None
     typer.echo(f"upgraded to {plan.latest}")
+
+
+def _offer_stale_project_skill_refresh() -> None:
+    """Offer a separate, previewed refresh for stale project-local managed skills."""
+
+    try:
+        cfg = config.load()
+        project = Path(cfg.vault)
+        planned = skills_module.current_installations(project=project)
+    except (OSError, ValueError, skills_module.SkillsInstallError):
+        # An upgrade is still valid when onboarding has not configured a vault yet.  In that case
+        # there is simply no project-local skill destination whose freshness can be checked.
+        return
+
+    stale = tuple(result for result in planned if result.status != "unchanged")
+    if not stale:
+        return
+    typer.echo("Stale managed project-local skills were found:")
+    typer.echo(skills_module.render_preview(stale, link=False, force=False), nl=False)
+    if not _interactive_terminal():
+        typer.echo("refresh skipped; run: a2l skills install", err=True)
+        return
+    if not typer.confirm("Refresh these project-local skills now?", default=False):
+        typer.echo("skill refresh skipped; run: a2l skills install")
+        return
+    try:
+        result = skills_module.install(
+            scope="project",
+            project=project,
+            confirm=lambda _preview: True,
+        )
+    except skills_module.SkillsInstallError:
+        typer.echo("skill refresh failed; run: a2l skills install", err=True)
+        return
+    if result.cancelled:
+        typer.echo("skill refresh skipped; run: a2l skills install")
+    else:
+        typer.echo("project-local skills refreshed")
 
 
 @app.command()
@@ -785,6 +835,10 @@ def fetch(
         vault = Vault(Path(cfg.vault))
 
         def confirm_large(size: int | None) -> bool:
+            if not _interactive_terminal():
+                raise A2LError(
+                    "large-file fetch requires a controlling terminal; run it interactively"
+                )
             try:
                 free = shutil.disk_usage(paths.long_path(vault.root)).free
             except OSError as exc:
@@ -1320,6 +1374,10 @@ def _display_path(path: Path) -> str:
 
 def _ensure_obsidian_config(root: Path) -> None:
     destination = root / ".obsidian"
+    # Check the complete path before probing ``is_dir``: a linked vault component could otherwise
+    # make an external Obsidian directory look like this vault's configuration.
+    if paths.has_link_component(destination, root=root):
+        raise ValueError("Obsidian configuration path contains a symlink")
     if paths.is_link(destination):
         raise ValueError("Obsidian configuration directory is a symlink")
     if paths.long_path(destination).is_dir():
@@ -1327,7 +1385,9 @@ def _ensure_obsidian_config(root: Path) -> None:
     if paths.long_path(destination).is_file():
         raise ValueError("Obsidian configuration path is not a directory")
     paths.long_path(destination).mkdir(parents=True, exist_ok=False)
-    paths.atomic_write_text(destination / "app.json", '{"showLineNumber":true}\n')
+    if paths.has_link_component(destination, root=root):
+        raise ValueError("Obsidian configuration path contains a symlink")
+    paths.atomic_write_text(destination / "app.json", '{"showLineNumber":true}\n', root=root)
 
 
 def _read_init_state(root: Path) -> dict[str, object]:
@@ -1405,6 +1465,7 @@ def _save_init_state(root: Path, state: dict[str, object]) -> dict[str, object]:
     paths.atomic_write_text(
         state_dir / _INIT_STATE_FILENAME,
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        root=root,
     )
     return payload
 

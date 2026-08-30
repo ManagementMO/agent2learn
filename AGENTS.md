@@ -76,12 +76,12 @@ architecture.
     attestation, TestPyPI, and a protected PyPI environment using Trusted Publishing.
 - **Tasks 18–23 are merged into `main` (`2389bc4`) and CI is green on all 17 jobs**
   ([run 33240216844](https://github.com/ManagementMO/agent2learn/actions/runs/33240216844)) across
-  Windows, macOS, and Linux on Python 3.11–3.14. 832 tests pass, 4 skip.
+  Windows, macOS, and Linux on Python 3.11–3.14. The current local suite is 857 passing, 4
+  skipped; the additional review corrections below remain uncommitted until they are handed off.
 - **ATTENTION: CI grew from 14 to 17 jobs** (`installer · ubuntu-latest|macos-latest|windows-latest`).
-  Branch protection on `main` still requires the old 14 named checks — the merge push reported
-  `Bypassed rule violations for refs/heads/main: 14 of 14 required status checks are expected` — so
-  the required-checks list needs updating in repository settings by the owner. No repository
-  settings were changed.
+  Branch protection on `main` now requires all 17 named checks. The existing `strict: false` and
+  `enforce_admins: false` settings are unchanged; the three installer contexts were added to the
+  required-checks list after the release review.
 - **Real CI found three Windows defects that a green macOS run could not.** Worth reading before
   trusting a local pass on this repository again:
   1. `tests/test_installers.py` was **uncollectable on Windows** (`import pty` →
@@ -118,8 +118,8 @@ architecture.
   - **Task 1** — 20 synthetic fixtures (13 JSON, 3 non-JSON, 4 binary) plus an offline
     `synthetic_api` harness over `pytest-httpserver`. `tools/generate_fixtures.py --check` enforces
     byte-exact reproducibility.
-  - **Task 2** — CI across Windows/macOS/Linux × Python 3.11–3.14, 14 jobs, all green. `main` is
-    branch-protected with all 14 as required checks.
+  - **Task 2** — CI across Windows/macOS/Linux × Python 3.11–3.14, plus the three installer jobs,
+    17 jobs total, all green. `main` is branch-protected with all 17 as required checks.
   - **Task 3** — cross-platform path naming and atomic filesystem primitives, including the
     completed-download preservation rule for failed `.part` installs and the safe-name edge cases.
   - **Task 4** — platform-correct config paths, console output, expected error taxonomy, and
@@ -238,9 +238,8 @@ architecture.
   guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
-- Known open items, none of them coding work: branch protection's required-checks list needs
-  updating for the three new installer jobs;
-  Task 9's live same-device auth still needs pass/fail records on Windows, macOS, and Linux; the
+- Known open items, none of them coding work: Task 9's live same-device auth still needs pass/fail
+  records on Windows, macOS, and Linux; the
   supervised non-graded upload must pass for the exact release candidate before
   `SUBMISSION_AVAILABLE` may be flipped; the README's walkthrough recording has not been made and
   is deliberately not linked; PyPI Trusted Publishing and the `testpypi`/`pypi` environments must be

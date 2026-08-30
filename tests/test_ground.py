@@ -259,6 +259,26 @@ def test_ranked_lecture_ties_are_path_deterministic_and_ignore_unknown_files(
     assert [path.name for path in ranked] == ["A Lecture.md", "Z Lecture.md"]
 
 
+def test_rank_lectures_preserves_repeated_query_term_weight(
+    grounding_course: tuple[Vault, Path, Path, dict[str, ManifestEntry]],
+) -> None:
+    _vault, course, _assignment, _entries = grounding_course
+    (course / "content" / "Lectures" / "A Lecture.md").write_text(
+        "duality sensitivity sensitivity sensitivity\n", encoding="utf-8", newline="\n"
+    )
+    (course / "content" / "Lectures" / "Z Lecture.md").write_text(
+        "duality duality sensitivity\n", encoding="utf-8", newline="\n"
+    )
+
+    ranked = rank_lectures(
+        course,
+        "duality duality duality duality sensitivity",
+        exclude=set(),
+    )
+
+    assert [path.name for path in ranked[:2]] == ["Z Lecture.md", "A Lecture.md"]
+
+
 def test_pack_lists_every_verified_source_and_excludes_stale_or_generated_material(
     grounding_course: tuple[Vault, Path, Path, dict[str, ManifestEntry]],
     monkeypatch: pytest.MonkeyPatch,

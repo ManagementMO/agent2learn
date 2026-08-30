@@ -94,11 +94,12 @@ def write_snapshot(
     }
     filename = f"{filename_timestamp}.json"
     destination = vault.state() / "snapshots" / filename
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+    paths.ensure_dir(destination.parent, root=vault.root)
     paths.atomic_write_text(
         destination,
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n",
+        root=vault.root,
     )
     return destination
 

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import Any, cast
+from typing import Any, BinaryIO, cast
 
 from agent2learn import paths
 from agent2learn.errors import A2LError
@@ -106,7 +106,7 @@ class Vault:
         _validate_source_key(source_key)
         check_schema(self)
         bucket = self.state() / "history" / sha256(source_key.encode("utf-8")).hexdigest()
-        paths.long_path(bucket).mkdir(parents=True, exist_ok=True)
+        paths.ensure_dir(bucket, root=self.root)
         return bucket
 
     def manifest(self) -> dict[str, ManifestEntry]:
@@ -189,13 +189,14 @@ class Vault:
 
         source = self.materialized(current)
         revision_source = _allocate_revision_directory(
-            self.history_bucket(key), changed_utc.strftime("%Y%m%dT%H%M%SZ")
+            self.history_bucket(key), changed_utc.strftime("%Y%m%dT%H%M%SZ"), root=self.root
         )
         try:
             saved_source = revision_source / PurePosixPath(current.path).name
             if not _copy_verified(
                 source,
                 saved_source,
+                root=self.root,
                 expected_sha256=current.sha256,
                 expected_size=current.size,
             ):
@@ -211,6 +212,7 @@ class Vault:
                 if not _copy_verified(
                     artifact_path,
                     artifact_destination,
+                    root=self.root,
                     expected_sha256=None,
                     expected_size=None,
                 ):
@@ -255,7 +257,9 @@ class Vault:
                 "source_key": key,
                 "derived": derived_metadata,
             }
-            paths.atomic_write_text(revision_source / "revision.json", _canonical_json(metadata))
+            paths.atomic_write_text(
+                revision_source / "revision.json", _canonical_json(metadata), root=self.root
+            )
             return saved_source
         except BaseException:
             paths.remove_tree(revision_source, ignore_errors=True)
@@ -275,7 +279,9 @@ class Vault:
             },
             "schema_version": SCHEMA_VERSION,
         }
-        paths.atomic_write_text(self.state() / "manifest.json", _canonical_json(payload))
+        paths.atomic_write_text(
+            self.state() / "manifest.json", _canonical_json(payload), root=self.root
+        )
 
     def semesters(self) -> list[Path]:
         """Return direct child term directories that carry semester metadata."""
@@ -338,7 +344,7 @@ class Vault:
                     suffix += 1
                     continue
                 _write_vault_gitignore(candidate)
-                paths.long_path(candidate / ".a2l").mkdir()
+                paths.ensure_dir(candidate / ".a2l", root=candidate)
                 check_schema(cls(candidate))
                 return candidate
             if not allow_suffix:
@@ -348,7 +354,12 @@ class Vault:
 
     def _materialized_path(self, relative: str) -> Path:
         _validate_relative_posix(relative, field="path")
-        candidate = (self.root / Path(*PurePosixPath(relative).parts)).resolve()
+        # Preserve the lexical path until the filesystem boundary.  Resolving first would erase
+        # an intermediate symlink and make a manifest entry capable of redirecting a managed
+        # writer outside the trusted vault (or into a linked directory within it).
+        candidate = self.root / Path(*PurePosixPath(relative).parts)
+        if paths.has_link_component(candidate, root=self.root):
+            raise A2LError("manifest path contains a link component")
         try:
             candidate.relative_to(self.root)
         except ValueError as exc:
@@ -363,7 +374,7 @@ def check_schema(v: Vault) -> None:
         return
 
     state = v.state()
-    paths.long_path(state).mkdir(parents=True, exist_ok=True)
+    paths.ensure_dir(state, root=v.root)
     version_path = state / "VERSION"
     if not _regular_file_exists(version_path, "vault VERSION"):
         try:
@@ -373,7 +384,7 @@ def check_schema(v: Vault) -> None:
             raise A2LError("vault VERSION is unreadable") from exc
         if has_other_state:
             raise A2LError("vault VERSION is missing from an existing vault state")
-        paths.atomic_write_text(version_path, f"{SCHEMA_VERSION}\n")
+        paths.atomic_write_text(version_path, f"{SCHEMA_VERSION}\n", root=v.root)
         return
 
     raw_version = _read_text(version_path).strip()
@@ -391,7 +402,7 @@ def check_schema(v: Vault) -> None:
             "run a2l upgrade"
         )
 
-    backup = _backup_state(state, version)
+    backup = _backup_state(state, version, root=v.root)
     staging_root = paths.plain_path(
         Path(
             tempfile.mkdtemp(
@@ -402,7 +413,7 @@ def check_schema(v: Vault) -> None:
     )
     staged_state = staging_root / ".a2l"
     try:
-        _copy_tree(state, staged_state)
+        _copy_tree(state, staged_state, root=v.root)
         staged_vault = Vault(v.root)
         staged_vault._state_override = staged_state
         staged_vault._schema_migration_active = True
@@ -418,8 +429,8 @@ def check_schema(v: Vault) -> None:
             migration(staged_vault)
             current += 1
 
-        paths.atomic_write_text(staged_state / "VERSION", f"{SCHEMA_VERSION}\n")
-        _install_migrated_state(state, staged_state, backup)
+        paths.atomic_write_text(staged_state / "VERSION", f"{SCHEMA_VERSION}\n", root=v.root)
+        _install_migrated_state(state, staged_state, backup, root=v.root)
     finally:
         paths.remove_tree(staging_root, ignore_errors=True)
 
@@ -772,26 +783,34 @@ def _copy_verified(
     source: Path,
     destination: Path,
     *,
+    root: Path | None = None,
     expected_sha256: str | None,
     expected_size: int | None,
 ) -> bool:
     """Stream a source into a sibling ``.part`` and atomically install it if valid."""
 
-    paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
+    paths.ensure_dir(destination.parent, root=root)
+    if root is not None and paths.has_link_component(destination.parent, root=root):
+        raise A2LError("history destination parent contains a link component")
     file_descriptor, raw_temporary = tempfile.mkstemp(
         prefix=f".{destination.name}.",
         suffix=".part",
         dir=os.fspath(paths.long_path(destination.parent)),
     )
-    os.close(file_descriptor)
     temporary = paths.plain_path(Path(raw_temporary))
     digest = sha256()
     size = 0
+    descriptor_open = True
     try:
+        # The temporary reservation happens after the destination-parent check.  Revalidate the
+        # reserved path before opening it so a swapped parent cannot redirect a history copy.
+        if root is not None and paths.has_link_component(temporary, root=root):
+            raise A2LError("history temporary path contains a link component")
         with (
             open(os.fspath(paths.long_path(source)), "rb") as input_handle,
-            open(os.fspath(paths.long_path(temporary)), "wb") as output_handle,
+            os.fdopen(file_descriptor, "wb") as output_handle,
         ):
+            descriptor_open = False
             while chunk := input_handle.read(_COPY_CHUNK_SIZE):
                 digest.update(chunk)
                 size += len(chunk)
@@ -804,56 +823,83 @@ def _copy_verified(
             or (expected_size is not None and size != expected_size)
         ):
             raise A2LError("manifest source hash mismatch: integrity gap")
-        paths.atomic_install_temp(destination, temporary)
+        paths.atomic_install_temp(destination, temporary, root=root)
         return True
     except (FileNotFoundError, IsADirectoryError):
         return False
     finally:
         # This temporary is a generated local backup copy and is cheap to recreate; unlike an
         # ingest download .part, cleanup after an install failure is intentional here.
+        if descriptor_open:
+            with suppress(OSError):
+                os.close(file_descriptor)
         with suppress(OSError):
             os.unlink(os.fspath(paths.long_path(temporary)))
 
 
-def _allocate_revision_directory(bucket: Path, timestamp: str) -> Path:
+def _allocate_revision_directory(bucket: Path, timestamp: str, *, root: Path | None = None) -> Path:
     for number in range(1, 100_000):
         suffix = "" if number == 1 else f"_{number}"
         candidate = bucket / f"{timestamp}{suffix}"
+        if root is not None and paths.has_link_component(candidate, root=root):
+            raise A2LError("revision path contains a link component")
         try:
             paths.long_path(candidate).mkdir(parents=False, exist_ok=False)
         except FileExistsError:
             continue
+        if root is not None and paths.has_link_component(candidate, root=root):
+            raise A2LError("revision path contains a link component")
         return candidate
     raise A2LError("could not allocate a collision-safe revision directory")
 
 
-def _copy_tree(source: Path, destination: Path) -> None:
+def _copy_tree(source: Path, destination: Path, *, root: Path | None = None) -> None:
     """Copy a tree while applying the long-path boundary to each individual operation."""
     if paths.is_link(source):
         raise A2LError("schema state cannot contain symlinks")
     if paths.is_link(destination):
         raise A2LError("schema staging destination cannot be a symlink")
-    paths.long_path(destination).mkdir(parents=True, exist_ok=True)
+    paths.ensure_dir(destination, root=root)
     for candidate in paths.walk(source):
         relative = candidate.relative_to(source)
         target = destination / relative
         if paths.is_link(candidate):
             raise A2LError("schema state cannot contain symlinks")
         if paths.long_path(candidate).is_dir():
-            paths.long_path(target).mkdir(parents=True, exist_ok=True)
+            paths.ensure_dir(target, root=root)
             continue
         if not paths.long_path(candidate).is_file():
             raise A2LError("schema state contains an unsupported filesystem entry")
-        paths.long_path(target.parent).mkdir(parents=True, exist_ok=True)
+        paths.ensure_dir(target.parent, root=root)
         with (
             open(os.fspath(paths.long_path(candidate)), "rb") as source_handle,
-            open(os.fspath(paths.long_path(target)), "wb") as destination_handle,
+            _open_private_copy_target(target, root=root) as destination_handle,
         ):
             while chunk := source_handle.read(_COPY_CHUNK_SIZE):
                 destination_handle.write(chunk)
 
 
-def _backup_state(state: Path, version: int) -> Path:
+def _open_private_copy_target(path: Path, *, root: Path | None = None) -> BinaryIO:
+    """Create a new state-copy file without following a replacement link."""
+
+    if root is not None and paths.has_link_component(path, root=root):
+        raise A2LError("schema state copy path contains a link component")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    file_descriptor = os.open(os.fspath(paths.long_path(path)), flags, 0o600)
+    try:
+        file_stat = os.fstat(file_descriptor)
+        if not stat.S_ISREG(file_stat.st_mode) or getattr(file_stat, "st_nlink", 1) != 1:
+            raise A2LError("schema state copy must be a private regular file")
+        handle = os.fdopen(file_descriptor, "wb")
+        file_descriptor = -1
+        return handle
+    except BaseException:
+        if file_descriptor >= 0:
+            os.close(file_descriptor)
+        raise
+
+
+def _backup_state(state: Path, version: int, *, root: Path | None = None) -> Path:
     base = state.parent / f".a2l-backup-v{version}"
     candidate = base
     number = 2
@@ -861,27 +907,29 @@ def _backup_state(state: Path, version: int) -> Path:
         candidate = state.parent / f".a2l-backup-v{version}-{number}"
         number += 1
     try:
-        _copy_tree(state, candidate)
+        _copy_tree(state, candidate, root=root)
     except BaseException:
         paths.remove_tree(candidate, ignore_errors=True)
         raise
     return candidate
 
 
-def _install_migrated_state(state: Path, staged_state: Path, backup: Path) -> None:
+def _install_migrated_state(
+    state: Path, staged_state: Path, backup: Path, *, root: Path | None = None
+) -> None:
     """Commit staged schema state, restoring the backup if installation fails."""
 
     try:
-        _synchronize_state(staged_state, state)
+        _synchronize_state(staged_state, state, root=root)
     except BaseException:
         try:
-            _synchronize_state(backup, state)
+            _synchronize_state(backup, state, root=root)
         except BaseException as restore_error:
             raise A2LError("schema migration failed and rollback also failed") from restore_error
         raise
 
 
-def _synchronize_state(source: Path, destination: Path) -> None:
+def _synchronize_state(source: Path, destination: Path, *, root: Path | None = None) -> None:
     """Synchronize one state tree into another with VERSION installed last."""
 
     source_files, source_directories = _state_tree(source)
@@ -889,22 +937,22 @@ def _synchronize_state(source: Path, destination: Path) -> None:
 
     obsolete = (destination_files - source_files) | (destination_directories - source_directories)
     for relative in sorted(obsolete, key=_deepest_first):
-        _remove_state_path(destination / _relative_path(relative))
+        _remove_state_path(destination / _relative_path(relative), root=root)
 
     for relative in sorted(source_directories, key=_shallowest_first):
         directory = destination / _relative_path(relative)
-        paths.long_path(directory).mkdir(parents=True, exist_ok=True)
+        paths.ensure_dir(directory, root=root)
 
     for relative in sorted(source_files - {"VERSION"}):
         source_file = source / _relative_path(relative)
         destination_file = destination / _relative_path(relative)
         if not _same_file(source_file, destination_file):
-            paths.atomic_write_bytes(destination_file, _read_bytes(source_file))
+            paths.atomic_write_bytes(destination_file, _read_bytes(source_file), root=root)
 
     version_source = source / "VERSION"
     if "VERSION" not in source_files:
         raise A2LError("staged schema state is missing VERSION")
-    paths.atomic_write_bytes(destination / "VERSION", _read_bytes(version_source))
+    paths.atomic_write_bytes(destination / "VERSION", _read_bytes(version_source), root=root)
 
 
 def _state_tree(root: Path) -> tuple[set[str], set[str]]:
@@ -935,7 +983,9 @@ def _shallowest_first(relative: str) -> tuple[int, str]:
     return (len(PurePosixPath(relative).parts), relative)
 
 
-def _remove_state_path(path: Path) -> None:
+def _remove_state_path(path: Path, *, root: Path | None = None) -> None:
+    if root is not None and paths.has_link_component(path, root=root):
+        raise A2LError("schema state path contains a link component")
     if paths.long_path(path).is_dir() and not paths.is_link(path):
         paths.remove_tree(path)
     else:
@@ -961,6 +1011,7 @@ def _write_vault_gitignore(root: Path) -> None:
     paths.atomic_write_text(
         root / ".gitignore",
         ".a2l/\n**/_meta/my_grades.json\n**/discussions/\n**/.a2l/submissions/\n",
+        root=root,
     )
 
 

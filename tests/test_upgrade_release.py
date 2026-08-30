@@ -282,6 +282,11 @@ def test_the_release_builds_once_and_promotes_the_same_hashes() -> None:
     assert "sbom" in text.casefold()
     assert "testpypi" in text.casefold()
     assert "sha256" in text.casefold()
+    assert "pip-audit" in text
+    assert "cyclonedx1.5" in text
+    assert "gh release create" in text
+    assert "UV_FIND_LINKS" in text
+    assert text.count("testpypi-smoke") >= 2
 
 
 def _step_script(name: str) -> str:
@@ -336,7 +341,9 @@ def test_the_release_refuses_to_publish_an_enabled_submission_build_by_default()
     # Pin the decision, not just the name: a rename or a dropped exit would otherwise pass.
     assert "_release.SUBMISSION_AVAILABLE" in script
     assert 'if [ "$enabled" != "False" ]' in script
-    assert 'if [ "${A2L_SUBMISSION_RELEASE_AUTHORISED:-}" != "yes" ]' in script
+    assert 'if [ "${A2L_SUBMISSION_RELEASE_SHA:-}" != "$GITHUB_SHA" ]' in script
+    assert "A2L_SUBMISSION_RELEASE_AUTHORISED" not in script
+    assert "gh api --method DELETE" in script
     assert script.count("exit 1") == 1
 
 
@@ -371,7 +378,45 @@ def test_the_ci_workflow_still_guards_every_pull_request() -> None:
         ("0.2.0", "0.2.0rc1", True),
         ("0.2.0rc1", "0.2.0", False),
         ("0.2.0rc1", "0.1.0", True),
+        ("1.0.post1", "1.0", True),
+        ("1.0b1", "1.0a1", True),
+        ("1.0rc1", "1.0b1", True),
+        ("1.0.0", "1.0", False),
+        ("1.0.post1.dev1", "1.0rc1", True),
+        ("1.0.post1.dev1", "1.0", True),
+        ("1.0.post1", "1.0.post1.dev1", True),
     ],
 )
 def test_version_ordering_answers_is_this_newer(latest: str, installed: str, needed: bool) -> None:
     assert plan_upgrade(installed=installed, latest=latest).needed is needed
+
+
+def test_plain_upgrade_requires_a_controlling_confirmation_before_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(upgrade, "latest_version", lambda **_kwargs: "9.9.9")
+    calls: list[UpgradePlan] = []
+    monkeypatch.setattr(upgrade, "apply_upgrade", calls.append)
+
+    result = CliRunner().invoke(app, ["upgrade"], input="n\n")
+
+    assert result.exit_code != 0
+    assert calls == []
+
+
+def test_post_install_verification_checks_version_and_command_surface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[-1] == "--version":
+            return subprocess.CompletedProcess(command, 0, stdout="a2l 9.9.9\n", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="sync  courses  skills\n", stderr="")
+
+    monkeypatch.setattr(upgrade.subprocess, "run", run)
+
+    upgrade.verify_installation("9.9.9")
+
+    assert calls == [["a2l", "--version"], ["a2l", "--help"]]

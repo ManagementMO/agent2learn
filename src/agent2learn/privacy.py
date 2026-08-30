@@ -958,7 +958,7 @@ def _apply(operations: Iterable[_Operation]) -> None:
             text = operation.payload
         else:
             text = _canonical_json(operation.payload)
-        paths.atomic_write_text(operation.path, text)
+        paths.atomic_write_text(operation.path, text, root=trusted_root)
 
     for operation in sorted(
         (item for item in selected if item.action == "remove_tree"),

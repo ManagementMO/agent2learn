@@ -101,7 +101,7 @@ def test_external_stub_keeps_plain_paths_at_long_path_boundaries(
     monkeypatch.setattr(
         ingest_module.paths,
         "atomic_write_text",
-        lambda destination, text: calls.append(destination),
+        lambda destination, text, **_kwargs: calls.append(destination),
     )
 
     ingest_module._materialize_external_stubs(
@@ -113,6 +113,24 @@ def test_external_stub_keeps_plain_paths_at_long_path_boundaries(
     )
 
     assert calls == [stub]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation may require elevation")
+def test_metadata_refuses_a_linked_course_directory_without_writing_outside_vault(
+    tmp_path: Path,
+) -> None:
+    root = Vault.claim(tmp_path / "vault")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    term_dir = root / "Winter 2026"
+    term_dir.mkdir()
+    (term_dir / "COURSE101_1261").symlink_to(outside, target_is_directory=True)
+    fake_client = FakeClient([course()])
+
+    with pytest.raises(A2LError, match="link component"):
+        ingest_metadata(fake_client, Vault(root), fake_client.school)
+
+    assert not list(outside.rglob("*"))
 
 
 def _handler_for(payloads: dict[str, bytes], *, last_modified: str | None = None):
@@ -917,6 +935,36 @@ def test_unknown_size_stays_metadata_only_until_confirmed_one_file_fetch(tmp_pat
     assert confirmations == [None]
     assert result.source_path is not None
     assert len(fake_client.download_calls) == 1
+
+
+def test_allow_large_does_not_remove_ceiling_for_a_known_small_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(_topic(1, "Small source"))},
+        download_handler=_handler_for({"topic-1.pdf": b"small bytes"}),
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+    observed: list[int | None] = []
+    real_ingest = ingest_module._ingest_one_topic
+
+    def capture(*args: object, **kwargs: object) -> str:
+        observed.append(kwargs.get("max_bytes"))  # type: ignore[arg-type]
+        return real_ingest(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ingest_module, "_ingest_one_topic", capture)
+    fetch_topic(
+        fake_client,
+        vault,
+        fake_client.school,
+        "1",
+        allow_large=True,
+        confirm=lambda _size: pytest.fail("small source must not ask for an override"),
+    )
+
+    assert observed == [2_147_483_648]
 
 
 def test_fetch_rejects_licensed_topic_and_ambiguous_title(tmp_path: Path) -> None:

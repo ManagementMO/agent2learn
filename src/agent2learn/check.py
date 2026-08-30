@@ -117,6 +117,7 @@ _NAMED_METHOD = re.compile(
 )
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _NEGATION = re.compile(r"\b(?:not|no|never|cannot|without)\b|n['\u2019]t\b", re.IGNORECASE)
+_IS_POLARITY = re.compile(r"\bis(?P<not>\s+not)?\b", re.IGNORECASE)
 _RUN = re.compile(r"[a-z0-9]+")
 
 # Longest first: "greater than or equal to" must not be consumed as "greater than".
@@ -822,9 +823,22 @@ def _relation_signature(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 
 def _polarity(text: str) -> tuple[bool, tuple[str, ...]]:
-    negated = _NEGATION.search(text) is not None
-    stripped = _NEGATION.sub(" ", text)
-    return negated, tuple(tok(stripped))
+    """Return the narrow ``is``/``is not`` predicate polarity template.
+
+    Broad lexical negation (``never``, ``cannot``, ``without``, and friends) is deliberately not a
+    conflict signal.  The design allowlist only treats a single explicit ``is`` predicate and its
+    immediately following ``not`` as opposite polarity; any other negation or multiple predicates
+    makes the template inapplicable.
+    """
+
+    matches = tuple(_IS_POLARITY.finditer(text))
+    if len(matches) != 1:
+        return False, ()
+    match = matches[0]
+    stripped = text[: match.start()] + " " + text[match.end() :]
+    if _NEGATION.search(stripped) is not None:
+        return False, ()
+    return bool(match.group("not")), tuple(tok(stripped))
 
 
 def _vault_for(course_dir: Path) -> Vault:

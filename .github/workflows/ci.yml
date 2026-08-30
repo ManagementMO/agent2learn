@@ -135,8 +135,34 @@ jobs:
         run: |
           set -euo pipefail
           INDEX="$RUNNER_TEMP/a2l-candidate"
-          mkdir -p "$INDEX"
+          mkdir -p "$INDEX/simple/agent2learn"
           cp dist/*.whl dist/*.tar.gz "$INDEX/"
+          A2L_CANDIDATE_INDEX="$INDEX" python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["A2L_CANDIDATE_INDEX"])
+          distributions = sorted(
+              path for path in root.iterdir() if path.suffix == ".whl" or path.name.endswith(".tar.gz")
+          )
+          if not distributions:
+              raise SystemExit("candidate build contains no distribution")
+          links = [
+              f'<a href="../../{path.name}#sha256={hashlib.sha256(path.read_bytes()).hexdigest()}">'
+              f"{path.name}</a>"
+              for path in distributions
+          ]
+          (root / "simple" / "agent2learn" / "index.html").write_text(
+              "\n".join(links) + "\n", encoding="utf-8", newline="\n"
+          )
+          PY
+          # A first-priority local PEP 503 index makes the candidate's hash-bearing link the only
+          # possible source for agent2learn, even after this version is published on PyPI.
+          echo "UV_INDEX=$INDEX/simple" >> "$GITHUB_ENV"
+          echo "UV_DEFAULT_INDEX=https://pypi.org/simple" >> "$GITHUB_ENV"
+          echo "UV_INDEX_STRATEGY=first-index" >> "$GITHUB_ENV"
+          # Keep the flat source as defence in depth for uv versions that inspect find-links too.
           echo "UV_FIND_LINKS=$INDEX" >> "$GITHUB_ENV"
 
       - name: Non-interactive install.sh keeps its hands off onboarding

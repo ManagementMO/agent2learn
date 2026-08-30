@@ -605,8 +605,8 @@ def convert_vault(
             ):
                 vault.preserve_revision(key, changed_at=clock.now())
                 local_modification = True
-        paths.long_path(destination.parent).mkdir(parents=True, exist_ok=True)
-        paths.atomic_write_text(destination, result.markdown)
+        paths.ensure_dir(destination.parent, root=vault.root)
+        paths.atomic_write_text(destination, result.markdown, root=vault.root)
         derived = DerivedArtifact(
             path=paths.rel_posix(destination, vault.root),
             sha256=_hash_file(destination)[0],
@@ -1163,7 +1163,7 @@ def _update_content_map(vault: Vault, key: str, **updates: object) -> None:
                 changed = True
         if changed:
             checked = course_index.reconcile_content_map(vault, rows)
-            course_index.write_content_map(destination.parent.parent, checked)
+            course_index.write_content_map(destination.parent.parent, checked, root=vault.root)
 
 
 def _now() -> str:

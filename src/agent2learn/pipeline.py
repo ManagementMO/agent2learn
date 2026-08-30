@@ -263,7 +263,7 @@ def refresh_indexes(vault: Vault, school: School, metadata: MetadataReport) -> i
         if not isinstance(raw_rows, list):
             raise ValueError("content map topics must be a list")
         rows = reconcile_content_map(vault, raw_rows)
-        write_content_map(course_metadata.directory, rows)
+        write_content_map(course_metadata.directory, rows, root=vault.root)
         topics = tuple(
             _topic_from_row(row, course=course_metadata.course)
             for row in rows
@@ -274,8 +274,9 @@ def refresh_indexes(vault: Vault, school: School, metadata: MetadataReport) -> i
             school=school,
             course=course_metadata.course,
             topics=topics,
+            root=vault.root,
         )
-        _restore_ai_policy_line(course_metadata.directory)
+        _restore_ai_policy_line(course_metadata.directory, root=vault.root)
         refreshed += 1
     return refreshed
 
@@ -320,7 +321,7 @@ def _offering_ids(value: object) -> tuple[int, ...] | None:
     return tuple(cast(list[int], value))
 
 
-def _restore_ai_policy_line(course_dir: Path) -> None:
+def _restore_ai_policy_line(course_dir: Path, *, root: Path | None = None) -> None:
     destination = course_dir / "_meta" / "ai_policy.json"
     try:
         with open(os.fspath(paths.long_path(destination)), encoding="utf-8", newline="") as handle:
@@ -334,7 +335,7 @@ def _restore_ai_policy_line(course_dir: Path) -> None:
     status = raw.get("status")
     if status not in {"found", "not_found_in_scanned_outline", "outline_unavailable"}:
         raise ValueError("AI-policy metadata has an invalid status")
-    aipolicy._surface_index_line(course_dir, cast(dict[str, object], raw))
+    aipolicy._surface_index_line(course_dir, cast(dict[str, object], raw), root=root)
 
 
 def _result_status(

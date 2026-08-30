@@ -130,7 +130,7 @@ def synthetic_api(httpserver: Any) -> Iterator[SyntheticAPI]:
         j("dropbox_folders_course101.json")
     )
     httpserver.expect_request(
-        f"/d2l/api/le/{LE}/{COURSE_A_OU}/dropbox/folders/700002/submissions/"
+        f"/d2l/api/le/{LE}/{COURSE_A_OU}/dropbox/folders/700002/submissions/mysubmissions/"
     ).respond_with_json(j("submissions_readback_course101.json"))
     httpserver.expect_request(f"/d2l/api/le/{LE}/{COURSE_A_OU}/news/").respond_with_json(
         j("news_course101.json")

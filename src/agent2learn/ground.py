@@ -163,7 +163,10 @@ def rank_lectures(
 
     if isinstance(top, bool) or not isinstance(top, int) or top < 1:
         raise ValueError("top must be a positive integer")
-    wanted = Counter(distinguishing_terms(task_text))
+    # Preserve query frequency here. ``distinguishing_terms`` intentionally returns a set for
+    # callers that need membership operations, but the ranking contract caps each repeated term at
+    # three occurrences rather than discarding repetition before the cap is applied.
+    wanted = Counter(token for token in tok(task_text) if token not in GENERIC)
     if not wanted:
         return []
     skip = {_resolved(path) for path in exclude}
@@ -272,7 +275,7 @@ def write_grounding_pack(vault: Vault, course: str, item: str) -> GroundingPack:
         sources=sources,
         generated_at=generated_at,
     )
-    paths.atomic_write_text(pack.path, _render(pack, course_name))
+    paths.atomic_write_text(pack.path, _render(pack, course_name), root=vault.root)
     return pack
 
 

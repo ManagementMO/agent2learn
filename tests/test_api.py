@@ -75,6 +75,31 @@ def test_client_defaults_to_two_workers(synthetic_api: SyntheticAPI) -> None:
     assert _client(synthetic_api).workers == 2
 
 
+def test_authenticated_transport_does_not_trust_ambient_proxy_or_netrc_state(
+    synthetic_api: SyntheticAPI,
+) -> None:
+    assert _client(synthetic_api)._transport.trust_env is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation may require elevation")
+def test_root_bound_download_refuses_a_linked_part_parent(
+    synthetic_api: SyntheticAPI, tmp_path: Path
+) -> None:
+    root = tmp_path / "vault"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked = root / "parts"
+    linked.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="link component"):
+        _client(synthetic_api).download(
+            synthetic_api.base_url + "/file.pdf", linked / "source.pdf.part", root=root
+        )
+
+    assert not (outside / "source.pdf.part").exists()
+
+
 def test_get_json_login_html_raises_session_expired(
     synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:

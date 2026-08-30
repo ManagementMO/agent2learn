@@ -775,7 +775,7 @@ def _apply_destination(
     destination: DestinationResult, source: Path, *, link: bool, trusted_root: Path
 ) -> None:
     _ensure_safe_install_path(destination.path, trusted_root=trusted_root)
-    paths.ensure_dir(destination.path)
+    paths.ensure_dir(destination.path, root=trusted_root)
     for slug, status in destination.skills:
         if status in {"unchanged", "conflict"}:
             continue
@@ -789,26 +789,28 @@ def _apply_destination(
             )
 
 
-def _copy_skill(source: Path, destination: Path) -> None:
-    paths.ensure_dir(destination)
+def _copy_skill(source: Path, destination: Path, *, root: Path | None = None) -> None:
+    paths.ensure_dir(destination, root=root)
     for item in sorted(
         paths.walk(source), key=lambda candidate: candidate.relative_to(source).as_posix()
     ):
         relative = item.relative_to(source)
         target = destination / relative
         if paths.long_path(item).is_dir():
-            paths.ensure_dir(target)
+            paths.ensure_dir(target, root=root)
         else:
             with open(os.fspath(paths.long_path(item)), "rb") as handle:
-                paths.atomic_write_bytes(target, handle.read())
+                paths.atomic_write_bytes(target, handle.read(), root=root)
 
 
-def _write_metadata(destination: Path, metadata: dict[str, object]) -> None:
+def _write_metadata(
+    destination: Path, metadata: dict[str, object], *, root: Path | None = None
+) -> None:
     text = (
         json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2, separators=(",", ": "))
         + "\n"
     )
-    paths.atomic_write_text(destination / METADATA_FILE, text)
+    paths.atomic_write_text(destination / METADATA_FILE, text, root=root)
 
 
 def _validate_source(source: Path) -> None:
@@ -838,20 +840,24 @@ def _stage_and_replace_skill(
     source: Path, destination: Path, metadata: dict[str, object], *, trusted_root: Path
 ) -> None:
     _ensure_safe_install_path(destination.parent, trusted_root=trusted_root)
-    paths.ensure_dir(destination.parent)
-    staged = paths.temporary_directory(destination.parent, prefix=f".{destination.name}.staged.")
+    paths.ensure_dir(destination.parent, root=trusted_root)
+    staged = paths.temporary_directory(
+        destination.parent, prefix=f".{destination.name}.staged.", root=trusted_root
+    )
     try:
         _ensure_safe_install_path(staged, trusted_root=trusted_root)
-        _copy_skill(source, staged)
-        _preserve_local_files(destination, staged, source)
-        _write_metadata(staged, metadata)
+        _copy_skill(source, staged, root=trusted_root)
+        _preserve_local_files(destination, staged, source, root=trusted_root)
+        _write_metadata(staged, metadata, root=trusted_root)
         paths.replace_tree(destination, staged, root=trusted_root)
     except Exception:
         paths.remove_tree(staged, ignore_errors=True)
         raise
 
 
-def _preserve_local_files(existing: Path, staged: Path, source: Path) -> None:
+def _preserve_local_files(
+    existing: Path, staged: Path, source: Path, *, root: Path | None = None
+) -> None:
     if not paths.long_path(existing).exists() or paths.is_link(existing):
         return
     metadata = _read_installed_metadata(existing)
@@ -870,10 +876,10 @@ def _preserve_local_files(existing: Path, staged: Path, source: Path) -> None:
             continue
         target = staged / relative
         if paths.long_path(item).is_dir():
-            paths.ensure_dir(target)
+            paths.ensure_dir(target, root=root)
         else:
             with open(os.fspath(paths.long_path(item)), "rb") as handle:
-                paths.atomic_write_bytes(target, handle.read())
+                paths.atomic_write_bytes(target, handle.read(), root=root)
 
 
 def _file_change_details(
