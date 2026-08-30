@@ -77,7 +77,14 @@ architecture.
 - **The review-remediation checkpoint is committed and pushed to `main` as `276bda3`.** A fresh
   local run on that exact tree reports 858 passing tests and 4 skipped. The exact-SHA remote
   acceptance run is [33291418755](https://github.com/ManagementMO/agent2learn/actions/runs/33291418755);
-  check its final result before calling the 17-job matrix green.
+  it passed all 17 jobs across Windows, macOS, and Linux.
+- **Release-promotion hardening is committed and pushed to `main` as `a2a8333`.** The protected
+  PyPI publication job now precedes public GitHub-release creation, and every TestPyPI smoke job
+  compares the published version's exact filename/SHA-256 set with the one-build artifact before
+  installing it. The focused release guard suite is 55 passing, the full local suite is 860
+  passing / 4 skipped, and the exact-SHA remote acceptance run is
+  [33294678005](https://github.com/ManagementMO/agent2learn/actions/runs/33294678005) with all
+  17 jobs green.
 - **ATTENTION: CI grew from 14 to 17 jobs** (`installer · ubuntu-latest|macos-latest|windows-latest`).
   Branch protection on `main` now requires all 17 named checks. The existing `strict: false` and
   `enforce_admins: false` settings are unchanged; the three installer contexts were added to the
@@ -243,9 +250,10 @@ architecture.
   pass for the exact release candidate before `SUBMISSION_AVAILABLE` may be flipped; the README's
   walkthrough recording has not been made and is deliberately not linked; PyPI Trusted Publishing
   still needs owner-side setup, while the GitHub `testpypi` and `pypi` environments now exist with
-  required owner review and administrator bypass disabled; `mypy` covers `src/` only (`tests/` and
-  `tools/` have unresolved annotations); there is no coverage measurement yet; three Dependabot PRs
-  propose versions past the declared caps and each needs a human decision.
+  required owner review and administrator bypass disabled; GitHub private vulnerability reporting,
+  Dependabot alerts, and Dependabot security updates are enabled (2026-08-30); `mypy` covers
+  `src/` only (`tests/` and `tools/` have unresolved annotations); there is no coverage measurement
+  yet; three Dependabot PRs propose versions past the declared caps and each needs a human decision.
 - Do not publish a package, create a GitHub release, or register a production domain yet.
 - **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
   - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same

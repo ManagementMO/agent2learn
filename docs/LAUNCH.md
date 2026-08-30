@@ -1,7 +1,8 @@
 # Agent2Learn — Launch Plan
 
 - **Date:** 2026-08-24
-- **Status:** ready to execute once v0.1 clears its definition of done
+- **Status:** automated v0.1 implementation and CI are complete; manual release and publication
+  gates remain
 - **Companion docs:** the design spec and implementation plan under `docs/superpowers/`
 
 ---
@@ -60,9 +61,12 @@ description and the one that survives a hostile reading.
 - [ ] Same-device browser-to-API auth still to be validated on **Windows and Linux**, without
       moving cookies, profiles, or Duo state between devices.
 - [x] Designated non-graded upload test passed 2026-08-25: `mysubmissions` returned 200 and API
-      read-back matched filename, size, and timestamp. Group submissions, closed folders, and large
-      files remain unvalidated, so the shipped default stays disabled behind `a2l enable-submit`
-      plus a per-file interactive confirmation, and launch copy says exactly that.
+      read-back matched filename, size, and timestamp. That historical read-back used the broad
+      submissions listing; the current implementation requires the documented current-user
+      `mysubmissions` read-back route as well, so a fresh supervised check remains required before
+      enabling the release capability. Group submissions, closed folders, and large files remain
+      unvalidated, so the shipped default stays disabled behind `a2l enable-submit` plus a per-file
+      interactive confirmation, and launch copy says exactly that.
 - [ ] The dependency/license review, third-party notices, SBOM, secret scan, and synthetic fixture
       review are signed off for the exact release artifacts.
 - [x] The private 262-PDF converter acceptance corpus passed at the shipped 80-words-per-page

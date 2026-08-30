@@ -27,6 +27,13 @@ converters and a user-installed system Tesseract executable/language data · sta
 `keyring` with a protected local-file fallback when no OS credential backend works · `pytest` +
 `pytest-httpserver` · GitHub Actions three-OS matrix.
 
+> **Current completion note (2026-08-30):** Tasks 0–23 are implemented on `main`; the automated
+> command surface and the 17-job CI matrix are complete. The task checkboxes below are the original
+> execution worksheet and are retained as historical detail. Current evidence and the remaining
+> human/publication gates are tracked in [`AGENTS.md`](../../../AGENTS.md) and
+> [`docs/LAUNCH.md`](../../LAUNCH.md). No package has been published, and submission mutation stays
+> disabled until its supervised release gate passes.
+
 > **Python floor is 3.11, not 3.10.** 3.10 reaches end of life in **October 2026** — within weeks of
 > this shipping. 3.14 has been stable since October 2025 and belongs in the matrix.
 
