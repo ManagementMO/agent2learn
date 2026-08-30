@@ -124,6 +124,28 @@ CASES: list[tuple[str, list[tuple[str, str]], str]] = [
         "test_non_list_readback_is_rejected_at_shape_boundary",
     ),
     (
+        "documented EntityDropbox current-user envelope",
+        [
+            (
+                '        if not isinstance(entity, dict) or entity.get("EntityType") != "User":\n'
+                "            continue\n",
+                "        if entity is None:\n"
+                '            entity = {"EntityId": 99999999, "EntityType": "User"}\n',
+            ),
+            (
+                '        submissions: object = record.get("Submissions")\n',
+                '        submissions: object = record.get("Submissions") '
+                'if "Submissions" in record else [record]\n',
+            ),
+            (
+                '            submitted_by = submission.get("SubmittedBy")\n',
+                '            submitted_by = submission.get("SubmittedBy") or '
+                '{"Id": entity_user_id}\n',
+            ),
+        ],
+        "test_readback_rejects_an_undocumented_flat_shape_even_when_it_matches",
+    ),
+    (
         "staged-bytes integrity (TOCTOU)",
         [
             (

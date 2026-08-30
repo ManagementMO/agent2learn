@@ -107,11 +107,11 @@ architecture.
      each guard's decision still run everywhere.
 - **Tasks 18–23 were implemented by the controller directly, without reviewer subagents**, at the
   user's instruction. Reviews are controller self-reviews plus scripted perturbation harnesses in
-  [`tools/perturb/`](tools/perturb/); the three tracked scripts now mutate and prove all 30
+  [`tools/perturb/`](tools/perturb/); the three tracked scripts now mutate and prove all 31
   submission, installer, and upgrade/release guards load-bearing. This is still weaker than an
   independent fresh-context review and is recorded as such in `progress.md`.
 - **Task 20 deviated from TDD:** `submit.py` was written before its tests. Compensated with a
-  12-gate perturbation harness, but recorded as a deviation rather than presented as compliance.
+  13-gate perturbation harness, but recorded as a deviation rather than presented as compliance.
 - **The golden vault now exists and is the repository's regression tripwire.**
   `tests/fixtures/golden_vault.json` pins 49 files by SHA-256 after one full production
   metadata → explicit outline state → download → convert → index → snapshot → audit run against the

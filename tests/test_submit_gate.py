@@ -35,6 +35,24 @@ from agent2learn.vault import Vault
 ENABLED = SubmissionCapability(available=True, reason="test capability")
 LE = "1.96"
 FOLDER_ID = 700002
+CURRENT_USER_ID = 99999999
+
+
+def _current_user_readback(*submissions: dict[str, object]) -> list[dict[str, object]]:
+    """Build the documented EntityDropbox response returned by ``mysubmissions``."""
+
+    return [
+        {
+            "Entity": {"EntityId": CURRENT_USER_ID, "EntityType": "User"},
+            "Submissions": [
+                {
+                    "SubmittedBy": {"Id": str(CURRENT_USER_ID), "DisplayName": "Synthetic User"},
+                    **submission,
+                }
+                for submission in submissions
+            ],
+        }
+    ]
 
 
 class RecordingTransport:
@@ -251,12 +269,12 @@ def test_a_non_interactive_process_stops_at_the_preview(tmp_path: Path) -> None:
 
 def test_a_second_attempt_with_the_same_code_uploads_nothing(tmp_path: Path) -> None:
     transport = RecordingTransport(
-        readback=[
+        readback=_current_user_readback(
             {
                 "SubmissionDate": "2999-01-01T00:00:00Z",
                 "Files": [{"FileName": "report.pdf", "Size": 13}],
             }
-        ]
+        )
     )
     vault, preview = _preview(tmp_path, transport)
     phrase = preview.phrase
@@ -295,12 +313,12 @@ def test_editing_the_original_after_the_preview_cannot_change_the_sent_bytes(
     tmp_path: Path,
 ) -> None:
     transport = RecordingTransport(
-        readback=[
+        readback=_current_user_readback(
             {
                 "SubmissionDate": "2999-01-01T00:00:00Z",
                 "Files": [{"FileName": "report.pdf", "Size": 13}],
             }
-        ]
+        )
     )
     vault, preview = _preview(tmp_path, transport)
     (tmp_path / "report.pdf").write_text("swapped hostile content\n", encoding="utf-8")
@@ -363,18 +381,18 @@ def test_read_back_failures_are_unverified_and_never_retry(tmp_path: Path) -> No
         (
             "stale",
             RecordingTransport(
-                readback=[
+                readback=_current_user_readback(
                     {
                         "SubmissionDate": "1999-01-01T00:00:00Z",
                         "Files": [{"FileName": "report.pdf", "Size": 13}],
                     }
-                ]
+                )
             ),
         ),
         (
             "ambiguous",
             RecordingTransport(
-                readback=[
+                readback=_current_user_readback(
                     {
                         "SubmissionDate": "2999-01-01T00:00:00Z",
                         "Files": [
@@ -382,18 +400,18 @@ def test_read_back_failures_are_unverified_and_never_retry(tmp_path: Path) -> No
                             {"FileName": "report.pdf", "Size": 13},
                         ],
                     }
-                ]
+                )
             ),
         ),
         (
             "size mismatch",
             RecordingTransport(
-                readback=[
+                readback=_current_user_readback(
                     {
                         "SubmissionDate": "2999-01-01T00:00:00Z",
                         "Files": [{"FileName": "report.pdf", "Size": 999}],
                     }
-                ]
+                )
             ),
         ),
         ("http-404", RecordingTransport(readback_error=HTTPError("404 Not Found"))),
@@ -446,6 +464,7 @@ def test_readback_uses_current_user_route_and_nested_submission_shape(tmp_path: 
                 "Entity": {"EntityId": 99999999, "EntityType": "User"},
                 "Submissions": [
                     {
+                        "SubmittedBy": {"Id": "99999999", "DisplayName": "Synthetic User"},
                         "SubmissionDate": "2999-01-01T00:00:00.000Z",
                         "Files": [{"FileName": "report.pdf", "Size": 13}],
                     }
@@ -462,6 +481,24 @@ def test_readback_uses_current_user_route_and_nested_submission_shape(tmp_path: 
     assert receipt.status == "verified"
     assert transport.gets[-1].endswith("/submissions/mysubmissions/")
     assert transport.closed_responses == 1
+
+
+def test_readback_rejects_an_undocumented_flat_shape_even_when_it_matches(tmp_path: Path) -> None:
+    """A current-user route is not proof if its documented EntityDropbox envelope vanished."""
+    transport = RecordingTransport(
+        readback=[
+            {
+                "SubmissionDate": "2999-01-01T00:00:00.000Z",
+                "Files": [{"FileName": "report.pdf", "Size": 13}],
+            }
+        ]
+    )
+    vault, preview = _preview(tmp_path, transport)
+
+    with pytest.raises(SubmissionUnverified, match="did not list"):
+        confirm_and_upload(
+            vault, transport, preview, phrase=preview.phrase, interactive=True, capability=ENABLED
+        )
 
 
 def test_readback_rejects_a_submission_attributed_to_another_user(tmp_path: Path) -> None:
@@ -500,9 +537,14 @@ def test_readback_rejects_conflicting_folder_identifiers(tmp_path: Path) -> None
     transport = RecordingTransport(
         readback=[
             {
+                "Entity": {"EntityId": CURRENT_USER_ID, "EntityType": "User"},
                 "FolderId": FOLDER_ID + 1,
                 "Submissions": [
                     {
+                        "SubmittedBy": {
+                            "Id": str(CURRENT_USER_ID),
+                            "DisplayName": "Synthetic User",
+                        },
                         "SubmissionDate": "2999-01-01T00:00:00Z",
                         "Files": [
                             {
@@ -534,9 +576,14 @@ def test_readback_rejects_folder_conflicts_across_nested_containers(tmp_path: Pa
     transport = RecordingTransport(
         readback=[
             {
+                "Entity": {"EntityId": CURRENT_USER_ID, "EntityType": "User"},
                 "FolderId": FOLDER_ID + 1,
                 "Submissions": [
                     {
+                        "SubmittedBy": {
+                            "Id": str(CURRENT_USER_ID),
+                            "DisplayName": "Synthetic User",
+                        },
                         "FolderId": FOLDER_ID,
                         "SubmissionDate": "2999-01-01T00:00:00Z",
                         "Files": [{"FileName": "report.pdf", "Size": 13}],
@@ -594,12 +641,12 @@ def test_submit_staging_symlink_is_refused_without_copying_outside_vault(tmp_pat
 
 def test_a_receipt_records_the_outcome_without_leaking_anything(tmp_path: Path) -> None:
     transport = RecordingTransport(
-        readback=[
+        readback=_current_user_readback(
             {
                 "SubmissionDate": "2999-01-01T00:00:00Z",
                 "Files": [{"FileName": "report.pdf", "Size": 13}],
             }
-        ]
+        )
     )
     vault, preview = _preview(tmp_path, transport)
     phrase = preview.phrase

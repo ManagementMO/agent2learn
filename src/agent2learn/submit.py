@@ -721,33 +721,34 @@ def _iter_files(
         if not isinstance(record, dict):
             continue
         entity = record.get("Entity")
-        if entity is not None and (
-            not isinstance(entity, dict) or entity.get("EntityType") not in (None, "User")
-        ):
-            # The current-user projection should never contain a group/entity submission.  Keep
-            # this check even though the route scopes it, so a route or server-shape regression
-            # cannot silently attribute a teammate's file.
+        # The documented ``mysubmissions`` GET response is an EntityDropbox array.  Do not
+        # support a convenient flat compatibility shape here: the Entity/SubmittedBy agreement is
+        # the local proof that a surprising server response cannot attribute someone else's file
+        # to the current user.
+        if not isinstance(entity, dict) or entity.get("EntityType") != "User":
             continue
-        entity_id = entity.get("EntityId") if isinstance(entity, dict) else None
-        invalid_user_attribution = False
-        entity_user_id: str | None = None
-        if entity is not None:
-            if entity_id is not None and (
-                isinstance(entity_id, bool) or not isinstance(entity_id, int)
-            ):
-                invalid_user_attribution = True
-            elif isinstance(entity_id, int):
-                entity_user_id = str(entity_id)
-            if expected_user_id is not None and entity_user_id not in (None, expected_user_id):
-                invalid_user_attribution = True
-        # D2L has returned both an outer Entity -> Submissions -> Files collection and a direct
-        # submission object in older compatible projections.  Accept only these two documented
-        # shapes; do not recursively walk arbitrary response data.
-        submissions: object = record.get("Submissions") if "Submissions" in record else [record]
+        entity_id = entity.get("EntityId")
+        if isinstance(entity_id, bool) or not isinstance(entity_id, int):
+            continue
+        entity_user_id = str(entity_id)
+        if expected_user_id is not None and entity_user_id != expected_user_id:
+            continue
+        submissions: object = record.get("Submissions")
         if not isinstance(submissions, list):
             continue
         for submission in submissions:
             if not isinstance(submission, dict):
+                continue
+            submitted_by = submission.get("SubmittedBy")
+            if not isinstance(submitted_by, dict):
+                continue
+            submitted_id = submitted_by.get("Id")
+            if (
+                not isinstance(submitted_id, str)
+                or not submitted_id
+                or submitted_id != entity_user_id
+                or (expected_user_id is not None and submitted_id != expected_user_id)
+            ):
                 continue
             candidates = submission.get("Files")
             if not isinstance(candidates, list):
@@ -771,23 +772,6 @@ def _iter_files(
                         merged["_a2l_invalid_folder_identifier"] = True
                     if len(set(valid_folder_values)) > 1:
                         merged["_a2l_conflicting_folder_identifiers"] = True
-                    submitted_by = submission.get("SubmittedBy")
-                    if submitted_by is not None:
-                        if not isinstance(submitted_by, dict):
-                            invalid_user_attribution = True
-                        else:
-                            submitted_id = submitted_by.get("Id")
-                            if not isinstance(submitted_id, str) or not submitted_id:
-                                invalid_user_attribution = True
-                            elif entity_user_id is not None and submitted_id != entity_user_id:
-                                # D2L's EntityDropbox shape identifies both the owning entity and
-                                # the submitter.  A disagreement is not attributable to this
-                                # current-user route, even before considering the session ID.
-                                invalid_user_attribution = True
-                            elif expected_user_id is not None and submitted_id != expected_user_id:
-                                invalid_user_attribution = True
-                    if invalid_user_attribution:
-                        merged["_a2l_invalid_user_attribution"] = True
                     for key in ("FolderId", "DropboxFolderId"):
                         if key not in merged:
                             if key in submission:
@@ -801,10 +785,8 @@ def _iter_files(
 def _folder_matches(entry: dict[str, object], folder_id: int) -> bool:
     """Accept an omitted folder field only because the current-user route scopes it."""
 
-    if (
-        entry.get("_a2l_invalid_folder_identifier")
-        or entry.get("_a2l_conflicting_folder_identifiers")
-        or entry.get("_a2l_invalid_user_attribution")
+    if entry.get("_a2l_invalid_folder_identifier") or entry.get(
+        "_a2l_conflicting_folder_identifiers"
     ):
         return False
     supplied: list[int] = []

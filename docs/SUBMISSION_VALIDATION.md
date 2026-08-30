@@ -21,6 +21,11 @@ submissions made by the current user, and the documented status failures include
 See the [D2L Dropbox API reference](https://docs.valence.desire2learn.com/res/dropbox.html),
 especially the `EntityDropbox` schema and the current-user GET/POST entries.
 
+Agent2Learn treats that envelope as part of the proof, not as an optional convenience: a flat
+submission-like list, a non-user entity, or a missing/mismatched `SubmittedBy` identifier yields
+`verification_unknown`. There is no compatibility parser that could turn a surprising response
+into a false current-user match.
+
 The implementation deliberately uses this route for both POST and read-back. It does not fall
 back to the broad `/submissions/` listing, a group route, or an undocumented `mypost` route.
 
