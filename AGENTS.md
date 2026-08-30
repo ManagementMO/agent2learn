@@ -74,9 +74,30 @@ architecture.
     disagrees with the packaged version, refuses to publish a build with uploads enabled unless the
     supervised gate was recorded, builds exactly once, and promotes those same bytes through
     attestation, TestPyPI, and a protected PyPI environment using Trusted Publishing.
+- **Tasks 18–23 are merged into `main` (`2389bc4`) and CI is green on all 17 jobs**
+  ([run 33240216844](https://github.com/ManagementMO/agent2learn/actions/runs/33240216844)) across
+  Windows, macOS, and Linux on Python 3.11–3.14. 832 tests pass, 4 skip.
 - **ATTENTION: CI grew from 14 to 17 jobs** (`installer · ubuntu-latest|macos-latest|windows-latest`).
-  Branch protection on `main` still requires the old 14 named checks, so the required-checks list
-  needs updating in repository settings by the owner. No repository settings were changed.
+  Branch protection on `main` still requires the old 14 named checks — the merge push reported
+  `Bypassed rule violations for refs/heads/main: 14 of 14 required status checks are expected` — so
+  the required-checks list needs updating in repository settings by the owner. No repository
+  settings were changed.
+- **Real CI found three Windows defects that a green macOS run could not.** Worth reading before
+  trusting a local pass on this repository again:
+  1. `tests/test_installers.py` was **uncollectable on Windows** (`import pty` →
+     `ModuleNotFoundError: No module named 'termios'`). Pytest exited 2 during collection, so all
+     five Windows matrix jobs and the Windows installer job failed and **not one installer test ran
+     there**. `pty` is now imported inside the single test that needs a terminal, the bash-driven
+     behaviour tests are gated on a POSIX shell, and the nine platform-independent contract tests
+     run on Windows for the first time.
+  2. The release guards were **not CRLF-safe**: `uv run python` returns CRLF under git-bash, so
+     `declared="0.1.0\r"` never equalled `tag="0.1.0"`. Both guards failed *closed*, so it was never
+     a security hole, but a correct tag would have been refused. Both command substitutions now
+     strip carriage returns.
+  3. Two of my own tests were **over-generalised**: they execute step scripts from `release.yml`,
+     whose job is `runs-on: ubuntu-latest`, so running them under git-bash tested an environment the
+     workflow never sees. They are now gated to a POSIX shell while the text assertions that pin
+     each guard's decision still run everywhere.
 - **Tasks 18–23 were implemented by the controller directly, without reviewer subagents**, at the
   user's instruction. Reviews are controller self-reviews plus scripted perturbation harnesses in
   `.superpowers/sdd/2026-08-24-agent2learn-public-release/`; that is weaker than an independent
@@ -217,8 +238,8 @@ architecture.
   guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
-- Known open items, none of them coding work: the branch needs 17-job CI on GitHub and a merge to
-  `main`; branch protection's required-checks list needs updating for the three new installer jobs;
+- Known open items, none of them coding work: branch protection's required-checks list needs
+  updating for the three new installer jobs;
   Task 9's live same-device auth still needs pass/fail records on Windows, macOS, and Linux; the
   supervised non-graded upload must pass for the exact release candidate before
   `SUBMISSION_AVAILABLE` may be flipped; the README's walkthrough recording has not been made and
