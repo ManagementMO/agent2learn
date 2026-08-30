@@ -25,7 +25,7 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-08-29
+## Current state — 2026-08-30
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
 - **Tasks 0 through 23 are complete as automated implementations. The v0.1 command surface is
@@ -74,10 +74,10 @@ architecture.
     disagrees with the packaged version, refuses to publish a build with uploads enabled unless the
     supervised gate was recorded, builds exactly once, and promotes those same bytes through
     attestation, TestPyPI, and a protected PyPI environment using Trusted Publishing.
-- **Tasks 18–23 are merged into `main` (`2389bc4`) and CI is green on all 17 jobs**
-  ([run 33240216844](https://github.com/ManagementMO/agent2learn/actions/runs/33240216844)) across
-  Windows, macOS, and Linux on Python 3.11–3.14. The current local suite is 857 passing, 4
-  skipped; the additional review corrections below remain uncommitted until they are handed off.
+- **The review-remediation checkpoint is committed and pushed to `main` as `276bda3`.** A fresh
+  local run on that exact tree reports 858 passing tests and 4 skipped. The exact-SHA remote
+  acceptance run is [33291418755](https://github.com/ManagementMO/agent2learn/actions/runs/33291418755);
+  check its final result before calling the 17-job matrix green.
 - **ATTENTION: CI grew from 14 to 17 jobs** (`installer · ubuntu-latest|macos-latest|windows-latest`).
   Branch protection on `main` now requires all 17 named checks. The existing `strict: false` and
   `enforce_admins: false` settings are unchanged; the three installer contexts were added to the
@@ -239,13 +239,13 @@ architecture.
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
 - Known open items, none of them coding work: Task 9's live same-device auth still needs pass/fail
-  records on Windows, macOS, and Linux; the
-  supervised non-graded upload must pass for the exact release candidate before
-  `SUBMISSION_AVAILABLE` may be flipped; the README's walkthrough recording has not been made and
-  is deliberately not linked; PyPI Trusted Publishing and the `testpypi`/`pypi` environments must be
-  configured before the release workflow can run; `mypy` covers `src/` only (`tests/` and `tools/`
-  have unresolved annotations); there is no coverage measurement yet; three Dependabot PRs propose
-  versions past the declared caps and each needs a human decision.
+  records on Windows and Linux (macOS passed 2026-08-25); the supervised non-graded upload must
+  pass for the exact release candidate before `SUBMISSION_AVAILABLE` may be flipped; the README's
+  walkthrough recording has not been made and is deliberately not linked; PyPI Trusted Publishing
+  still needs owner-side setup, while the GitHub `testpypi` and `pypi` environments now exist with
+  required owner review and administrator bypass disabled; `mypy` covers `src/` only (`tests/` and
+  `tools/` have unresolved annotations); there is no coverage measurement yet; three Dependabot PRs
+  propose versions past the declared caps and each needs a human decision.
 - Do not publish a package, create a GitHub release, or register a production domain yet.
 - **Prerequisites P1 and P2 both PASSED on 2026-08-25 (macOS).** Do not re-litigate either.
   - **P1:** a browser-harvested LEARN session authenticates a plain `requests` call on the same
