@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -235,6 +236,46 @@ def test_completions_reject_an_unknown_shell() -> None:
 
 def _release_text() -> str:
     return (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+
+
+def _release_job(name: str) -> str:
+    """Return one top-level release job so dependency guards test the real workflow shape."""
+    match = re.search(
+        rf"^  {re.escape(name)}:\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)",
+        _release_text(),
+        re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None, f"release job is missing: {name}"
+    return match.group(0)
+
+
+def test_the_final_pypi_gate_precedes_public_github_release() -> None:
+    """PyPI approval must happen before a public GitHub release is created."""
+    pypi = _release_job("pypi")
+    github_release = _release_job("github-release")
+    pypi_needs = next(line for line in pypi.splitlines() if line.strip().startswith("needs:"))
+    github_release_needs = next(
+        line for line in github_release.splitlines() if line.strip().startswith("needs:")
+    )
+    pypi_dependencies = set(re.findall(r"[a-z][a-z0-9-]*", pypi_needs.partition(":")[2]))
+    github_release_dependencies = set(
+        re.findall(r"[a-z][a-z0-9-]*", github_release_needs.partition(":")[2])
+    )
+
+    assert "environment: pypi" in pypi
+    assert "github-release" not in pypi_dependencies
+    assert "pypi" in github_release_dependencies
+
+
+def test_testpypi_smoke_verifies_the_published_hashes_before_install() -> None:
+    """A retry must not smoke-test a different artifact that merely has the same version."""
+    smoke = _release_job("testpypi-smoke")
+
+    assert "actions/download-artifact" in smoke
+    assert "SHA256SUMS.txt" in smoke
+    assert "test.pypi.org/pypi/agent2learn/" in smoke
+    assert "digests" in smoke
+    assert "artifact hash mismatch" in smoke
 
 
 def test_the_release_workflow_triggers_only_on_a_version_tag() -> None:

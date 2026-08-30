@@ -243,6 +243,12 @@ Record only the redacted result, OS/browser versions, and date in the release ev
 > stays disabled by default behind `a2l enable-submit` and the per-file interactive TTY confirmation.
 > The route is validated; the safety design is unchanged.
 
+The historical read-back line above records the broad `/submissions/` endpoint used by that live
+run. The current public implementation deliberately uses the documented current-user
+`/submissions/mysubmissions/` GET for read-back as well as the POST, so a teammate's same-named file
+cannot satisfy verification. That exact current-user GET still requires a fresh supervised check
+before `SUBMISSION_AVAILABLE` can ever be enabled; until then the shipped build remains disabled.
+
 Submission is release-blocking because the reference has never completed a mutating POST. Use only
 an institution-provided sandbox or a designated non-graded test Dropbox whose owner has approved
 the test. First resolve and preview the exact target. Then have the human tester type the one-time

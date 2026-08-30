@@ -65,10 +65,10 @@ description and the one that survives a hostile reading.
       plus a per-file interactive confirmation, and launch copy says exactly that.
 - [ ] The dependency/license review, third-party notices, SBOM, secret scan, and synthetic fixture
       review are signed off for the exact release artifacts.
-- [ ] The private 262-PDF converter acceptance corpus passes at the shipped 80-words-per-page
-      threshold with at least 95% of the recorded baseline's recovered words and zero candidate
-      failures; the release record contains only aggregate/redacted evidence. The completed
-      21-document sample and interrupted broad run are supporting evidence, not substitutes.
+- [x] The private 262-PDF converter acceptance corpus passed at the shipped 80-words-per-page
+      threshold with 96.4% of the recorded baseline's recovered words and zero candidate failures;
+      the release record contains only aggregate/redacted evidence. The revised standing gate is
+      zero failures and at least 95% aggregate baseline words, with the shortfall attributed.
 - [x] Re-check and create the approved documentation-first
       `ManagementMO/agent2learn` GitHub repository. The GitHub target returned 404 immediately
       before creation on 2026-08-25; the tracked scaffold passed its private-path and secret scan.
@@ -84,6 +84,8 @@ description and the one that survives a hostile reading.
 - [ ] `agent2learn.dev` live, serving `install.sh`, `install.ps1`, `install.md`, and `llms.txt`.
 - [x] GitHub Discussions enabled; `FAQ.md` written; the bug-report template requires an
       `a2l doctor --report` block.
+- [x] GitHub private vulnerability reporting, Dependabot alerts, and Dependabot security updates
+      enabled on 2026-08-30; the paths documented in `SECURITY.md` are live.
 - [x] Repository topics set: `agent-skill`, `agent-skills`, `brightspace`, `d2l`, `uwaterloo`,
       `claude-code`, `codex`. GitHub-crawler directories index tagged repos automatically — free
       long-tail discovery for zero effort.
