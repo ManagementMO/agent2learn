@@ -82,9 +82,9 @@ description and the one that survives a hostile reading.
       Windows**. They will find auth failures you cannot predict. Fix every one before Phase 1.
 - [ ] Record the demo assets (shot list below).
 - [ ] `agent2learn.dev` live, serving `install.sh`, `install.ps1`, `install.md`, and `llms.txt`.
-- [ ] GitHub Discussions enabled; `FAQ.md` written; the bug-report template requires an
+- [x] GitHub Discussions enabled; `FAQ.md` written; the bug-report template requires an
       `a2l doctor --report` block.
-- [ ] Repository topics set: `agent-skill`, `agent-skills`, `brightspace`, `d2l`, `uwaterloo`,
+- [x] Repository topics set: `agent-skill`, `agent-skills`, `brightspace`, `d2l`, `uwaterloo`,
       `claude-code`, `codex`. GitHub-crawler directories index tagged repos automatically — free
       long-tail discovery for zero effort.
 
