@@ -101,6 +101,8 @@ class SubmissionTransport(Protocol):
 
     def get_json(self, path: str) -> object: ...
 
+    def get_json_once(self, path: str) -> object: ...
+
     def post_once(
         self, path: str, body: bytes | SubmissionBody, *, content_type: str
     ) -> object: ...
@@ -670,7 +672,7 @@ def _stage(vault: Vault, selected: Path) -> StagedFile:
 
 def _verify(client: SubmissionTransport, preview: SubmissionPreview, confirmed_at: str) -> str:
     try:
-        records = client.get_json(preview.target.readback)
+        records = client.get_json_once(preview.target.readback)
     except Exception as exc:  # noqa: BLE001 - any read-back failure is unverified, never a retry
         raise SubmissionUnverified(
             "upload was sent but read-back failed; open LEARN to confirm before resubmitting"

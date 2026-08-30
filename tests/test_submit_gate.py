@@ -80,10 +80,18 @@ class RecordingTransport:
         self.session = type("SessionProjection", (), {"user_id": user_id})()
         self.closed_responses = 0
         self.gets: list[str] = []
+        self.one_shot_gets: list[str] = []
         self.posts: list[tuple[str, bytes, str]] = []
 
     def get_json(self, path: str) -> object:
         self.gets.append(path)
+        return self._get_response(path)
+
+    def get_json_once(self, path: str) -> object:
+        self.one_shot_gets.append(path)
+        return self._get_response(path)
+
+    def _get_response(self, path: str) -> object:
         if path.endswith("/dropbox/folders/"):
             return self.folders
         if self.readback_error is not None:
@@ -435,7 +443,7 @@ def test_read_back_failures_are_unverified_and_never_retry(tmp_path: Path) -> No
                 capability=ENABLED,
             )
         assert len(transport.posts) == 1, label
-        assert transport.gets.count(preview.target.readback) == 1, label
+        assert transport.one_shot_gets == [preview.target.readback], label
         receipts = sorted((vault.state() / "submissions").glob("*.json"))
         assert len(receipts) == 1, label
         payload = json.loads(receipts[0].read_text(encoding="utf-8"))
@@ -479,7 +487,8 @@ def test_readback_uses_current_user_route_and_nested_submission_shape(tmp_path: 
     )
 
     assert receipt.status == "verified"
-    assert transport.gets[-1].endswith("/submissions/mysubmissions/")
+    assert transport.gets == [f"/d2l/api/le/{LE}/111111/dropbox/folders/"]
+    assert transport.one_shot_gets == [preview.target.readback]
     assert transport.closed_responses == 1
 
 
@@ -530,7 +539,7 @@ def test_readback_rejects_a_submission_attributed_to_another_user(tmp_path: Path
         )
 
     assert len(transport.posts) == 1
-    assert transport.gets.count(preview.target.readback) == 1
+    assert transport.one_shot_gets == [preview.target.readback]
 
 
 def test_readback_rejects_conflicting_folder_identifiers(tmp_path: Path) -> None:

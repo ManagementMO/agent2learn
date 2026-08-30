@@ -146,6 +146,16 @@ CASES: list[tuple[str, list[tuple[str, str]], str]] = [
         "test_readback_rejects_an_undocumented_flat_shape_even_when_it_matches",
     ),
     (
+        "one-shot read-back transport",
+        [
+            (
+                "        records = client.get_json_once(preview.target.readback)\n",
+                "        records = client.get_json(preview.target.readback)\n",
+            )
+        ],
+        "test_readback_uses_current_user_route_and_nested_submission_shape",
+    ),
+    (
         "staged-bytes integrity (TOCTOU)",
         [
             (

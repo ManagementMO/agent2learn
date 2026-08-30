@@ -104,6 +104,29 @@ class Client:
         """Perform a JSON GET, translating an HTML login page into ``SessionExpired``."""
 
         response = self._request("GET", self._resolve_url(path), stream=False)
+        return self._decode_json_response(response)
+
+    def get_json_once(self, path: str) -> Any:
+        """Perform exactly one JSON GET without following a redirect or retrying a failure.
+
+        Submission read-back is evidence for an already-attempted mutation, not a best-effort
+        fetch. A transient response must therefore remain visible to the caller as unknown rather
+        than being retried or redirected into a response that looks successful.
+        """
+
+        response = self._request(
+            "GET",
+            self._resolve_url(path),
+            stream=False,
+            retries=False,
+            follow_redirects=False,
+        )
+        return self._decode_json_response(response)
+
+    @staticmethod
+    def _decode_json_response(response: Response) -> Any:
+        """Decode one owned response and always close it."""
+
         try:
             if _is_login_response(response):
                 raise SessionExpired("session expired · run: a2l auth")
@@ -293,6 +316,8 @@ class Client:
         stream: bool,
         mutating: bool = False,
         data: bytes | Iterable[bytes] | None = None,
+        retries: bool = True,
+        follow_redirects: bool = True,
     ) -> Response:
         """Issue a request with explicit redirects, retry, timeout, and egress policy."""
 
@@ -307,7 +332,7 @@ class Client:
             merged_headers.update(headers)
 
         request_is_mutating = mutating or method in {"POST", "PUT", "PATCH", "DELETE"}
-        retryable = method == "GET" and not request_is_mutating
+        retryable = retries and method == "GET" and not request_is_mutating
         attempt = 1
         redirects = 0
         backoff = BACKOFF_BASE
@@ -336,6 +361,10 @@ class Client:
                     # Never replay a submission body automatically.  The caller must inspect the
                     # redirect and decide explicitly; this avoids a silent second POST to D2L.
                     raise EgressBlocked("mutating request redirect requires caller decision")
+                if not follow_redirects:
+                    # A one-shot read-back must prove the named endpoint responded. Treat a
+                    # redirect as unknown instead of silently substituting a different route.
+                    raise EgressBlocked("one-shot GET redirect requires caller decision")
                 redirects += 1
                 if redirects > MAX_REDIRECTS:
                     raise EgressBlocked("redirect limit exceeded")

@@ -148,6 +148,52 @@ def test_get_json_retries_429_and_honours_retry_after(
     assert waits == [2.0, api.THROTTLE]
 
 
+def test_get_json_once_refuses_a_transient_readback_without_retrying(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attempts = 0
+    waits: list[float] = []
+
+    def respond(request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        return WerkzeugResponse("temporary failure", status=503, content_type="text/plain")
+
+    synthetic_api.server.expect_request("/submission-readback").respond_with_handler(respond)
+    monkeypatch.setattr(api.time, "sleep", waits.append)
+
+    with pytest.raises(requests.HTTPError):
+        _client(synthetic_api).get_json_once("/submission-readback")
+
+    assert attempts == 1
+    assert waits == []
+
+
+def test_get_json_once_refuses_a_redirect_without_following_it(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+    client = _client(synthetic_api)
+
+    def request(**kwargs: Any) -> requests.Response:
+        calls.append(kwargs)
+        response = requests.Response()
+        response.status_code = 302
+        response.url = kwargs["url"]
+        response.headers["Location"] = "/different-readback"
+        response._content = b""
+        response._content_consumed = True
+        return response
+
+    monkeypatch.setattr(client._transport, "request", request)
+
+    with pytest.raises(api.EgressBlocked, match="one-shot GET redirect"):
+        client.get_json_once("/submission-readback")
+
+    assert len(calls) == 1
+    assert calls[0]["method"] == "GET"
+
+
 def test_html_binary_download_is_session_expiry_and_leaves_no_part(
     synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

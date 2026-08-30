@@ -8,8 +8,8 @@ The latest local measurement was taken on macOS, Python 3.11, on 2026-08-30:
 
 ```
 uv run pytest --cov=agent2learn --cov-branch --cov-report=term-missing
-864 passed, 4 skipped
-TOTAL: 78.08% branch-aware coverage (11,433 statements; 4,232 branches)
+866 passed, 4 skipped
+TOTAL: 78.10% branch-aware coverage (11,441 statements; 4,234 branches)
 ```
 
 The committed floor is **77.5%**. It is deliberately just below the measured value so a small

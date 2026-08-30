@@ -91,6 +91,8 @@ Record the POST and GET observations independently. Both sections must pass.
 ### Read-back GET
 
 - Exactly one GET is sent to the documented current-user `submissions/mysubmissions/` endpoint.
+- That GET is one-shot: a transient response is not retried and a redirect is not followed into a
+  different route. Either result is `verification_unknown`.
 - The response is a 2xx JSON list with the documented `Entity` → `Submissions` → `Files` shape.
 - Exactly one newly created record matches the approved folder, exact filename, and exact byte size.
 - Its `SubmissionDate` is after the confirmation timestamp. A stale record, duplicate filename,
