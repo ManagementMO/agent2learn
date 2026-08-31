@@ -4,12 +4,12 @@ Coverage is a regression signal, not a proof that a safety boundary is correct. 
 the full suite with branch coverage on one representative matrix entry (Ubuntu, Python 3.12) and
 enforces the floor in `pyproject.toml`. The other matrix entries still run the full test suite.
 
-The latest local measurement was taken on macOS, Python 3.11, on 2026-08-30:
+The latest local measurement was taken on macOS, Python 3.11, on 2026-08-31, at commit `9876c57`:
 
 ```
 uv run pytest --cov=agent2learn --cov-branch --cov-report=term-missing
-866 passed, 4 skipped
-TOTAL: 78.10% branch-aware coverage (11,441 statements; 4,234 branches)
+898 passed, 4 skipped
+TOTAL: 78.58% branch-aware coverage (11,560 statements; 4,280 branches)
 ```
 
 The committed floor is **77.5%**. It is deliberately just below the measured value so a small
@@ -20,8 +20,8 @@ The safety-critical modules with the weakest measured statement/branch coverage 
 
 | Module | Coverage | Why it needs attention |
 | --- | ---: | --- |
-| `auth/cdp.py` | 46% | Dedicated-browser and cross-platform CDP branches require a real same-device session and are intentionally not exercised by synthetic tests. |
-| `auth/__init__.py` | 55% | Authentication orchestration includes platform/TTY failure paths that need manual same-device evidence. |
+| `auth/cdp.py` | 56% | Dedicated-browser and cross-platform CDP branches require a real same-device session and are intentionally not exercised by synthetic tests. Up from 46% after the egress-gate hardening added 31 tests. |
+| `auth/__init__.py` | 68% | Authentication orchestration includes platform/TTY failure paths that need manual same-device evidence. Up from 55% in the same pass. |
 | `submit.py` | 78% | The mutating upload and read-back path remains disabled and its live branch cannot be exercised offline. |
 | `vault.py` | 79% | Filesystem integrity, migration, and failure branches are heavily platform-dependent. |
 | `ground.py` | about 82% | Source eligibility and ranking have many adversarial branches; the current tests cover the policy core but not every malformed-vault path. |

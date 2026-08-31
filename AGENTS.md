@@ -85,6 +85,28 @@ architecture.
   passing / 4 skipped, and the exact-SHA remote acceptance run is
   [33294678005](https://github.com/ManagementMO/agent2learn/actions/runs/33294678005) with all
   17 jobs green.
+- **Same-device CDP authentication hardening is committed and pushed to `main` as `a39239b`, with
+  its type-portability follow-up `9876c57`.** A fresh local run on `9876c57` reports 898 passing
+  tests and 4 skipped, and the exact-SHA remote acceptance run is
+  [33357788896](https://github.com/ManagementMO/agent2learn/actions/runs/33357788896) with all 17
+  jobs green. Note that the intermediate commit `a39239b` failed four jobs on a typing error and
+  was fixed before the branch settled; only `9876c57` is green.
+  - **The interactive egress policy changed and the spec and plan were updated with it.** An
+    undeclared **document or iframe** still stops sign-in and reports only the sanitized hostname
+    plus the `--paste` fallback. An undeclared **optional subresource** is now failed locally
+    instead of aborting the command, so an analytics beacon cannot kill an otherwise valid
+    sign-in. Nothing egresses either way, an unknown resource type is treated as fatal, and the
+    authoritative `whoami` check still decides whether a session is saved.
+  - **`UWaterloo.auth_hosts()` is now populated** — see Task 6 above for the exact list and the
+    gate that applies to it.
+  - **Evidence still owed.** `docs/AUTHENTICATION.md` calls `adfs.uwaterloo.ca` the *observed*
+    hand-off, but this repository contains no recorded redacted host evidence for either entry,
+    and the removed docstring previously argued an empty list beat guessing at a redirect target.
+    Before release, either record the redacted same-device host observation or restate the list as
+    provider-boundary reasoning. Populating it was almost certainly right — an empty list blocks
+    Duo and forces everyone onto `--paste` — but the justification belongs in the repository.
+    `duosecurity.com` is also a whole-provider boundary covering every Duo tenant, not only
+    Waterloo's; that is a deliberate, documented trade for tenant-subdomain churn.
 - **ATTENTION: CI grew from 14 to 17 jobs** (`installer · ubuntu-latest|macos-latest|windows-latest`).
   Branch protection on `main` now requires all 17 named checks. The existing `strict: false` and
   `enforce_admins: false` settings are unchanged; the three installer contexts were added to the
@@ -136,8 +158,13 @@ architecture.
   - **Task 5** — structured portable manifests, revision preservation, and transactional schema
     migrations that stage `.a2l/` state and leave the original vault untouched on callback failure.
   - **Task 6** — `School` protocol, Waterloo adapter, explicit timezone rendering, conservative
-    licensed-topic policy, boundary-aware matching, and a warned generic adapter. Waterloo host
-    allowlists remain empty until redacted same-device host evidence is reviewed.
+    licensed-topic policy, boundary-aware matching, and a warned generic adapter.
+    `UWaterloo.outline_hosts()` is still empty. `UWaterloo.auth_hosts()` is **no longer empty**: it
+    returns `["duosecurity.com", "adfs.uwaterloo.ca"]`, the reviewed identity-provider boundary for
+    the interactive sign-in window only. The suffix absorbs Duo's changing tenant and asset
+    subdomains without becoming a wildcard, and the CDP gate additionally requires HTTPS on the
+    default port with DNS-label-boundary matching. See the auth-hardening entry in
+    **Current state** for what that list still owes in evidence.
   - **Task 7** — strict scoped session projection with silent keyring-to-file fallback, atomic
     protected persistence, dual-backend clearing, and no unrelated cookie attachment.
   - **Task 8** — calibrated D2L API transport with explicit timeout/redirect/egress controls,
@@ -248,7 +275,11 @@ architecture.
   guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
-- Known open items, none of them coding work: Task 9's live same-device auth still needs pass/fail
+- Known open items, none of them coding work: the reviewed `auth_hosts()` entries need their
+  redacted same-device host evidence recorded, or the wording in `docs/AUTHENTICATION.md` softened
+  from *observed* to provider-boundary reasoning — and the new list has never run against a live
+  instance, which makes the Windows and Linux auth validation below more load-bearing than before;
+  Task 9's live same-device auth still needs pass/fail
   records on Windows and Linux (macOS passed 2026-08-25); the supervised non-graded upload must
   pass for the exact release candidate before `SUBMISSION_AVAILABLE` may be flipped; the README's
   walkthrough recording has not been made and is deliberately not linked; PyPI Trusted Publishing

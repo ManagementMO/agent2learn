@@ -20,13 +20,19 @@ Why a dedicated profile:
 - Clearing it is one command and affects nothing else.
 
 Only cookies scoped to the LEARN origin are read. Requests to hosts the school adapter has not
-declared for sign-in are blocked during the interactive window. The reviewed Waterloo Duo
-handoff currently permits the LEARN origin, the boundary-matched
-`duosecurity.com` provider domain, plus the observed Waterloo ADFS hand-off `adfs.uwaterloo.ca`,
-over HTTPS on the default port. This covers Duo's changing tenant and asset subdomains without
-permitting unrelated registrable domains. Microsoft hosts are not guessed: if a future sign-in
-path reaches one that is not declared by the adapter, the flow stops and reports only that
-hostname for review.
+declared for sign-in are blocked during the interactive window. For Waterloo the adapter permits
+the LEARN origin, the boundary-matched `duosecurity.com` provider domain, and the Waterloo ADFS
+hand-off `adfs.uwaterloo.ca`, each over HTTPS on the default port. `duosecurity.com` is a
+whole-provider boundary: it absorbs Duo's changing tenant and asset subdomains rather than naming
+hosts that move, at the cost of covering every Duo tenant and not only Waterloo's. Unrelated
+registrable domains are not permitted, and Microsoft hosts are not guessed — if a sign-in path
+reaches a host the adapter has not declared, the flow stops and reports only that hostname for
+review.
+
+This list is provider-boundary reasoning, not a published record of hosts captured from a live
+sign-in, and it has not yet been exercised against a real instance on Windows or Linux. Confirming
+it is part of the same-device authentication release gate; until then, treat an unexpected blocked
+hostname as information to report rather than as a defect in your setup, and use `--paste`.
 
 Unknown page subresources are still denied at the Fetch boundary. A blocked document or iframe
 stops the sign-in immediately; a blocked optional request such as an analytics beacon is failed

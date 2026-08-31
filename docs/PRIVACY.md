@@ -35,8 +35,8 @@ the command in the first column.
 
 | When | Who is contacted | Why |
 | --- | --- | --- |
-| `a2l auth` (interactive) | Your LEARN host, plus the identity hosts the school adapter declares for sign-in — for Waterloo that means WatIAM, Microsoft, and **Duo** | To let you sign in yourself, in a real browser. Requests to hosts the adapter has not declared are blocked. |
-| `a2l sync`, `a2l courses`, `a2l fetch`, `a2l today` after a sync | Your LEARN host, plus first-party outline hosts the adapter declares | To read your own enrolment and material. Licensed and external targets are recorded as links and never fetched. |
+| `a2l auth` (interactive) | Your LEARN host, plus the identity hosts the school adapter declares for sign-in — for Waterloo that is **Duo** (`duosecurity.com`) and the Waterloo ADFS hand-off (`adfs.uwaterloo.ca`), over HTTPS on the default port | To let you sign in yourself, in a real browser. Requests to hosts the adapter has not declared are blocked; an undeclared page or iframe stops the sign-in, and an undeclared optional subresource is failed without leaving your machine. |
+| `a2l sync`, `a2l courses`, `a2l fetch`, `a2l today` after a sync | Your LEARN host only. The adapter may also declare first-party outline hosts, but Waterloo's list is currently empty, so nothing else is contacted | To read your own enrolment and material. Licensed and external targets are recorded as links and never fetched. |
 | `a2l submit` | Your LEARN host | One upload, after your typed confirmation. Disabled in this build. |
 | `install.sh` / `install.ps1` | **Astral** (`astral.sh`) for uv; the host serving the installer script | To install a pinned uv and then Agent2Learn. |
 | Any install method | **PyPI** | To download Agent2Learn and its dependencies. |
