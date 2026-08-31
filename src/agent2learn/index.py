@@ -24,7 +24,7 @@ from agent2learn.vault import ManifestEntry, Vault
 
 CONTENT_MAP_VERSION = 1
 _EMPTY_HTML = re.compile(r"(?:<[^>]*>|&nbsp;|\s)+", re.IGNORECASE)
-_PRESERVED_GAPS = frozenset({"unsupported_format", "integrity_gap"})
+_PRESERVED_GAPS = frozenset({"unsupported_format", "conversion_gap", "integrity_gap"})
 _SENSITIVE_SEARCH_MARKERS = frozenset({"grade", "grades", "discussion", "discussions"})
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -340,7 +340,16 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
         entry = manifest.get(source_key)
         if entry is None:
             if row.get("availability") in _PRESERVED_GAPS:
-                row.update({"source_path": None, "path": None, "next_action": "retry conversion"})
+                next_action = row.get("next_action")
+                row.update(
+                    {
+                        "source_path": None,
+                        "path": None,
+                        "next_action": next_action
+                        if isinstance(next_action, str) and next_action
+                        else "retry conversion",
+                    }
+                )
                 reconciled.append(row)
                 continue
             row.update(
@@ -388,13 +397,19 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
             availability = str(row.get("availability", "source_only"))
             if availability not in _PRESERVED_GAPS:
                 availability = "source_only"
+                next_action = "convert source to a markdown twin"
+            else:
+                stored_action = row.get("next_action")
+                next_action = (
+                    stored_action
+                    if isinstance(stored_action, str) and stored_action
+                    else "retry conversion"
+                )
             row.update(
                 {
                     "availability": availability,
                     "path": None,
-                    "next_action": "retry conversion"
-                    if availability in _PRESERVED_GAPS
-                    else "convert source to a markdown twin",
+                    "next_action": next_action,
                 }
             )
         reconciled.append(row)

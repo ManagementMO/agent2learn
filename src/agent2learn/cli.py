@@ -1046,14 +1046,12 @@ def _run_init(requested_vault: Path | None) -> None:
     state, backend = _init_stage(
         "browser profile", "a2l init", lambda: _configure_init_auth(claimed, state)
     )
-    session_value: Any = None
-    if state.get("authenticated") is True:
-        try:
-            session_value = session_store.load()
-        except (OSError, ValueError):
-            # A stale or malformed local projection is recoverable by authenticating again.  Do
-            # not echo its path or contents and do not let it bypass the explicit profile choice.
-            session_value = None
+    session_value: session_store.Session | None
+    try:
+        session_value = session_store.load()
+    except (OSError, ValueError):
+        # A stale or malformed local projection is recoverable by authenticating again.
+        session_value = None
 
     if session_value is None:
         if backend == "auto":
@@ -1189,7 +1187,16 @@ def _run_init(requested_vault: Path | None) -> None:
             ),
         )
         if _report_has_errors(metadata):
-            raise _InitFailure("metadata sync", "a2l init", detail="coverage gap")
+            categories = _report_error_categories(metadata)
+            if metadata.exit_code != 0:
+                raise _InitFailure(
+                    "metadata sync", "a2l init", detail=f"coverage gap: {categories}"
+                )
+            typer.echo(
+                f"{console.GLYPH['warn']} partial metadata ({categories}); "
+                "gaps are recorded in .a2l/AUDIT.md",
+                err=True,
+            )
         state = _init_stage(
             "metadata sync",
             "a2l init",
@@ -1742,6 +1749,12 @@ def _report_has_errors(report: MetadataReport) -> bool:
     errors = getattr(report, "errors", ())
     exit_code = getattr(report, "exit_code", 0)
     return bool(errors) or (isinstance(exit_code, int) and exit_code != 0)
+
+
+def _report_error_categories(report: MetadataReport) -> str:
+    """Join the report's sanitized category-level error strings without duplicates."""
+
+    return ", ".join(dict.fromkeys(report.errors)) or "unreadable report"
 
 
 def _read_metadata_rows(path: Path) -> list[dict[str, object]]:

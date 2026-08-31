@@ -75,6 +75,7 @@ _AVAILABILITY_NOTES = {
     "metadata_only": "known from metadata but never fetched",
     "source_only": "fetched, but it has no markdown twin yet",
     "integrity_gap": "on-disk bytes no longer match the manifest",
+    "conversion_gap": "fetched, but conversion produced no markdown twin",
     "unsupported_format": "no converter handles this format",
     "external_link": "external or licensed link, deliberately not fetched",
 }

@@ -248,9 +248,9 @@ def content_toc_a() -> object:
                         modified=T2,
                         size=159,
                     ),
-                    # D2L omits Size for some topics. One of unknown length must stay
-                    # metadata_only until an explicit one-file fetch, so the golden tree
-                    # proves it by the absence of a file alongside its content_map row.
+                    # D2L omits Size for some topics. One of unknown length must still
+                    # download through the default bounded ceiling, so the golden tree
+                    # proves it by the presence of a file alongside its content_map row.
                     _topic(
                         800013,
                         "Unsized Handout",

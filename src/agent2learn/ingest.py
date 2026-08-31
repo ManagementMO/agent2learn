@@ -31,7 +31,7 @@ from requests import RequestException
 
 from agent2learn import api, clock, paths, snapshot
 from agent2learn import index as course_index
-from agent2learn.api import DownloadError, DownloadResult
+from agent2learn.api import DownloadError, DownloadResult, FileTooLarge
 from agent2learn.calibrate import CourseRef, calibrate, load_calibration
 from agent2learn.errors import A2LError, NotConfigured, SessionExpired
 from agent2learn.schools import (
@@ -589,7 +589,7 @@ def ingest_files(
                     next_action="topic is marked broken in LEARN",
                 )
                 continue
-            if topic.remote_size is None or topic.remote_size > api.DEFAULT_MAX_BYTES:
+            if topic.remote_size is not None and topic.remote_size > api.DEFAULT_MAX_BYTES:
                 skipped += 1
                 metadata_only += 1
                 _update_row_state(
@@ -615,6 +615,17 @@ def ingest_files(
                 )
             except SessionExpired:
                 raise
+            except FileTooLarge:
+                skipped += 1
+                metadata_only += 1
+                _update_row_state(
+                    course_dir,
+                    topic.source_key,
+                    root=vault.root,
+                    availability="metadata_only",
+                    next_action=f"a2l fetch --allow-large {topic.source_id}",
+                )
+                continue
             except DownloadError as exc:
                 failed += 1
                 errors.append(_safe_error("download", exc))
@@ -651,12 +662,12 @@ def fetch_topic(
     course, record, course_dir = match
     if record.availability == "external_link":
         raise A2LError("external or licensed topics are link stubs and cannot be fetched")
-    oversized = record.remote_size is None or record.remote_size > api.DEFAULT_MAX_BYTES
+    known_oversized = record.remote_size is not None and record.remote_size > api.DEFAULT_MAX_BYTES
     unbounded = False
-    if oversized:
+    if known_oversized or (record.remote_size is None and allow_large):
         if not allow_large:
             raise A2LError(
-                "source size is unknown or exceeds the default limit; run: "
+                "source size exceeds the default limit; run: "
                 f"a2l fetch --allow-large {record.source_id}"
             )
         if confirm is None or not confirm(record.remote_size):
@@ -1080,6 +1091,7 @@ def _merge_topic_records(
             "source_only",
             "markdown_ready",
             "unsupported_format",
+            "conversion_gap",
             "integrity_gap",
         }:
             row["availability"] = prior["availability"]

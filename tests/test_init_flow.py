@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,6 +35,7 @@ class InitWorld:
     metadata_calls: list[dict[str, object]]
     file_calls: list[dict[str, object]]
     auth_backends: list[str]
+    saved_session: object | None = None
 
 
 @dataclass
@@ -192,6 +193,7 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
     def fake_auth(_school: object, *, backend: str) -> object:
         world.events.append("auth")
         world.auth_backends.append(backend)
+        world.saved_session = fake_session
         return fake_session
 
     def fake_client(_school: object, _session: object) -> _FakeClient:
@@ -287,7 +289,7 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
     )
     monkeypatch.setattr(cli.skills_module, "install", fake_install)
     monkeypatch.setattr(cli.skills_module, "install_detected_project", fake_install)
-    monkeypatch.setattr(cli.session_store, "load", lambda: fake_session)
+    monkeypatch.setattr(cli.session_store, "load", lambda: world.saved_session)
     return world
 
 
@@ -817,6 +819,76 @@ def test_init_does_not_follow_a_claim_race_to_an_unapproved_path(
     assert result.output.count("run:") == 1
     assert "run: a2l init" in result.output
     assert root.with_name("vault-2").is_dir() is False
+
+
+def test_init_reuses_a_saved_session_without_reopening_the_browser(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    world.saved_session = object()
+
+    result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+
+    assert result.exit_code == 0, result.output
+    assert "auth" not in world.events
+    assert "signed in (saved local session)" in result.stdout
+
+
+def test_init_partial_metadata_warns_with_categories_and_continues(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    partial_errors = ("assignments: HTTPError", "assignments: HTTPError", "quizzes: Timeout")
+
+    def partial_metadata(*args: object, **kwargs: object) -> MetadataReport:
+        del args, kwargs
+        world.events.append("metadata")
+        return replace(_metadata_report(world), errors=partial_errors)
+
+    monkeypatch.setattr(cli, "ingest_metadata", partial_metadata)
+
+    result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+
+    assert result.exit_code == 0, result.output
+    assert "partial metadata (assignments: HTTPError, quizzes: Timeout)" in result.output
+    assert "HTTPError, quizzes" in result.output
+    assert _state(world.root)["metadata_complete"] is True
+
+
+def test_init_metadata_hard_stop_names_categories_and_resumes_without_reauth(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+
+    def failing_metadata(*args: object, **kwargs: object) -> MetadataReport:
+        del args, kwargs
+        world.events.append("metadata")
+        return replace(_metadata_report(world), errors=("toc: HTTPError",), exit_code=2)
+
+    monkeypatch.setattr(cli, "ingest_metadata", failing_metadata)
+
+    first = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+
+    assert first.exit_code == 1, first.output
+    assert "init stopped during metadata sync (coverage gap: toc: HTTPError)." in first.output
+    assert "run: a2l init" in first.output
+    assert _state(world.root).get("metadata_complete") is not True
+    assert world.saved_session is not None
+
+    def healed_metadata(*args: object, **kwargs: object) -> MetadataReport:
+        del args, kwargs
+        world.events.append("metadata")
+        return _metadata_report(world)
+
+    monkeypatch.setattr(cli, "ingest_metadata", healed_metadata)
+    events_before_resume = len(world.events)
+
+    second = CliRunner().invoke(cli.app, ["init"], input="later\n")
+
+    assert second.exit_code == 0, second.output
+    assert "auth" not in world.events[events_before_resume:]
+    assert "signed in (saved local session)" in second.stdout
+    assert _state(world.root)["metadata_complete"] is True
 
 
 def test_exact_vault_claim_refuses_an_occupied_path_without_suffixing(tmp_path: Path) -> None:

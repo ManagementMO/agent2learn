@@ -34,6 +34,7 @@ _GAP_LABELS: dict[str, str] = {
     "metadata_only": "known but not fetched",
     "source_only": "fetched, no markdown twin",
     "unsupported_format": "no converter for this format",
+    "conversion_gap": "fetched, but conversion produced no markdown twin",
     "integrity_gap": "on-disk bytes do not match the manifest",
     "external_link": "external link, deliberately not fetched",
 }
