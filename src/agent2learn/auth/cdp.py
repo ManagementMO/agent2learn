@@ -318,6 +318,18 @@ class _CDPRequestSender(Protocol):
     def send_without_wait(self, method: str, params: dict[str, object] | None = None) -> None: ...
 
 
+class _CDPCommandConnection(Protocol):
+    """The command surface used by helpers that can be driven by CDP test doubles."""
+
+    def call(
+        self,
+        method: str,
+        params: dict[str, object] | None = None,
+        *,
+        event_handler: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]: ...
+
+
 class _AuthGate:
     def __init__(self, connection: _CDPRequestSender, school: School) -> None:
         self.connection = connection
@@ -386,7 +398,7 @@ class _AuthGate:
 
 
 def _call_with_gate(
-    connection: _CDPConnection,
+    connection: _CDPCommandConnection,
     method: str,
     params: dict[str, object] | None,
     gate: _AuthGate,
@@ -761,7 +773,7 @@ def _wait_for_page(port: int) -> str:
     )
 
 
-def _wait_for_authenticated_page(connection: _CDPConnection, gate: _AuthGate) -> str:
+def _wait_for_authenticated_page(connection: _CDPCommandConnection, gate: _AuthGate) -> str:
     deadline = time.monotonic() + AUTH_WAIT_SECONDS
     runtime_retry_deadline = min(deadline, time.monotonic() + RUNTIME_RETRY_SECONDS)
     while time.monotonic() < deadline:
