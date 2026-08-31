@@ -20,8 +20,19 @@ Why a dedicated profile:
 - Clearing it is one command and affects nothing else.
 
 Only cookies scoped to the LEARN origin are read. Requests to hosts the school adapter has not
-declared for sign-in are blocked during the interactive window, and the declared identity hosts for
-Waterloo are WatIAM, Microsoft, and Duo.
+declared for sign-in are blocked during the interactive window. The reviewed Waterloo Duo
+handoff currently permits the LEARN origin, the boundary-matched
+`duosecurity.com` provider domain, plus the observed Waterloo ADFS hand-off `adfs.uwaterloo.ca`,
+over HTTPS on the default port. This covers Duo's changing tenant and asset subdomains without
+permitting unrelated registrable domains. Microsoft hosts are not guessed: if a future sign-in
+path reaches one that is not declared by the adapter, the flow stops and reports only that
+hostname for review.
+
+Unknown page subresources are still denied at the Fetch boundary. A blocked document or iframe
+stops the sign-in immediately; a blocked optional request such as an analytics beacon is failed
+locally so it cannot egress or terminate an otherwise valid sign-in. The authoritative whoami
+check remains required, so a blocked request that the sign-in actually needs cannot produce a
+saved session.
 
 ## Where the session is stored
 

@@ -628,8 +628,11 @@ exported API session.
 WatIAM/Microsoft identity and Duo. The Waterloo adapter therefore declares a reviewed
 `auth_hosts()` allowlist separately from `outline_hosts()`. CDP request interception permits the
 configured LEARN origin plus those exact/boundary-matched authentication hosts only during the
-interactive auth phase; it never learns new hosts from a redirect automatically. An undeclared host
-stops navigation and shows only the sanitized hostname and `a2l auth --paste` fallback. The list is
+interactive auth phase; it never learns new hosts from a redirect automatically. An undeclared
+document or iframe stops navigation and shows only the sanitized hostname and `a2l auth --paste`
+fallback. An undeclared optional subresource is failed locally, never continued, so analytics and
+other incidental page requests cannot terminate an otherwise valid sign-in; if the sign-in needs
+that request, the authoritative whoami check still fails and no session is saved. The list is
 derived from same-device release validation and reviewed when Waterloo changes its login flow.
 Cookies from those identity hosts remain solely inside the dedicated browser profile.
 

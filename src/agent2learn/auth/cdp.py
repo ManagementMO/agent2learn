@@ -30,29 +30,55 @@ from . import paste
 CDP_TIMEOUT = 10.0
 ENDPOINT_WAIT_SECONDS = 30.0
 AUTH_WAIT_SECONDS = 300.0
+RUNTIME_RETRY_SECONDS = 10.0
 POLL_SECONDS = 0.5
 
-_CHROMIUM_BASENAMES = ("Google Chrome", "Microsoft Edge", "Chromium")
-_LOCK_MARKERS = ("SingletonLock", "SingletonSocket")
+_CHROMIUM_EXECUTABLE_BASENAMES = ("Google Chrome", "Microsoft Edge", "Chromium")
+_CHROMIUM_METADATA_PRODUCTS = ("Chrome", "Google Chrome", "Chromium", "Microsoft Edge", "Edg")
+_LOCK_MARKERS = ("SingletonLock", "SingletonSocket", "SingletonCookie")
+_BROWSER_VERSION = r"\d+(?:\.\d+)*"
+_BROWSER_METADATA_PATTERNS = tuple(
+    re.compile(rf"^{re.escape(product)}/{_BROWSER_VERSION}$", re.IGNORECASE)
+    for product in _CHROMIUM_METADATA_PRODUCTS
+)
 _AUTH_EXPRESSION = r"""
 (async () => {
   try {
     const versionsResponse = await fetch("/d2l/api/versions/", {credentials: "include"});
     if (!versionsResponse.ok) return {ok: false};
     const products = await versionsResponse.json();
-    const product = products.find((entry) => entry.ProductCode === "lp");
+    if (!Array.isArray(products)) return {ok: false};
+    const product = products.find(
+      (entry) => entry && typeof entry === "object" && entry.ProductCode === "lp"
+    );
     if (!product) return {ok: false};
-    const candidates = [product.LatestVersion, ...(product.SupportedVersions || [])]
+    const supportedVersions = Array.isArray(product.SupportedVersions)
+      ? product.SupportedVersions
+      : [];
+    const candidates = [product.LatestVersion, ...supportedVersions]
       .filter(
-        (value, index, values) => typeof value === "string" && values.indexOf(value) === index
+        (value, index, values) =>
+          typeof value === "string" &&
+          /^[0-9]+(?:\.[0-9]+)*$/.test(value) &&
+          values.indexOf(value) === index
       );
     for (const version of candidates) {
       const response = await fetch(`/d2l/api/lp/${version}/users/whoami`, {
         credentials: "include"
       });
       if (!response.ok) continue;
-      const payload = await response.json();
-      if (typeof payload.Identifier === "string" && payload.Identifier.length > 0) {
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (_) {
+        continue;
+      }
+      if (
+        payload &&
+        typeof payload === "object" &&
+        typeof payload.Identifier === "string" &&
+        payload.Identifier.trim().length > 0
+      ) {
         return {ok: true, identifier: payload.Identifier};
       }
     }
@@ -70,6 +96,22 @@ class DebugEndpoint:
 
     port: int
     browser_websocket_url: str
+
+
+class _CDPCommandError(AuthenticationError):
+    """A command-level CDP error with no unredacted browser message retained."""
+
+    def __init__(self, method: str, *, retryable: bool = False) -> None:
+        super().__init__(f"browser DevTools command failed: {method}")
+        self.retryable = retryable
+
+
+@dataclass(frozen=True)
+class _ActivePortMarker:
+    """The identity Chrome writes for one browser-level DevTools endpoint."""
+
+    port: int
+    browser_websocket_path: str
 
 
 class _OwnedProcess(Protocol):
@@ -132,7 +174,10 @@ class _CDPConnection:
                     continue
                 error = decoded.get("error")
                 if isinstance(error, dict):
-                    raise AuthenticationError(f"browser DevTools command failed: {method}")
+                    raise _CDPCommandError(
+                        method,
+                        retryable=_runtime_error_is_transient(method, error),
+                    )
                 result = decoded.get("result", {})
                 return result if isinstance(result, dict) else {}
         except AuthenticationError:
@@ -202,6 +247,7 @@ class DedicatedPageFactory:
     def __init__(self) -> None:
         self._endpoint: DebugEndpoint | None = None
         self._process: _OwnedProcess | None = None
+        self._profile: Path | None = None
         self._owned = False
         self._closed = False
 
@@ -243,10 +289,12 @@ class DedicatedPageFactory:
         self._closed = True
         endpoint = self._endpoint
         process = self._process
+        profile = self._profile
         self._endpoint = None
         self._process = None
+        self._profile = None
         if self._owned and endpoint is not None:
-            _close_owned_browser(endpoint, process)
+            _close_owned_browser(endpoint, process, profile=profile)
 
     def _ensure_endpoint(self) -> DebugEndpoint:
         if self._closed:
@@ -259,6 +307,7 @@ class DedicatedPageFactory:
         endpoint, process, owned = _acquire_endpoint(profile)
         self._endpoint = endpoint
         self._process = process
+        self._profile = profile
         self._owned = owned
         return endpoint
 
@@ -274,6 +323,8 @@ class _AuthGate:
         self.connection = connection
         self.school = school
         self.blocked_host: str | None = None
+        self._fatal_blocked_host: str | None = None
+        self._handled_request_ids: set[str] = set()
 
     def handle(self, message: dict[str, Any]) -> None:
         if message.get("method") != "Fetch.requestPaused":
@@ -282,32 +333,76 @@ class _AuthGate:
         if not isinstance(params, dict):
             return
         request_id = params.get("requestId")
+        if not isinstance(request_id, str) or not request_id:
+            return
+        # Fetch keeps a request paused until it receives one terminal decision.  A malformed
+        # event must not be left pending while Runtime.evaluate waits on this same socket, and a
+        # duplicate event must not receive a second decision.
+        if request_id in self._handled_request_ids:
+            return
+        self._handled_request_ids.add(request_id)
+
         request = params.get("request")
-        if not isinstance(request_id, str) or not isinstance(request, dict):
+        if not isinstance(request, dict):
+            self._fail(request_id, "unknown-host", fatal=True)
             return
         target = request.get("url")
         if not isinstance(target, str):
-            self.connection.send_without_wait(
-                "Fetch.failRequest", {"requestId": request_id, "errorReason": "BlockedByClient"}
-            )
-            self.blocked_host = "unknown-host"
+            self._fail(request_id, "unknown-host", fatal=True)
             return
 
         if _auth_url_allowed(target, self.school):
             self.connection.send_without_wait("Fetch.continueRequest", {"requestId": request_id})
             return
 
-        self.blocked_host = _safe_hostname(target)
+        resource_type = params.get("resourceType")
+        self._fail(
+            request_id,
+            _safe_hostname(target),
+            fatal=resource_type is None or resource_type in {"Document", "Iframe"},
+        )
+
+    def _fail(self, request_id: str, host: str, *, fatal: bool = False) -> None:
+        self.blocked_host = self.blocked_host or host
+        if fatal:
+            self._fatal_blocked_host = self._fatal_blocked_host or host
         self.connection.send_without_wait(
             "Fetch.failRequest", {"requestId": request_id, "errorReason": "BlockedByClient"}
         )
 
     def raise_if_blocked(self) -> None:
+        if self._fatal_blocked_host is not None:
+            raise AuthenticationError(
+                f"authentication stopped at undeclared host {self._fatal_blocked_host}; "
+                "fallback: a2l auth --paste"
+            )
+
+    def raise_if_any_blocked(self) -> None:
         if self.blocked_host is not None:
             raise AuthenticationError(
                 f"authentication stopped at undeclared host {self.blocked_host}; "
                 "fallback: a2l auth --paste"
             )
+
+
+def _call_with_gate(
+    connection: _CDPConnection,
+    method: str,
+    params: dict[str, object] | None,
+    gate: _AuthGate,
+) -> dict[str, Any]:
+    """Run one command while preserving a request-boundary failure over CDP errors."""
+
+    try:
+        result = connection.call(method, params, event_handler=gate.handle)
+    except AuthenticationError:
+        # A request rejected by Fetch can invalidate navigation or the page execution context
+        # before Chromium sends the command response.  The hostname decision is the useful,
+        # already-redacted error in that case; otherwise retain the generic CDP failure.
+        gate.raise_if_blocked()
+        raise
+    gate.raise_if_blocked()
+    return result
 
 
 def authenticate_browser(school: School) -> Session:
@@ -330,16 +425,10 @@ def authenticate_browser(school: School) -> Session:
             event_handler=gate.handle,
         )
         target = urljoin(school.base_url.rstrip("/") + "/", "d2l/home")
-        page_connection.call(
-            "Page.navigate",
-            {"url": target},
-            event_handler=gate.handle,
-        )
-        gate.raise_if_blocked()
+        _call_with_gate(page_connection, "Page.navigate", {"url": target}, gate)
 
         identifier = _wait_for_authenticated_page(page_connection, gate)
-        cookies_result = page_connection.call("Storage.getCookies", event_handler=gate.handle)
-        gate.raise_if_blocked()
+        cookies_result = _call_with_gate(page_connection, "Storage.getCookies", None, gate)
         raw_cookies = cookies_result.get("cookies")
         if not isinstance(raw_cookies, list):
             raise AuthenticationError("dedicated browser returned no cookie collection")
@@ -350,10 +439,12 @@ def authenticate_browser(school: School) -> Session:
             user_id=identifier,
         )
     finally:
-        if page_connection is not None:
-            page_connection.close()
-        if owned:
-            _close_owned_browser(endpoint, process)
+        try:
+            if page_connection is not None:
+                page_connection.close()
+        finally:
+            if owned:
+                _close_owned_browser(endpoint, process, profile=profile)
 
 
 def locate_browser() -> Path:
@@ -369,7 +460,7 @@ def locate_browser() -> Path:
     elif sys.platform == "darwin":
         candidates.extend(
             Path(f"/Applications/{name}.app/Contents/MacOS/{name}")
-            for name in _CHROMIUM_BASENAMES[:2]
+            for name in _CHROMIUM_EXECUTABLE_BASENAMES
         )
         for name in ("google-chrome", "microsoft-edge", "chromium"):
             found = shutil.which(name)
@@ -475,33 +566,78 @@ def _read_valid_endpoint(
     if profile is None:
         raise AuthenticationError("DevTools endpoint cannot be used without a dedicated profile")
     _validate_profile_path(profile)
-    try:
-        with open(os.fspath(paths.long_path(active_port)), encoding="utf-8", newline="") as handle:
-            lines = handle.read().splitlines()
-        port = int(lines[0])
-    except (OSError, ValueError, IndexError) as exc:
+    marker = _read_active_port_marker(active_port)
+    if marker is None:
         raise AuthenticationError(
-            "DevToolsActivePort is stale or invalid; close the dedicated browser normally: "
-            f"{active_port}"
-        ) from exc
-    if not 1 <= port <= 65535:
-        raise AuthenticationError(
-            "DevToolsActivePort is stale or invalid; close the dedicated browser normally: "
-            f"{active_port}"
+            "DevToolsActivePort is stale or invalid; close the dedicated browser normally"
         )
+    port = marker.port
 
     metadata = _get_json(port, "/json/version")
     browser = metadata.get("Browser")
     websocket_url = metadata.get("webSocketDebuggerUrl")
-    if not isinstance(browser, str) or not any(
-        name.casefold() in browser.casefold() for name in _CHROMIUM_BASENAMES
-    ):
+    if not isinstance(browser, str) or not _browser_metadata_allowed(browser):
         raise AuthenticationError("DevTools endpoint is not the expected Chrome/Edge process")
     if not isinstance(websocket_url, str) or not _loopback_url(websocket_url, port):
         raise AuthenticationError("DevTools endpoint is not a validated loopback browser endpoint")
+    if _websocket_path(websocket_url) != marker.browser_websocket_path:
+        raise AuthenticationError("DevToolsActivePort does not match the browser endpoint")
     if process is None and not _process_owns_profile(profile, port):
         raise AuthenticationError("DevTools endpoint is not owned by the dedicated profile")
     return DebugEndpoint(port=port, browser_websocket_url=websocket_url)
+
+
+def _read_active_port_marker(active_port: Path) -> _ActivePortMarker | None:
+    """Read Chrome's two-part endpoint marker without exposing its contents."""
+
+    if paths.is_link(active_port):
+        return None
+    try:
+        with open(os.fspath(paths.long_path(active_port)), encoding="utf-8", newline="") as handle:
+            lines = handle.read().splitlines()
+        port = int(lines[0].strip())
+        browser_websocket_path = _marker_websocket_path(lines[1].strip(), port)
+    except (OSError, ValueError, IndexError):
+        return None
+    if not 1 <= port <= 65535 or browser_websocket_path is None:
+        return None
+    return _ActivePortMarker(port=port, browser_websocket_path=browser_websocket_path)
+
+
+def _marker_websocket_path(value: str, port: int) -> str | None:
+    """Normalize the path-shaped or full-URL form written by Chromium."""
+
+    if not value:
+        return None
+    if "://" in value:
+        if not _loopback_url(value, port):
+            return None
+        path = _websocket_path(value)
+    else:
+        path = value
+    if path is None or not path.startswith("/devtools/browser/"):
+        return None
+    return path
+
+
+def _websocket_path(value: str) -> str | None:
+    try:
+        parsed = urlsplit(value)
+    except (TypeError, ValueError, UnicodeError):
+        return None
+    if parsed.scheme.casefold() not in {"ws", "wss"}:
+        return None
+    if parsed.query or parsed.fragment or not parsed.path:
+        return None
+    return parsed.path
+
+
+def _browser_metadata_allowed(value: str) -> bool:
+    """Accept Chromium's product tokens without substring-matching lookalikes."""
+
+    return any(
+        pattern.fullmatch(value.strip()) is not None for pattern in _BROWSER_METADATA_PATTERNS
+    )
 
 
 def _validate_profile_path(profile: Path) -> None:
@@ -627,22 +763,43 @@ def _wait_for_page(port: int) -> str:
 
 def _wait_for_authenticated_page(connection: _CDPConnection, gate: _AuthGate) -> str:
     deadline = time.monotonic() + AUTH_WAIT_SECONDS
+    runtime_retry_deadline = min(deadline, time.monotonic() + RUNTIME_RETRY_SECONDS)
     while time.monotonic() < deadline:
-        result = connection.call(
-            "Runtime.evaluate",
-            {
-                "expression": _AUTH_EXPRESSION,
-                "awaitPromise": True,
-                "returnByValue": True,
-            },
-            event_handler=gate.handle,
-        )
-        gate.raise_if_blocked()
+        try:
+            result = _call_with_gate(
+                connection,
+                "Runtime.evaluate",
+                {
+                    "expression": _AUTH_EXPRESSION,
+                    "awaitPromise": True,
+                    "returnByValue": True,
+                },
+                gate,
+            )
+        except _CDPCommandError as exc:
+            gate.raise_if_blocked()
+            if not exc.retryable or time.monotonic() >= runtime_retry_deadline:
+                raise
+            time.sleep(POLL_SECONDS)
+            continue
         identifier = _evaluated_identifier(result)
         if identifier is not None:
             return identifier
         time.sleep(POLL_SECONDS)
+    gate.raise_if_any_blocked()
     raise AuthenticationError("LEARN login was not verified before the authentication timeout")
+
+
+def _runtime_error_is_transient(method: str, error: dict[str, Any]) -> bool:
+    """Recognize only Chromium's navigation/context race for bounded evaluation retry."""
+
+    if method != "Runtime.evaluate" or error.get("code") != -32000:
+        return False
+    message = error.get("message")
+    if not isinstance(message, str):
+        return False
+    lowered = message.casefold()
+    return "target" in lowered or "context" in lowered
 
 
 def _evaluated_identifier(result: dict[str, Any]) -> str | None:
@@ -656,7 +813,12 @@ def _evaluated_identifier(result: dict[str, Any]) -> str | None:
     return identifier if isinstance(identifier, str) and identifier else None
 
 
-def _close_owned_browser(endpoint: DebugEndpoint, process: _OwnedProcess | None) -> None:
+def _close_owned_browser(
+    endpoint: DebugEndpoint,
+    process: _OwnedProcess | None,
+    *,
+    profile: Path | None = None,
+) -> None:
     if process is None:
         return
     connection: _CDPConnection | None = None
@@ -676,6 +838,37 @@ def _close_owned_browser(endpoint: DebugEndpoint, process: _OwnedProcess | None)
         _terminate_owned_process(process)
     except (OSError, subprocess.SubprocessError) as exc:
         raise AuthenticationError("dedicated browser process status could not be read") from exc
+    if profile is not None:
+        _remove_owned_active_port(profile, endpoint)
+
+
+def _remove_owned_active_port(profile: Path, endpoint: DebugEndpoint) -> None:
+    """Remove only this launch's marker after its owned process has exited.
+
+    A marker seen before a launch is never cleaned here.  This helper is reached only with an
+    endpoint that was validated while this process was the owner, and it additionally compares
+    both the assigned port and Chromium's browser websocket path immediately before unlinking.
+    """
+
+    active_port = profile / "DevToolsActivePort"
+    if paths.is_link(active_port):
+        return
+    marker = _read_active_port_marker(active_port)
+    endpoint_path = _websocket_path(endpoint.browser_websocket_url)
+    if marker is None or endpoint_path is None:
+        return
+    if marker.port != endpoint.port or marker.browser_websocket_path != endpoint_path:
+        return
+    if paths.is_link(active_port):
+        return
+    try:
+        os.unlink(os.fspath(paths.long_path(active_port)))
+    except FileNotFoundError:
+        return
+    except OSError:
+        # Cleanup is best-effort.  A foreign process or platform service may have replaced/opened
+        # the marker after our process exited; never turn that race into a broad deletion attempt.
+        return
 
 
 def _terminate_owned_process(process: _OwnedProcess) -> None:
@@ -753,7 +946,7 @@ def _loopback_url(value: str, expected_port: int) -> bool:
         port = parsed.port
     except ValueError:
         return False
-    if parsed.scheme.casefold() not in {"http", "ws"} or parsed.hostname is None:
+    if parsed.scheme.casefold() not in {"ws", "wss"} or parsed.hostname is None:
         return False
     if parsed.hostname.casefold() not in {"127.0.0.1", "localhost", "::1"}:
         return False
@@ -771,7 +964,7 @@ def _auth_url_allowed(value: str, school: School) -> bool:
         target_port = parsed.port or 443
         if host == _canonical_hostname(base.hostname or "") and target_port == base_port:
             return True
-        return any(
+        return target_port == 443 and any(
             _host_boundary_match(host, _canonical_hostname(_host_from_value(item)))
             for item in school.auth_hosts()
         )

@@ -59,9 +59,9 @@ def test_waterloo_identity_and_timezone_are_explicit() -> None:
     assert uw.auth_hint == "WatIAM + Duo"
 
 
-def test_waterloo_does_not_guess_unreviewed_hosts() -> None:
+def test_waterloo_uses_only_reviewed_identity_hosts() -> None:
     uw = UWaterloo()
-    assert uw.auth_hosts() == []
+    assert uw.auth_hosts() == ["duosecurity.com", "adfs.uwaterloo.ca"]
     assert uw.outline_hosts() == []
 
 

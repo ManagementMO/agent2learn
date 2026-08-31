@@ -44,13 +44,13 @@ class UWaterloo:
         return f"{season} {year}"
 
     def auth_hosts(self) -> list[str]:
-        """Return only identity hosts backed by reviewed same-device release evidence.
+        """Return reviewed identity-provider host suffixes for interactive sign-in only."""
 
-        P1 established same-device LEARN API replay but did not record a redacted host allowlist.
-        An empty list is therefore safer and more truthful than guessing at a redirect target.
-        """
-
-        return []
+        # Duo uses changing tenant and asset subdomains (for example, ``sso-*`` and ``api-*``).
+        # The provider boundary absorbs that documented host churn without becoming an
+        # arbitrary-website wildcard.  The Waterloo ADFS hand-off remains a separate reviewed
+        # host.  The CDP gate applies HTTPS/default-port and DNS-label-boundary checks.
+        return ["duosecurity.com", "adfs.uwaterloo.ca"]
 
     def outline_hosts(self) -> list[str]:
         """Return reviewed first-party outline hosts beyond the configured LEARN origin."""

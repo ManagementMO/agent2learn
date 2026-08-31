@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
@@ -37,9 +38,10 @@ def authenticate(school: School, *, backend: str = "auto") -> session.Session:
     try:
         harvested = cdp.authenticate_browser(school)
     except AuthenticationError as exc:
+        safe_message = _safe_cdp_error(exc)
         if normalized_backend == "auto":
-            raise AuthenticationError(f"{exc}; fallback: a2l auth --paste") from None
-        raise
+            raise AuthenticationError(f"{safe_message}; fallback: a2l auth --paste") from None
+        raise AuthenticationError(safe_message) from None
     except (OSError, ValueError) as exc:
         message = "dedicated browser authentication could not access local state"
         if normalized_backend == "auto":
@@ -209,6 +211,18 @@ def _verified_id_from_cdp_result(value: object) -> str | None:
     return None
 
 
+def _safe_cdp_error(exc: AuthenticationError) -> str:
+    """Keep the public auth error generic while retaining a sanitized blocked hostname."""
+
+    prefix = "authentication stopped at undeclared host "
+    raw = str(exc)
+    if raw.startswith(prefix):
+        host = raw[len(prefix) :].split(";", 1)[0].strip()
+        if re.fullmatch(r"[A-Za-z0-9.:-]{1,253}", host):
+            return f"{prefix}{host}"
+    return "dedicated browser authentication failed"
+
+
 def _lp_versions(payload: object) -> tuple[str, ...]:
     if not isinstance(payload, list):
         return ()
@@ -256,7 +270,7 @@ def _origin(value: str) -> tuple[str, str, int]:
 def _profile_is_locked(profile: Path) -> bool:
     return any(
         paths.long_path(profile / marker).exists()
-        for marker in ("SingletonLock", "SingletonSocket")
+        for marker in ("SingletonLock", "SingletonSocket", "SingletonCookie")
     )
 
 

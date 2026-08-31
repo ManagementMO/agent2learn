@@ -1313,7 +1313,9 @@ Steps:
       cookies over CDP with **`Storage.getCookies`**.
       Intercept auth requests: permit only the configured LEARN origin and the Waterloo adapter's
       reviewed `auth_hosts()`, with exact/boundary-aware host matching. Stop before an undeclared
-      redirect or subresource and show only its sanitized hostname plus the `--paste` fallback.
+      document or iframe and show only its sanitized hostname plus the `--paste` fallback. Fail
+      undeclared optional subresources locally without aborting the command; if one is required,
+      the authoritative whoami check still prevents a session from being saved.
       Validate that the discovered endpoint is loopback and identifies the expected Chromium
       process/profile. Reconnect to an already-running dedicated debug profile only after that
       validation. Treat stale port files or a profile lock without a reachable endpoint as an
