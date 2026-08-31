@@ -185,7 +185,16 @@ def synthetic_api(httpserver: Any) -> Iterator[SyntheticAPI]:
     # over-length title — must actually land on disk for the golden vault to prove anything
     # about naming. They share one PDF body: what is under test is the filename each
     # produces, and identical bytes under different names also exercise the per-entry twin.
-    for name in ("reading.pdf", "cafe-notes.pdf", "lab-notes-a.pdf", "lab-notes-b.pdf", "long.pdf"):
+    # unsized.pdf backs the topic whose TOC entry omits Size: downloads of unknown
+    # length go through the same bounded streaming path instead of being skipped.
+    for name in (
+        "reading.pdf",
+        "cafe-notes.pdf",
+        "lab-notes-a.pdf",
+        "lab-notes-b.pdf",
+        "long.pdf",
+        "unsized.pdf",
+    ):
         httpserver.expect_request(
             f"/content/enforced/{COURSE_A_OU}-COURSE101/{name}"
         ).respond_with_data(fixture_bytes("lecture01.pdf"), content_type="application/pdf")

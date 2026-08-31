@@ -64,6 +64,10 @@ class DiskSpaceExhausted(DownloadError):
     """Streaming would consume the configured free-space reserve."""
 
 
+class FileTooLarge(DownloadError):
+    """A response advertised or streamed more bytes than the per-file ceiling allows."""
+
+
 @dataclass(frozen=True)
 class DownloadResult:
     """A validated response staged in ``temp`` or a conditional not-modified result."""
@@ -217,7 +221,7 @@ class Client:
                 and advertised_size is not None
                 and advertised_size > max_bytes
             ):
-                raise DownloadError("response exceeds the per-file ceiling")
+                raise FileTooLarge("response exceeds the per-file ceiling")
             if advertised_size is not None:
                 _ensure_disk_space(temp, advertised_size)
 
@@ -231,7 +235,7 @@ class Client:
                         if not chunk:
                             continue
                         if max_bytes is not None and size + len(chunk) > max_bytes:
-                            raise DownloadError("response exceeds the per-file ceiling")
+                            raise FileTooLarge("response exceeds the per-file ceiling")
                         if chunks_since_disk_check == 0:
                             _ensure_disk_space(temp, len(chunk))
                         if html_response and len(html_probe) < 64 * 1024:
@@ -573,6 +577,7 @@ __all__ = [
     "DownloadError",
     "DownloadResult",
     "EgressBlocked",
+    "FileTooLarge",
     "FREE_DISK_RESERVE",
     "JITTER_MAX",
     "MAX_REDIRECTS",

@@ -40,6 +40,7 @@ DEFAULT_OCR_WORDS_PER_PAGE = 80
 MIN_PDF_CHARS = 200
 OCR_DPI = 300
 CONVERTER_VERSION = "1"
+OCR_SETUP_ACTION = "install Tesseract with the 'eng' language pack, then rerun: a2l sync"
 MAX_ZIP_MEMBERS = 1_000
 MAX_ZIP_UNCOMPRESSED = 64 * 1024 * 1024
 MAX_ZIP_MEMBER = 32 * 1024 * 1024
@@ -526,7 +527,7 @@ def convert_vault(
             _update_content_map(
                 vault,
                 key,
-                availability="integrity_gap",
+                availability="conversion_gap",
                 source_path=entry.path,
                 path=None,
                 sha256=entry.sha256,
@@ -561,7 +562,7 @@ def convert_vault(
             _update_content_map(
                 vault,
                 key,
-                availability="integrity_gap",
+                availability="conversion_gap",
                 source_path=entry.path,
                 path=None,
                 sha256=entry.sha256,
@@ -573,15 +574,16 @@ def convert_vault(
         warnings.extend(f"{key}: {warning}" for warning in result.warnings)
         if result.gap or not result.markdown:
             gaps += 1
+            lowered = tuple(warning.casefold() for warning in result.warnings)
             availability = (
                 "unsupported_format"
-                if any(
-                    "unsupported" in warning.casefold() or "optional" in warning.casefold()
-                    for warning in result.warnings
-                )
-                else "integrity_gap"
+                if any("unsupported" in warning or "optional" in warning for warning in lowered)
+                else "conversion_gap"
             )
-            next_action = result.warnings[0] if result.warnings else "conversion gap"
+            if any("ocr unavailable" in warning for warning in lowered):
+                next_action = OCR_SETUP_ACTION
+            else:
+                next_action = result.warnings[0] if result.warnings else "conversion gap"
             _update_content_map(
                 vault,
                 key,
@@ -1174,6 +1176,7 @@ __all__ = [
     "CONVERTER_VERSION",
     "DEFAULT_OCR_WORDS_PER_PAGE",
     "MIN_PDF_CHARS",
+    "OCR_SETUP_ACTION",
     "ConversionError",
     "ConversionReport",
     "ConversionResult",

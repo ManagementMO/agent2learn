@@ -143,8 +143,8 @@ def test_golden_tree_covers_every_adversarial_case(
     assert any(name.endswith("External Tool.url.txt") for name in names)
     assert not [name for name in names if name.endswith(("Publisher eText.pdf", "External Tool"))]
 
-    # A topic of unknown length stays metadata-only rather than being fetched blind.
-    assert not [name for name in names if "Unsized Handout" in name]
+    # A topic of unknown length downloads through the default bounded ceiling.
+    assert any(name.endswith("Unsized Handout.pdf") for name in names)
 
     # Converted twins exist for each supported source format.
     for twin in ("Lecture Slides.md", "Notebook.md", "R Notes.md", "Site Archive.md"):

@@ -14,6 +14,7 @@ import pytest
 from conftest import FILES, fixture_bytes
 
 import agent2learn.convert as convert
+from agent2learn import index as course_index
 from agent2learn.convert import (
     ConversionError,
     ConversionResult,
@@ -590,3 +591,107 @@ def test_conversion_does_not_use_network_or_spawn_processes(
 
 def _sha256(data: bytes) -> str:
     return sha256(data).hexdigest()
+
+
+def _vault_with_mapped_source(
+    root: Path, *, payload: bytes = b"%PDF-synthetic", manifest_payload: bytes | None = None
+) -> tuple[Vault, Path]:
+    vault = Vault(root / "vault")
+    course_dir = vault.root / "Winter 2026" / "COURSE101"
+    source = course_dir / "content" / "lecture01.pdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(payload)
+    recorded = payload if manifest_payload is None else manifest_payload
+    entry = ManifestEntry(
+        path="Winter 2026/COURSE101/content/lecture01.pdf",
+        sha256=_sha256(recorded),
+        source_id="1",
+        etag=None,
+        last_modified=None,
+        size=len(recorded),
+        fetched_at="2026-08-25T12:00:00Z",
+    )
+    vault.mark("uwaterloo:111111:topic:1", entry)
+    vault.save_manifest()
+    course_index.write_content_map(
+        course_dir,
+        [
+            {
+                "source_key": "uwaterloo:111111:topic:1",
+                "source_id": "1",
+                "topic_id": 1,
+                "availability": "source_only",
+            }
+        ],
+        root=vault.root,
+    )
+    return vault, course_dir
+
+
+def _mapped_row(course_dir: Path) -> dict[str, object]:
+    raw = course_index.read_content_map(course_dir)
+    rows = raw["topics"]
+    assert isinstance(rows, list)
+    row = rows[0]
+    assert isinstance(row, dict)
+    return row
+
+
+def test_source_hash_mismatch_is_an_integrity_gap_not_a_conversion_gap(tmp_path: Path) -> None:
+    vault, course_dir = _vault_with_mapped_source(
+        tmp_path, payload=b"%PDF-tampered", manifest_payload=b"%PDF-original"
+    )
+
+    report = convert_vault(vault, backend=_Backend(), fallback=_Backend())
+
+    assert report.gaps == 1
+    row = _mapped_row(course_dir)
+    assert row["availability"] == "integrity_gap"
+    assert row["next_action"] == "verify or re-fetch the source"
+
+
+def test_backend_exception_is_a_conversion_gap_with_matching_source_bytes(tmp_path: Path) -> None:
+    vault, course_dir = _vault_with_mapped_source(tmp_path)
+    failing = _Backend(error=ConversionError("backend failed"))
+
+    report = convert_vault(vault, backend=failing, fallback=failing)
+
+    assert report.gaps == 1
+    row = _mapped_row(course_dir)
+    assert row["availability"] == "conversion_gap"
+
+
+class _GapBackend:
+    name = "fake"
+    version = "1"
+
+    def __init__(self, warnings: tuple[str, ...]) -> None:
+        self.warnings = warnings
+
+    def convert_pdf(self, source: Path, *, ocr_words_per_page: int) -> ConversionResult:
+        del source, ocr_words_per_page
+        return ConversionResult(markdown="", warnings=self.warnings, gap=True)
+
+
+def test_ocr_unavailable_gap_points_at_tesseract_setup(tmp_path: Path) -> None:
+    vault, course_dir = _vault_with_mapped_source(tmp_path)
+    backend = _GapBackend(("OCR unavailable on page 1: ConversionError",))
+
+    report = convert_vault(vault, backend=backend, fallback=backend)
+
+    assert report.gaps == 1
+    row = _mapped_row(course_dir)
+    assert row["availability"] == "conversion_gap"
+    assert row["next_action"] == convert.OCR_SETUP_ACTION
+    assert "Tesseract" in convert.OCR_SETUP_ACTION
+
+
+def test_optional_dependency_gap_stays_unsupported_format(tmp_path: Path) -> None:
+    vault, course_dir = _vault_with_mapped_source(tmp_path)
+    backend = _GapBackend(("office conversion needs the optional markitdown extra",))
+
+    report = convert_vault(vault, backend=backend, fallback=backend)
+
+    assert report.gaps == 1
+    row = _mapped_row(course_dir)
+    assert row["availability"] == "unsupported_format"

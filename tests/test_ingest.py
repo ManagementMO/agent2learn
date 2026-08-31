@@ -14,7 +14,7 @@ import pytest
 from ingest_support import DownloadHandler, FakeClient, course
 
 from agent2learn import ingest as ingest_module
-from agent2learn.api import DownloadError, DownloadResult
+from agent2learn.api import DownloadError, DownloadResult, FileTooLarge
 from agent2learn.errors import A2LError
 from agent2learn.ingest import fetch_topic, ingest_files, ingest_metadata
 from agent2learn.vault import Vault
@@ -909,7 +909,73 @@ def test_fetch_resolves_stable_id_and_repairs_a_path_null_topic(tmp_path: Path) 
     assert not list(tmp_path.rglob("*.part"))
 
 
-def test_unknown_size_stays_metadata_only_until_confirmed_one_file_fetch(tmp_path: Path) -> None:
+def test_unknown_size_downloads_through_the_default_bounded_ceiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    unknown_size_topic = _topic(1, "Unknown size")
+    unknown_size_topic.pop("Size")
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(unknown_size_topic)},
+        download_handler=_handler_for({"topic-1.pdf": b"bounded download"}),
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+    observed: list[int | None] = []
+    real_ingest = ingest_module._ingest_one_topic
+
+    def capture(*args: object, **kwargs: object) -> str:
+        observed.append(kwargs.get("max_bytes", 2_147_483_648))  # type: ignore[arg-type]
+        return real_ingest(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ingest_module, "_ingest_one_topic", capture)
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert report.downloaded == 1
+    assert report.failed == 0
+    assert report.metadata_only == 0
+    assert observed == [2_147_483_648]
+    row = _topic_rows(tmp_path)[0]
+    assert row["availability"] == "source_only"
+
+    # A repeat sync is idempotent: the unchanged source is skipped, not re-downloaded.
+    repeat = ingest_files(fake_client, vault, fake_client.school)
+    assert repeat.downloaded == 0
+    assert repeat.failed == 0
+
+
+def test_unknown_size_over_ceiling_stays_metadata_only_with_fetch_next_action(
+    tmp_path: Path,
+) -> None:
+    unknown_size_topic = _topic(1, "Unknown size")
+    unknown_size_topic.pop("Size")
+
+    def too_large(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        del url, temp, prior
+        raise FileTooLarge("response exceeds the per-file ceiling")
+
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(unknown_size_topic)},
+        download_handler=too_large,
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert report.metadata_only == 1
+    assert report.failed == 0
+    assert report.errors == ()
+    row = _topic_rows(tmp_path)[0]
+    assert row["availability"] == "metadata_only"
+    assert row["next_action"] == "a2l fetch --allow-large 1"
+
+
+def test_unknown_size_fetch_is_bounded_by_default_and_unbounded_after_consent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     unknown_size_topic = _topic(1, "Unknown size")
     unknown_size_topic.pop("Size")
     fake_client = FakeClient(
@@ -919,13 +985,18 @@ def test_unknown_size_stays_metadata_only_until_confirmed_one_file_fetch(tmp_pat
     )
     vault = Vault(tmp_path)
     ingest_metadata(fake_client, vault, fake_client.school)
+    observed: list[int | None] = []
+    real_ingest = ingest_module._ingest_one_topic
 
-    report = ingest_files(fake_client, vault, fake_client.school)
-    assert report.metadata_only == 1
-    assert fake_client.download_calls == []
+    def capture(*args: object, **kwargs: object) -> str:
+        observed.append(kwargs.get("max_bytes"))  # type: ignore[arg-type]
+        return real_ingest(*args, **kwargs)  # type: ignore[arg-type]
 
-    with pytest.raises(Exception, match="unknown"):
-        fetch_topic(fake_client, vault, fake_client.school, "1")
+    monkeypatch.setattr(ingest_module, "_ingest_one_topic", capture)
+
+    result = fetch_topic(fake_client, vault, fake_client.school, "1")
+    assert result.source_path is not None
+    assert observed == [2_147_483_648]
 
     confirmations: list[int | None] = []
 
@@ -933,7 +1004,7 @@ def test_unknown_size_stays_metadata_only_until_confirmed_one_file_fetch(tmp_pat
         confirmations.append(size)
         return True
 
-    result = fetch_topic(
+    fetch_topic(
         fake_client,
         vault,
         fake_client.school,
@@ -942,8 +1013,7 @@ def test_unknown_size_stays_metadata_only_until_confirmed_one_file_fetch(tmp_pat
         confirm=confirm_large,
     )
     assert confirmations == [None]
-    assert result.source_path is not None
-    assert len(fake_client.download_calls) == 1
+    assert observed[-1] is None
 
 
 def test_allow_large_does_not_remove_ceiling_for_a_known_small_source(
