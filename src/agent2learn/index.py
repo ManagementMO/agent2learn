@@ -25,7 +25,6 @@ from agent2learn.vault import ManifestEntry, Vault
 CONTENT_MAP_VERSION = 1
 _EMPTY_HTML = re.compile(r"(?:<[^>]*>|&nbsp;|\s)+", re.IGNORECASE)
 _PRESERVED_GAPS = frozenset({"unsupported_format", "conversion_gap", "integrity_gap"})
-_PRESERVED_UNFETCHED_GAPS = _PRESERVED_GAPS | {"download_gap"}
 _SENSITIVE_SEARCH_MARKERS = frozenset({"grade", "grades", "discussion", "discussions"})
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -340,7 +339,13 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
             continue
         entry = manifest.get(source_key)
         if entry is None:
-            if row.get("availability") in _PRESERVED_UNFETCHED_GAPS:
+            # Every source-backed gap needs a manifest entry as its proof. Without that proof,
+            # including for conversion/integrity/format gaps, this row is metadata again and must
+            # offer fetch rather than a conversion-only or integrity-only action. A download gap
+            # is the one exception: it records that the server never served the source, so the
+            # row must keep the gap and its retry action instead of pretending it was never
+            # attempted.
+            if row.get("availability") == "download_gap":
                 next_action = row.get("next_action")
                 row.update(
                     {
@@ -348,7 +353,7 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
                         "path": None,
                         "next_action": next_action
                         if isinstance(next_action, str) and next_action
-                        else "retry conversion",
+                        else f"a2l fetch {source_id}",
                     }
                 )
                 reconciled.append(row)
@@ -371,6 +376,23 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
                 "size": entry.size,
             }
         )
+        # A manifest entry for an older remote revision is not evidence that the current
+        # revision was served. While the recorded validators disagree with the entry, the
+        # download gap stands and the stale twin must not be promoted to citation evidence.
+        if row.get("availability") == "download_gap" and not _entry_matches_row_validators(
+            row, entry
+        ):
+            next_action = row.get("next_action")
+            row.update(
+                {
+                    "path": None,
+                    "next_action": next_action
+                    if isinstance(next_action, str) and next_action
+                    else f"a2l fetch {source_id}",
+                }
+            )
+            reconciled.append(row)
+            continue
         if not _entry_bytes_are_current(vault, entry):
             row.update(
                 {
@@ -512,6 +534,17 @@ def write_submission_readme(
 
 def _entry_bytes_are_current(vault: Vault, entry: ManifestEntry) -> bool:
     return _hash(vault.materialized(entry)) == entry.sha256
+
+
+def _entry_matches_row_validators(row: Mapping[str, object], entry: ManifestEntry) -> bool:
+    """Whether a manifest entry still represents the revision the metadata row describes."""
+    etag = row.get("etag")
+    if isinstance(etag, str) and etag and entry.etag != etag:
+        return False
+    last_modified = row.get("last_modified")
+    return not (
+        isinstance(last_modified, str) and last_modified and entry.last_modified != last_modified
+    )
 
 
 def _artifact_bytes_are_current(vault: Vault, relative_path: str, expected_hash: str) -> bool:

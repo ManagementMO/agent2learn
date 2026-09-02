@@ -8,8 +8,10 @@ control, runs the focused offline API contract test, and restores the source imm
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,13 +35,20 @@ CASES: list[tuple[str, str, str, str]] = [
 
 
 def _run(selector: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["uv", "run", "pytest", f"{TESTS}::{selector}", "-q", "--no-header"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # Both perturbations change a same-length boolean.  A fresh cache prevents Python's
+    # timestamp/size bytecode invalidation from reusing the previous mutation when both writes
+    # happen in the same filesystem second.
+    with tempfile.TemporaryDirectory(prefix="a2l-perturb-pycache-") as cache:
+        environment = os.environ.copy()
+        environment["PYTHONPYCACHEPREFIX"] = cache
+        return subprocess.run(
+            ["uv", "run", "pytest", f"{TESTS}::{selector}", "-q", "--no-header"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
 
 
 def main() -> int:

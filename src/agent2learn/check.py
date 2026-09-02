@@ -102,6 +102,9 @@ _FUNCTION = frozenset(
 )  # fmt: skip
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+# A markdown image is not a statement. Stripped before segmentation so a data-URI or file path
+# cannot become junk tokens, inflate a claim's term count, or "match" an identical blob upstream.
+_MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _STEP = re.compile(r"^\s*\d+\s*[.)]\s+")
 _NUMBER_OR_MATH = re.compile(r"\d|[=<>≤≥≠∈∉∑∏∫√±×÷^{}]")
 _DEFINITION_CUE = re.compile(
@@ -435,11 +438,20 @@ def check(draft: Path, course_dir: Path, *, assignment: str | None = None) -> Ch
     vault = _vault_for(course_dir)
     scope, sources = _scan_sources(vault, course_dir, draft_path, assignment)
     if not sources:
-        raise A2LError("no verified course material was found to scan; run: a2l sync")
+        # "Nothing verified in this course" is a sync problem. "Nothing verified matched this
+        # assignment" is not, and sending the student to `a2l sync` for it would be a false next
+        # action that hides the real remedy: scan the whole course.
+        if scope != "whole course" and ground.verified_sources(vault, course_dir):
+            raise A2LError(
+                f"no verified course material matched the assignment {scope!r}, so there is "
+                "nothing to scan it against. Scan the whole course instead: move the draft out "
+                "of the assignment folder, or omit --assignment."
+            )
+        raise A2LError("this course has no verified material to scan yet; run: a2l sync")
 
     index = LineIndex(sources)
     if not len(index):
-        raise A2LError("the verified course material contains no readable lines; run: a2l sync")
+        raise A2LError("the verified course material contains no readable lines; re-run: a2l sync")
 
     findings = tuple(classify(claim, index.retrieve(claim)) for claim in segment(text, suffix))
     code, _name = _course_identity(course_dir)
@@ -622,7 +634,14 @@ def _segment_text(text: str) -> list[Claim]:
             _emit_block(block, claims)
             block = []
             continue
-        block.append((number, stripped.lstrip("#").strip()))
+        text_only = _MARKDOWN_IMAGE.sub(" ", stripped.lstrip("#")).strip()
+        text_only = re.sub(r"\s{2,}", " ", text_only)
+        if not text_only:
+            # An image-only line is structure, like a heading marker or a page comment.
+            _emit_block(block, claims)
+            block = []
+            continue
+        block.append((number, text_only))
 
     if inside and fence:
         claims.append(Claim(fence_line, "\n".join(fence).strip(), fence_kind))
@@ -863,7 +882,7 @@ def _scan_sources(
     item = assignment or _assignment_for(course_dir, draft)
     if item is not None:
         selected = ground.select_sources(vault, course_dir, item)
-        scope = item
+        scope = ground.assignment_title(course_dir, item, fallback=item)
     else:
         selected = ground.verified_sources(vault, course_dir)
         scope = "whole course"

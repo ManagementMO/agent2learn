@@ -424,7 +424,10 @@ def ground(
     course: str = typer.Argument(
         ..., help="Course code, course folder, name, or term-qualified selector."
     ),
-    item: str = typer.Argument(..., help="Assignment or lab name, such as Lab4 or 'Lab 4'."),
+    item: str = typer.Argument(
+        ...,
+        help="Assignment title (e.g. 'Lab 4' or Lab4), its LEARN Dropbox id, or its folder name.",
+    ),
 ) -> None:
     """Assemble a cited grounding pack from current, provenance-backed class material."""
 
@@ -1052,6 +1055,10 @@ def _run_init(requested_vault: Path | None) -> None:
     except (OSError, ValueError):
         # A stale or malformed local projection is recoverable by authenticating again.
         session_value = None
+    if session_value is not None and not _session_matches_school(session_value, school):
+        # A saved projection is local convenience state, not transferable identity. Never send
+        # cookies harvested for one LEARN origin to another configured school.
+        session_value = None
 
     if session_value is None:
         if backend == "auto":
@@ -1188,15 +1195,7 @@ def _run_init(requested_vault: Path | None) -> None:
         )
         if _report_has_errors(metadata):
             categories = _report_error_categories(metadata)
-            if metadata.exit_code != 0:
-                raise _InitFailure(
-                    "metadata sync", "a2l init", detail=f"coverage gap: {categories}"
-                )
-            typer.echo(
-                f"{console.GLYPH['warn']} partial metadata ({categories}); "
-                "gaps are recorded in .a2l/AUDIT.md",
-                err=True,
-            )
+            raise _InitFailure("metadata sync", "a2l init", detail=f"coverage gap: {categories}")
         state = _init_stage(
             "metadata sync",
             "a2l init",
@@ -1755,6 +1754,18 @@ def _report_has_errors(report: MetadataReport) -> bool:
     errors = getattr(report, "errors", ())
     exit_code = getattr(report, "exit_code", 0)
     return bool(errors) or (isinstance(exit_code, int) and exit_code != 0)
+
+
+def _session_matches_school(session_value: object, school: object) -> bool:
+    """Allow a saved session only when its LEARN origin matches the selected school."""
+
+    session_base = getattr(session_value, "base_url", None)
+    school_base = getattr(school, "base_url", None)
+    return (
+        isinstance(session_base, str)
+        and isinstance(school_base, str)
+        and session_base.rstrip("/") == school_base.rstrip("/")
+    )
 
 
 def _report_error_categories(report: MetadataReport) -> str:

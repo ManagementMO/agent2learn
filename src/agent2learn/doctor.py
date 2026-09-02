@@ -695,7 +695,7 @@ def _vault(vault: Vault | None) -> list[Check]:
 
     term_detail = "; ".join(
         f"{term}: {course_count} course(s), {resolved}/{total} topic(s) resolved, "
-        f"{term_gaps} conversion gap(s), {term_empty} empty twin(s)"
+        f"{term_gaps} coverage gap(s), {term_empty} empty twin(s)"
         for term, (course_count, resolved, total, term_gaps, term_empty) in sorted(
             term_stats.items()
         )
@@ -726,7 +726,7 @@ def _vault(vault: Vault | None) -> list[Check]:
             "Vault",
             "vault.gaps",
             "ok" if gaps == 0 else "warn",
-            f"{gaps} conversion gap(s)",
+            f"{gaps} coverage gap(s)",
             None if gaps == 0 else "see .a2l/AUDIT.md",
         ),
     ]

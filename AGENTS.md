@@ -25,7 +25,7 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-08-30
+## Current state — 2026-09-01
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
 - **Tasks 0 through 23 are complete as automated implementations. The v0.1 command surface is
@@ -74,6 +74,43 @@ architecture.
     disagrees with the packaged version, refuses to publish a build with uploads enabled unless the
     supervised gate was recorded, builds exactly once, and promotes those same bytes through
     attestation, TestPyPI, and a protected PyPI environment using Trusted Publishing.
+- **Post-merge PR #4 audit/remediation — 2026-09-01:** the pre-remediation exact merge `bc62d101`
+  passed its remote 17-job CI run, but a fresh local review found and fixed five boundary issues: oversized
+  download refusals no longer fall through to another route; unknown-size topics no longer consume
+  a byte-bounded priority plan as zero bytes; any metadata error keeps `a2l init` before the file
+  phase and leaves `metadata_complete` false; saved sessions are reused only for the selected LEARN
+  origin; and source-less `conversion_gap` rows reconcile to `metadata_only`. The detect-secrets
+  exclusion regex and stale contract documentation were corrected at the same time. That
+  remediation is **committed and pushed to `main` as `77fafbe`**, so `main` no longer ships the
+  five defects; the complete evidence is in
+  [`docs/PR4_POST_MERGE_AUDIT.md`](docs/PR4_POST_MERGE_AUDIT.md).
+- **Fresh whole-repository audit — 2026-09-01.** Every automated gate was re-run from scratch on
+  `3372ba4` and passed, and then the real production pipeline's output (via
+  `golden_support.run_full_pipeline`) was driven through the actual CLI. **That step found three
+  defects the 912-test suite had missed, because the Task 18/19 unit fixtures were hand-built and
+  did not match what `ingest.py` actually writes.** All three are fixed with red-green tests:
+  1. **`a2l ground COURSE "Problem Set 1"` failed with "grounding item was not found".** The
+     pipeline names assignment folders `{title} {dropbox id}` (e.g. `Problem Set 1 700001`) so
+     same-titled assignments cannot collide, but `resolve_item` compared the typed title against
+     the folder name only. The documented usage did not work on a real vault. `ground.py` now
+     joins each folder to its `assignments.json` row and accepts the title, the bare id, or the
+     folder name; two same-titled assignments make the bare title ambiguous and the error names
+     the id forms. Prompt lookup matches by id, and ranking uses the title's words rather than the
+     selector, so a folder id can no longer inflate or poison retrieval.
+  2. **Two false next actions.** An assignment whose title matched no lecture produced
+     "no current course material was verified for this item; run: a2l sync" from `ground`, and
+     "no verified course material was found to scan; run: a2l sync" from a scoped `check` — while
+     ten verified twins existed. Sync would have changed nothing. Both now distinguish "this course
+     has nothing verified" (a sync problem) from "nothing verified matched this assignment" (not
+     one), and the scoped `check` message says to scan the whole course instead. Scoped reports
+     now name the assignment title, not the raw folder name.
+  3. **A markdown image was scored as a claim.** `check` cited a 100-character base64 data-URI as
+     `evidence_found` because the identical blob appeared in the source twin. Images are now
+     stripped before segmentation and an image-only line is structure, not a claim.
+  Also refreshed `docs/COVERAGE.md`, which the PR #4 remediation had left stale. The lesson is
+  recorded here because it is the general one: **a fixture the implementer wrote to match their
+  own assumptions cannot catch the assumption being wrong; drive the production pipeline's real
+  output through the CLI at least once per feature.** Two follow-ups are noted below.
 - **The review-remediation checkpoint is committed and pushed to `main` as `276bda3`.** A fresh
   local run on that exact tree reports 858 passing tests and 4 skipped. The exact-SHA remote
   acceptance run is [33291418755](https://github.com/ManagementMO/agent2learn/actions/runs/33291418755);
@@ -136,7 +173,7 @@ architecture.
   14-gate perturbation harness plus two one-shot transport perturbations, but recorded as a
   deviation rather than presented as compliance.
 - **The golden vault now exists and is the repository's regression tripwire.**
-  `tests/fixtures/golden_vault.json` pins 49 files by SHA-256 after one full production
+  `tests/fixtures/golden_vault.json` pins 51 files by SHA-256 after one full production
   metadata → explicit outline state → download → convert → index → snapshot → audit run against the
   synthetic API.
   **Never regenerate it to make an unexplained diff green** — a changed hash is either an
@@ -255,7 +292,7 @@ architecture.
   IDs, and installed-wheel skill discovery is a matrix smoke. Final evidence: 637 passed / 4
   skipped / zero warnings locally; independent whole-branch review clean; all 14 jobs passed in
   [CI run 33226466258](https://github.com/ManagementMO/agent2learn/actions/runs/33226466258), including
-  the 49-entry golden vault and installed-wheel smoke on Windows, macOS, and Linux.
+  the 51-entry golden vault and installed-wheel smoke on Windows, macOS, and Linux.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,
@@ -275,10 +312,17 @@ architecture.
   guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
-- Known open items, none of them coding work: the reviewed `auth_hosts()` entries need their
-  redacted same-device host evidence recorded, or the wording in `docs/AUTHENTICATION.md` softened
-  from *observed* to provider-boundary reasoning — and the new list has never run against a live
-  instance, which makes the Windows and Linux auth validation below more load-bearing than before;
+- One small coding follow-up from the 2026-09-01 audit, not release-blocking: the synthetic Dropbox
+  fixtures carry no `CustomInstructions`, so `assignments.json` has no `instructions_md` for any
+  assignment and the `assignment_prompt` role of a grounding pack has never been exercised against
+  real pipeline output. Adding instructions to one fixture folder would close that, at the cost of
+  a deliberate, explained golden-vault regeneration. The CLI-over-real-pipeline check that found
+  the three defects is now a permanent gate, `tests/test_cli_over_pipeline.py`, and was proven to
+  bite by perturbing the resolver back to folder-name-only (8 failures).
+- Known open items, none of them coding work: the `auth_hosts()` entries have no recorded
+  same-device host evidence yet (`docs/AUTHENTICATION.md` now presents them as provider-boundary
+  reasoning rather than observation) and the list has never run against a live instance, which
+  makes the Windows and Linux auth validation below more load-bearing than before;
   Task 9's live same-device auth still needs pass/fail
   records on Windows and Linux (macOS passed 2026-08-25); the supervised non-graded upload must
   pass for the exact release candidate before `SUBMISSION_AVAILABLE` may be flipped; the README's

@@ -1451,9 +1451,11 @@ Steps:
       paginated API response cannot change which source receives the unsuffixed name. Add the
       reversed-order regression test; existing identities always reuse their recorded paths.
       Before each transfer, enforce the configured free-disk reserve and 2 GiB default per-file
-      ceiling. An oversized/unknown-length source remains `metadata_only` with its stable ID and the
-      exact `a2l fetch --allow-large <id>` action. That override is one-file only, prints free space,
-      requires an interactive confirmation, and does not weaken future sync limits.
+      ceiling. An oversized source remains `metadata_only` with its stable ID and the exact
+      `a2l fetch --allow-large <id>` action. Unknown-length sources use the same bounded streaming
+      ceiling during the full plan; the priority plan excludes them because it cannot prove their
+      bytes fit its hard budget. The override is one-file only, prints free space, requires an
+      interactive confirmation, and does not weaken future sync limits.
 - [x] **Step 5:** Split the run into **two phases**, and make the split by *cost*, not by date:
 
       **Phase A — metadata, always complete, for every course.** TOC, dropbox folders and due dates,
@@ -1481,9 +1483,12 @@ Steps:
 
 - [x] **Step 5b:** A topic whose file has not been downloaded yet is recorded in `content_map.json`
       with `availability="metadata_only"`, `source_path: null`, and `path: null`. A downloaded
-      original awaiting/failed conversion is `source_only` or `unsupported_format`, with
-      `source_path` set and `path: null`; only a current verified twin is `markdown_ready` with
-      `path` set. Implement `fetch_topic` and the thin
+      original awaiting/failed conversion is `source_only`, an unhandled type is
+      `unsupported_format`, and a source-backed conversion/OCR failure is `conversion_gap`; these
+      states have `source_path` set and `path: null`. Only a current verified twin is
+      `markdown_ready` with `path` set. Source-backed gap states are preserved only while the
+      manifest proves the source path and hash; a source-less gap row is reconciled to
+      `metadata_only`. Implement `fetch_topic` and the thin
       `a2l fetch <topic-or-path>` command: resolve by stable ID first, otherwise show an unambiguous
       fuzzy match, download or retry conversion/integrity repair for that one source, update the map,
       and print its verified citation path.
@@ -1552,8 +1557,9 @@ Steps:
 
 **Task 10 automated implementation completed 2026-08-25.** The metadata phase is typed,
 merge-not-replace, and complete before any file transfer; the file phase is explicit, resumable,
-revision-safe, and refuses excluded, media, broken, lock-file, oversized, and unknown-size sources
-until the appropriate opt-in or one-file confirmation. RichText is sanitized into provenance-backed
+revision-safe, and refuses excluded, media, broken, lock-file, and oversized sources until the
+appropriate opt-in or one-file confirmation. Unknown-size sources are streamed under the default
+per-file ceiling and excluded only from the hard byte-bounded priority set. RichText is sanitized into provenance-backed
 HTML/Markdown artifacts, first-party attachments use the ordinary source pipeline, discussion
 authors are vault-local HMAC pseudonyms by default, and path-null topics can be repaired through
 `a2l fetch`. Outline rendering uses the existing dedicated CDP connection with request-boundary
@@ -2141,7 +2147,7 @@ Doctor could miss tracked `.a2l/private` and submission-receipt state.
       matrix exposed forced-color assertions and an older gitleaks compatibility gap; commits
       `40280a9` and `f5b00c5` fixed both without weakening the checks. All 14 jobs then passed in
       [CI run 33226466258](https://github.com/ManagementMO/agent2learn/actions/runs/33226466258),
-      including the **49-entry** full-production golden candidate and installed-wheel smoke on
+      including the **51-entry** full-production golden candidate and installed-wheel smoke on
       Windows, macOS, and Linux. Live three-OS authentication and outline validation remain manual
       release gates.
 

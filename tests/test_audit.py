@@ -185,6 +185,33 @@ def test_unreadable_metadata_is_reported_instead_of_counted_as_empty(tmp_path: P
     assert "assignments.json has an invalid root" in report
 
 
+def test_unavailable_outlines_are_detailed_in_the_report(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    course = _course(vault.root)
+    course_index.write_content_map(course, [_row(1, "Lecture", "markdown_ready")])
+    (course / "_meta" / "outlines.json").write_text(
+        json.dumps(
+            [
+                {
+                    "source_key": "waterloo:1:topic:9",
+                    "status": "outline_unavailable",
+                    "reason": "TimeoutError",
+                },
+                {"source_key": "waterloo:1:topic:1", "status": "rendered"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    (result,) = audit.audit_vault(vault)
+    report = audit.write_audit(vault, timestamp="2026-08-25T12:00:00Z").read_text(encoding="utf-8")
+
+    assert result.outline_gaps == (("waterloo:1:topic:9", "TimeoutError"),)
+    assert "Outline gaps" in report
+    assert "waterloo:1:topic:9" in report
+    assert "retried on" in report
+
+
 def test_report_is_byte_identical_for_the_same_vault_and_timestamp(tmp_path: Path) -> None:
     vault = _vault(tmp_path)
     course = _course(vault.root)
