@@ -80,9 +80,10 @@ architecture.
   a byte-bounded priority plan as zero bytes; any metadata error keeps `a2l init` before the file
   phase and leaves `metadata_complete` false; saved sessions are reused only for the selected LEARN
   origin; and source-less `conversion_gap` rows reconcile to `metadata_only`. The detect-secrets
-  exclusion regex and stale contract documentation were corrected at the same time. These changes
-  are local working-tree remediation pending a separate commit/review; the complete evidence is in
-  [`PR4_POST_MERGE_AUDIT.md`](PR4_POST_MERGE_AUDIT.md).
+  exclusion regex and stale contract documentation were corrected at the same time. That
+  remediation is **committed and pushed to `main` as `77fafbe`**, so `main` no longer ships the
+  five defects; the complete evidence is in
+  [`docs/PR4_POST_MERGE_AUDIT.md`](docs/PR4_POST_MERGE_AUDIT.md).
 - **The review-remediation checkpoint is committed and pushed to `main` as `276bda3`.** A fresh
   local run on that exact tree reports 858 passing tests and 4 skipped. The exact-SHA remote
   acceptance run is [33291418755](https://github.com/ManagementMO/agent2learn/actions/runs/33291418755);

@@ -20,8 +20,9 @@ CI run was green across all 17 jobs; the fresh post-fix local suite is also gree
 is now strong, while the separately documented live-auth, supervised-upload, and publication gates
 remain open.
 
-The remediation is intentionally uncommitted and unpublished. This Markdown report remains the
-complete audit trail for a later agent or reviewer.
+The remediation was held uncommitted while this report was written, and has since been committed
+and pushed to `main` as `77fafbe`, so `main` no longer ships the five defects. This Markdown report
+remains the complete audit trail for a later agent or reviewer.
 
 ## Continuation evidence
 
@@ -449,8 +450,8 @@ outside the local remediation and still needs its own evidence:
   `SUBMISSION_AVAILABLE` can be enabled.
 - PyPI Trusted Publishing environments and TestPyPI/PyPI approvals remain publication setup work.
 - The README walkthrough recording remains outstanding and deliberately unlinked.
-- The remediation is uncommitted on `main`; a separate review/commit decision remains with the
-  repository owner.
+- The remediation has been committed and pushed to `main` as `77fafbe`; nothing from this audit is
+  left unshipped.
 
 ## Historical fix order
 
