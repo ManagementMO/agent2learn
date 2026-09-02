@@ -461,3 +461,28 @@ def test_post_install_verification_checks_version_and_command_surface(
     upgrade.verify_installation("9.9.9")
 
     assert calls == [["a2l", "--version"], ["a2l", "--help"]]
+
+
+def test_every_mypy_gate_targets_the_interpreter_it_runs_under() -> None:
+    """A mypy gate must parse dependencies with the grammar of the Python it actually runs on.
+
+    The lock resolves a different numpy for 3.12+ than for 3.11, and the newer one's stubs use
+    PEP 695 ``type`` statements. A job on 3.12 that lets mypy fall back to the project's 3.11
+    target therefore fails on ``numpy/__init__.pyi`` before checking a single project file. CI got
+    ``--python-version`` for exactly this reason; the release workflow's first real run (tag
+    v0.1.0, 2026-09-02) failed because it had not.
+    """
+
+    for workflow in ("ci.yml", "release.yml"):
+        text = (WORKFLOWS / workflow).read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if "uv run mypy" in line:
+                assert "--python-version" in line, (workflow, line.strip())
+
+    build = _release_job("build")
+    python = re.search(r'python-version:\s*"([0-9.]+)"', build)
+    assert python is not None, "the release build job must pin its Python"
+    mypy_lines = [line for line in build.splitlines() if "uv run mypy" in line]
+    assert mypy_lines, "the release build job must run mypy"
+    for line in mypy_lines:
+        assert f"--python-version {python.group(1)}" in line, line.strip()

@@ -96,7 +96,10 @@ jobs:
           set -euo pipefail
           uv run ruff check .
           uv run ruff format --check src tests tools
-          uv run mypy src tests tools
+          # Match mypy's grammar to the interpreter this job runs on, as ci.yml does. The lock
+          # resolves numpy 2.5 for 3.12+, whose stubs use PEP 695 `type` statements that the
+          # project's 3.11 default target cannot parse; the first tagged run failed on exactly that.
+          uv run mypy --python-version 3.12 src tests tools
           uv run pip-audit --progress-spinner off
           uv run pytest -q
           uv run python tools/generate_fixtures.py --check
