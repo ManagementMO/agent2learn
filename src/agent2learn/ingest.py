@@ -1344,28 +1344,20 @@ def _materialize_assignments(
         source_hash = sha256(html_bytes).hexdigest()
         key = f"{school.id}:{course.org_unit_id}:dropbox:{assignment_id}"
         prior = manifest.get(key)
+        title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
         if prior is not None:
             source_destination = vault.materialized(prior)
         else:
-            title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
-            candidate = course_dir / "assignments" / paths.safe_name(title)
+            candidate = course_dir / "assignments" / paths.safe_name(f"{title} {assignment_id}")
             assignment_directory = _unique_reserved(candidate, reserved)
             source_destination = assignment_directory / "instructions.html"
-        if prior is not None and prior.sha256 != source_hash:
-            preserved = vault.preserve_revision(key, changed_at=clock.now())
-            if preserved is None and paths.long_path(vault.materialized(prior)).exists():
-                raise A2LError("assignment instructions could not be preserved")
-        paths.ensure_dir(source_destination.parent, root=vault.root)
-        paths.atomic_write_bytes(source_destination, html_bytes, root=vault.root)
 
-        title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
-        markdown_bytes = _richtext_markdown(title, canonical_html).encode("utf-8")
-        if prior is not None and prior.derived.get("markdown") is not None:
-            artifact = prior.derived["markdown"]
+        prior_artifact = prior.derived.get("markdown") if prior is not None else None
+        if prior_artifact is not None:
             markdown_destination = vault.materialized(
                 ManifestEntry(
-                    path=artifact.path,
-                    sha256=artifact.sha256,
+                    path=prior_artifact.path,
+                    sha256=prior_artifact.sha256,
                     source_id="derived",
                     etag=None,
                     last_modified=None,
@@ -1375,6 +1367,23 @@ def _materialize_assignments(
             )
         else:
             markdown_destination = source_destination.with_suffix(".md")
+
+        source_changed = prior is not None and prior.sha256 != source_hash
+        twin_modified = bool(
+            prior_artifact is not None
+            and paths.long_path(markdown_destination).is_file()
+            and _hash_file(markdown_destination)[0] != prior_artifact.sha256
+        )
+        if prior is not None and (source_changed or twin_modified):
+            preserved = vault.preserve_revision(key, changed_at=clock.now())
+            if preserved is None and (
+                twin_modified or paths.long_path(vault.materialized(prior)).exists()
+            ):
+                raise A2LError("assignment instructions could not be preserved")
+        paths.ensure_dir(source_destination.parent, root=vault.root)
+        paths.atomic_write_bytes(source_destination, html_bytes, root=vault.root)
+
+        markdown_bytes = _richtext_markdown(title, canonical_html).encode("utf-8")
         paths.ensure_dir(markdown_destination.parent, root=vault.root)
         paths.atomic_write_bytes(markdown_destination, markdown_bytes, root=vault.root)
         derived = DerivedArtifact(
@@ -1415,7 +1424,7 @@ def _materialize_assignments(
 
 
 def _assignment_richtext(assignment: Mapping[str, object]) -> tuple[str | None, str | None] | None:
-    for field in ("Description", "Instructions", "RichText", "Body"):
+    for field in ("CustomInstructions", "Description", "Instructions", "RichText", "Body"):
         value = assignment.get(field)
         if isinstance(value, str):
             return value, None

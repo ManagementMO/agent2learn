@@ -5,7 +5,9 @@ assumption being wrong. This module runs the full production pipeline against th
 and then exercises the user-facing commands over that vault. It exists because doing exactly this
 by hand on 2026-09-01 found three defects a 912-test suite had missed: assignment folders are
 named ``{title} {dropbox id}`` and grounding could not resolve a typed title, and two empty-result
-paths blamed ``a2l sync`` when sync would have changed nothing.
+paths blamed ``a2l sync`` when sync would have changed nothing. It also exercises the real D2L
+``CustomInstructions`` field so assignment prompts remain eligible grounding sources after the
+full pipeline converts the vault.
 
 Everything runs inside ONE test on purpose. A full pipeline run costs about a minute on the
 Windows runners, which were already near their 20-minute job budget; five function-scoped runs of
@@ -66,6 +68,13 @@ def test_the_cli_works_over_real_pipeline_output(
     pack = course / "assignments" / "Problem Set 1 700001" / "GROUNDING.md"
     assert pack.is_file()
     assert pack.read_text(encoding="utf-8").splitlines()[0].endswith("· Problem Set 1")
+    prompt = course / "assignments" / "Problem Set 1 700001" / "instructions.md"
+    assert prompt.read_text(encoding="utf-8") == (
+        "# Problem Set 1\n\nUse the synthetic course model and cite the prompt.\n"
+    )
+    pack_text = pack.read_text(encoding="utf-8")
+    assert "## Assignment prompt" in pack_text
+    assert "assignments/Problem Set 1 700001/instructions.md:1" in pack_text
 
     # --- An assignment nothing matches must not blame sync: ten verified twins exist and
     # 'Team Report' simply shares no term with any of them.

@@ -24,7 +24,7 @@ from agent2learn.convert import (
     convert_source,
     convert_vault,
 )
-from agent2learn.vault import ManifestEntry, Vault
+from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
 
 def test_pdf_conversion_is_deterministic_and_page_marked() -> None:
@@ -359,6 +359,81 @@ def test_convert_vault_installs_hash_linked_twin_and_is_idempotent(tmp_path: Pat
     assert artifact.derived["markdown"].source_sha256 == entry.sha256
     assert artifact.derived["markdown"].ocr_words_per_page == 80
     assert artifact.derived["markdown"].page_coverage[0]["page"] == 1
+
+
+def test_convert_vault_preserves_a_sanitized_assignment_prompt_twin(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault")
+    source = (
+        vault.root
+        / "Winter 2026"
+        / "COURSE101"
+        / "assignments"
+        / "Problem Set 700001"
+        / "instructions.html"
+    )
+    source.parent.mkdir(parents=True)
+    source_bytes = b"<p>Use the prompt.</p>"
+    twin_bytes = b"# Problem Set 700001\n\nUse the prompt.\n"
+    source.write_bytes(source_bytes)
+    twin = source.with_suffix(".md")
+    twin.write_bytes(twin_bytes)
+    source_sha256 = _sha256(source_bytes)
+    entry = ManifestEntry(
+        path="Winter 2026/COURSE101/assignments/Problem Set 700001/instructions.html",
+        sha256=source_sha256,
+        source_id="700001",
+        etag=None,
+        last_modified=None,
+        size=len(source_bytes),
+        fetched_at="2026-08-25T12:00:00Z",
+        derived={
+            "markdown": DerivedArtifact(
+                path="Winter 2026/COURSE101/assignments/Problem Set 700001/instructions.md",
+                sha256=_sha256(twin_bytes),
+                source_sha256=source_sha256,
+                tool="richtext-sanitizer",
+                tool_version="1",
+                created_at="2026-08-25T12:00:00Z",
+            )
+        },
+    )
+    vault.manifest()
+    vault.mark("uwaterloo:111111:dropbox:700001", entry)
+    vault.save_manifest()
+
+    report = convert_vault(vault, backend=_Backend(), fallback=_Backend())
+
+    assert report.converted == 0
+    assert report.skipped == 1
+    assert twin.read_bytes() == twin_bytes
+    current = Vault(vault.root).entry("uwaterloo:111111:dropbox:700001")
+    assert current is not None
+    assert current.derived["markdown"].tool == "richtext-sanitizer"
+
+
+def test_richtext_prompt_compatibility_requires_the_assignment_path() -> None:
+    entry = ManifestEntry(
+        path="Winter 2026/COURSE101/assignments/Problem Set 700001/instructions.html",
+        sha256="a" * 64,
+        source_id="700001",
+        etag=None,
+        last_modified=None,
+        size=1,
+        fetched_at="2026-08-25T12:00:00Z",
+    )
+    artifact = DerivedArtifact(
+        path="Winter 2026/COURSE101/assignments/Problem Set 700001/instructions.md",
+        sha256="b" * 64,
+        source_sha256=entry.sha256,
+        tool="richtext-sanitizer",
+        tool_version="1",
+        created_at="2026-08-25T12:00:00Z",
+    )
+
+    assert convert._is_assignment_prompt_artifact(entry, artifact)
+    unrelated_entry = replace(entry, path="Winter 2026/COURSE101/content/instructions.html")
+    unrelated_artifact = replace(artifact, path="Winter 2026/COURSE101/content/instructions.md")
+    assert not convert._is_assignment_prompt_artifact(unrelated_entry, unrelated_artifact)
 
 
 def test_source_classification_failure_is_a_scoped_conversion_gap(

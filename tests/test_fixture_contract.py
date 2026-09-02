@@ -116,7 +116,15 @@ SCHEMAS: dict[str, dict[str, set[str]]] = {
     "content_toc_course101.json": {"$": {"Modules"}},
     "content_toc_course202.json": {"$": {"Modules"}},
     "dropbox_folders_course101.json": {
-        "*": {"Id", "Name", "GradeItemId", "DueDate", "GroupTypeId", "Availability"}
+        "*": {
+            "Id",
+            "Name",
+            "CustomInstructions",
+            "GradeItemId",
+            "DueDate",
+            "GroupTypeId",
+            "Availability",
+        }
     },
     "submissions_readback_course101.json": {"*": {"Entity", "Submissions"}},
     "news_course101.json": {
@@ -200,6 +208,15 @@ def test_submission_fixture_matches_documented_entity_dropbox_shape() -> None:
     assert isinstance(file, dict)
     assert isinstance(file.get("FileName"), str)
     assert isinstance(file.get("Size"), int)
+
+
+def test_dropbox_custom_instructions_match_the_rich_text_shape() -> None:
+    """Exercise the canonical D2L assignment-prompt field in the public fixture corpus."""
+    records = load(API / "dropbox_folders_course101.json")
+    prompt = next(record["CustomInstructions"] for record in records if record["Id"] == 700001)
+    assert isinstance(prompt, dict)
+    assert isinstance(prompt.get("Html"), str)
+    assert prompt["Html"]
 
 
 @pytest.mark.parametrize(

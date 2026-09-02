@@ -294,6 +294,9 @@ def dropbox_folders_a() -> object:
         {
             "Id": 700001,
             "Name": "Problem Set 1",
+            "CustomInstructions": {
+                "Html": "<p>Use the synthetic course model and cite the prompt.</p>"
+            },
             "GradeItemId": 600001,
             "DueDate": DUE_A,
             "GroupTypeId": None,

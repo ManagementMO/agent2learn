@@ -25,7 +25,7 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-09-01
+## Current state — 2026-09-02
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
 - **Tasks 0 through 23 are complete as automated implementations. The v0.1 command surface is
@@ -121,6 +121,23 @@ architecture.
   the pipeline once, and the matrix job's `timeout-minutes` is 30, documented in `ci.yml` as a
   hang guard rather than a performance budget. Windows CI is the slowest gate by a factor of 4–8
   and is the one to watch when adding pipeline-backed tests.
+- **Assignment-prompt follow-up — 2026-09-02.** The synthetic Dropbox corpus now carries one
+  canonical D2L `CustomInstructions` RichText record, and the real metadata → file → conversion →
+  index → grounding path proves that `assignments.json` records `instructions_md`. Fresh prompt
+  folders use `{title} {dropbox id}` consistently, the specialized `richtext-sanitizer` twin is
+  not re-converted as generic HTML, and a locally modified prompt twin is preserved with a
+  `local-modification` history marker before refresh. The deliberate golden-vault update adds the
+  two prompt files and changes only the related manifest, assignment metadata, and README hashes;
+  the golden tree now contains 53 files. Focused ingest/converter regressions and the permanent
+  CLI-over-real-pipeline test cover the behavior.
+- **Release-gate correction — 2026-09-02.** The only `v0.1.0` tag run
+  ([33587301177](https://github.com/ManagementMO/agent2learn/actions/runs/33587301177)) failed
+  closed before build because the release job ran Python 3.12 while mypy defaulted to the project
+  3.11 target. `b1288da` corrects that target; its exact-tip CI run
+  ([33587798217](https://github.com/ManagementMO/agent2learn/actions/runs/33587798217)) is green
+  across all 17 jobs, and the local release-compatible gate passes. The tag still points at the
+  older commit and no package or GitHub release exists, so a fresh matching tag is still required
+  after this follow-up lands.
 - **The review-remediation checkpoint is committed and pushed to `main` as `276bda3`.** A fresh
   local run on that exact tree reports 858 passing tests and 4 skipped. The exact-SHA remote
   acceptance run is [33291418755](https://github.com/ManagementMO/agent2learn/actions/runs/33291418755);
@@ -183,7 +200,7 @@ architecture.
   14-gate perturbation harness plus two one-shot transport perturbations, but recorded as a
   deviation rather than presented as compliance.
 - **The golden vault now exists and is the repository's regression tripwire.**
-  `tests/fixtures/golden_vault.json` pins 51 files by SHA-256 after one full production
+  `tests/fixtures/golden_vault.json` pins 53 files by SHA-256 after one full production
   metadata → explicit outline state → download → convert → index → snapshot → audit run against the
   synthetic API.
   **Never regenerate it to make an unexplained diff green** — a changed hash is either an
@@ -302,7 +319,7 @@ architecture.
   IDs, and installed-wheel skill discovery is a matrix smoke. Final evidence: 637 passed / 4
   skipped / zero warnings locally; independent whole-branch review clean; all 14 jobs passed in
   [CI run 33226466258](https://github.com/ManagementMO/agent2learn/actions/runs/33226466258), including
-  the 51-entry golden vault and installed-wheel smoke on Windows, macOS, and Linux.
+  the then-51-entry golden vault and installed-wheel smoke on Windows, macOS, and Linux.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,
@@ -322,13 +339,10 @@ architecture.
   guard, a `datetime.now` smuggled into a vault writer, a filename budget changed from 60 to 55,
   and a CRLF forced into every generated file. Three defects in these tasks were hidden *behind a
   passing job*, so a green badge is not evidence on its own.
-- One small coding follow-up from the 2026-09-01 audit, not release-blocking: the synthetic Dropbox
-  fixtures carry no `CustomInstructions`, so `assignments.json` has no `instructions_md` for any
-  assignment and the `assignment_prompt` role of a grounding pack has never been exercised against
-  real pipeline output. Adding instructions to one fixture folder would close that, at the cost of
-  a deliberate, explained golden-vault regeneration. The CLI-over-real-pipeline check that found
-  the three defects is now a permanent gate, `tests/test_cli_over_pipeline.py`, and was proven to
-  bite by perturbing the resolver back to folder-name-only (8 failures).
+- The 2026-09-01 coding follow-up is closed by the 2026-09-02 assignment-prompt work above. The
+  CLI-over-real-pipeline check that found the earlier three defects remains a permanent gate,
+  `tests/test_cli_over_pipeline.py`, and was proven to bite by perturbing the resolver back to
+  folder-name-only (8 failures).
 - Known open items, none of them coding work: the `auth_hosts()` entries have no recorded
   same-device host evidence yet (`docs/AUTHENTICATION.md` now presents them as provider-boundary
   reasoning rather than observation) and the list has never run against a live instance, which

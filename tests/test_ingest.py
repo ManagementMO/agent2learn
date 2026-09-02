@@ -625,7 +625,7 @@ def test_assignment_richtext_is_sanitized_and_attachments_use_file_pipeline(
 
     metadata = ingest_metadata(fake_client, vault, fake_client.school)
     course_dir = metadata.courses[0].directory
-    instructions = course_dir / "assignments" / "Problem Set 1" / "instructions.html"
+    instructions = course_dir / "assignments" / "Problem Set 1 700001" / "instructions.html"
     instructions_md = instructions.with_suffix(".md")
     html = instructions.read_text(encoding="utf-8")
     assert "alert" not in html
@@ -662,6 +662,98 @@ def test_assignment_richtext_is_sanitized_and_attachments_use_file_pipeline(
     assert "(Winter 2026/COURSE101_1261/" not in index
 
 
+def test_d2l_custom_instructions_are_materialized_as_assignment_prompt(tmp_path: Path) -> None:
+    assignment = {
+        "Id": 700001,
+        "Name": "Problem Set 1",
+        "CustomInstructions": {"Html": "<p>Use the synthetic course model.</p>"},
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc()},
+        responses={"/dropbox/folders/": [assignment]},
+    )
+
+    metadata = ingest_metadata(fake_client, Vault(tmp_path), fake_client.school)
+    course_dir = metadata.courses[0].directory
+    instructions = course_dir / "assignments" / "Problem Set 1 700001" / "instructions.html"
+    instructions_md = instructions.with_suffix(".md")
+
+    assert instructions.is_file()
+    assert "synthetic course model" in instructions.read_text(encoding="utf-8")
+    assert instructions_md.is_file()
+    assignment_row = next(
+        row
+        for row in json.loads(
+            (course_dir / "_meta" / "assignments.json").read_text(encoding="utf-8")
+        )
+        if row["id"] == 700001
+    )
+    assert assignment_row["instructions_md"] == instructions_md.relative_to(tmp_path).as_posix()
+
+
+def test_assignment_prompt_refresh_preserves_a_locally_modified_twin(tmp_path: Path) -> None:
+    assignment = {
+        "Id": 700001,
+        "Name": "Problem Set 1",
+        "Description": {"Html": "<p>The official prompt.</p>"},
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc()},
+        responses={"/dropbox/folders/": [assignment]},
+    )
+    vault = Vault(tmp_path)
+
+    metadata = ingest_metadata(fake_client, vault, fake_client.school)
+    prompt = (
+        metadata.courses[0].directory / "assignments" / "Problem Set 1 700001" / "instructions.md"
+    )
+    prompt.write_text("# Student annotation\n", encoding="utf-8")
+
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    assert prompt.read_text(encoding="utf-8") == "# Problem Set 1\n\nThe official prompt.\n"
+    history = vault.history_bucket("uwaterloo:111111:dropbox:700001")
+    assert any(
+        path.read_text(encoding="utf-8") == "# Student annotation\n"
+        for path in history.rglob("instructions.md")
+    )
+    revisions = tuple(history.glob("*/revision.json"))
+    assert revisions
+    revision = json.loads(revisions[0].read_text(encoding="utf-8"))
+    assert revision["derived"]["markdown"]["status"] == "local-modification"
+
+
+def test_assignment_prompt_does_not_overwrite_modified_twin_when_source_is_missing(
+    tmp_path: Path,
+) -> None:
+    assignment = {
+        "Id": 700001,
+        "Name": "Problem Set 1",
+        "Description": {"Html": "<p>The official prompt.</p>"},
+    }
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc()},
+        responses={"/dropbox/folders/": [assignment]},
+    )
+    vault = Vault(tmp_path)
+
+    metadata = ingest_metadata(fake_client, vault, fake_client.school)
+    source = (
+        metadata.courses[0].directory / "assignments" / "Problem Set 1 700001" / "instructions.html"
+    )
+    prompt = source.with_suffix(".md")
+    source.unlink()
+    prompt.write_text("# Student annotation\n", encoding="utf-8")
+
+    with pytest.raises(A2LError, match="could not be preserved"):
+        ingest_metadata(fake_client, vault, fake_client.school)
+
+    assert prompt.read_text(encoding="utf-8") == "# Student annotation\n"
+
+
 def test_same_named_assignments_get_distinct_instruction_directories(tmp_path: Path) -> None:
     assignments = [
         {
@@ -684,7 +776,10 @@ def test_same_named_assignments_get_distinct_instruction_directories(tmp_path: P
 
     assignment_root = metadata.courses[0].directory / "assignments"
     instruction_paths = sorted(assignment_root.glob("*/instructions.html"))
-    assert [path.parent.name for path in instruction_paths] == ["Problem Set", "Problem Set_2"]
+    assert [path.parent.name for path in instruction_paths] == [
+        "Problem Set 700001",
+        "Problem Set 700002",
+    ]
     assert instruction_paths[0].read_text(encoding="utf-8") != instruction_paths[1].read_text(
         encoding="utf-8"
     )

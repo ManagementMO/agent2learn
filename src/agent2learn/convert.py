@@ -40,6 +40,8 @@ DEFAULT_OCR_WORDS_PER_PAGE = 80
 MIN_PDF_CHARS = 200
 OCR_DPI = 300
 CONVERTER_VERSION = "1"
+RICH_TEXT_TOOL = "richtext-sanitizer"
+RICH_TEXT_TOOL_VERSION = "1"
 OCR_SETUP_ACTION = "install Tesseract with the 'eng' language pack, then rerun: a2l sync"
 MAX_ZIP_MEMBERS = 1_000
 MAX_ZIP_UNCOMPRESSED = 64 * 1024 * 1024
@@ -1106,15 +1108,33 @@ def _artifact_is_current(
     expected_version: str,
     expected_threshold: int | None,
 ) -> bool:
-    if (
-        artifact.source_sha256 != entry.sha256
-        or artifact.tool != expected_tool
-        or artifact.tool_version != expected_version
-        or artifact.ocr_words_per_page != expected_threshold
+    # Ingest renders assignment prompts with title context that generic HTML conversion does not
+    # have. Preserve that specialized twin, but only after the path, tool, version, and hashes are
+    # all checked; every other HTML artifact still has to match the generic converter exactly.
+    tool_is_current = artifact.tool == expected_tool and artifact.tool_version == expected_version
+    if not tool_is_current and not (
+        expected_tool == "html-sanitizer"
+        and artifact.tool == RICH_TEXT_TOOL
+        and artifact.tool_version == RICH_TEXT_TOOL_VERSION
+        and _is_assignment_prompt_artifact(entry, artifact)
     ):
+        return False
+    if artifact.source_sha256 != entry.sha256 or artifact.ocr_words_per_page != expected_threshold:
         return False
     path = _artifact_path(vault, artifact)
     return paths.long_path(path).is_file() and _hash_file(path)[0] == artifact.sha256
+
+
+def _is_assignment_prompt_artifact(entry: ManifestEntry, artifact: DerivedArtifact) -> bool:
+    """Recognize only the ingest-owned HTML/Markdown pair used for an assignment prompt."""
+
+    source = PurePosixPath(entry.path)
+    derived = PurePosixPath(artifact.path)
+    return (
+        source.name.casefold() == "instructions.html"
+        and any(part.casefold() == "assignments" for part in source.parts)
+        and derived == source.with_suffix(".md")
+    )
 
 
 def _artifact_path(vault: Vault, artifact: DerivedArtifact) -> Path:

@@ -4,6 +4,9 @@
       "EndDate": null,
       "StartDate": "2026-01-05T14:00:00.000Z"
     },
+    "CustomInstructions": {
+      "Html": "<p>Use the synthetic course model and cite the prompt.</p>"
+    },
     "DueDate": "2026-02-06T04:59:00.000Z",
     "GradeItemId": 600001,
     "GroupTypeId": null,
