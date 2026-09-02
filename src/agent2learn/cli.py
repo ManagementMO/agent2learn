@@ -424,7 +424,10 @@ def ground(
     course: str = typer.Argument(
         ..., help="Course code, course folder, name, or term-qualified selector."
     ),
-    item: str = typer.Argument(..., help="Assignment or lab name, such as Lab4 or 'Lab 4'."),
+    item: str = typer.Argument(
+        ...,
+        help="Assignment title (e.g. 'Lab 4' or Lab4), its LEARN Dropbox id, or its folder name.",
+    ),
 ) -> None:
     """Assemble a cited grounding pack from current, provenance-backed class material."""
 

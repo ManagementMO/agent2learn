@@ -4,8 +4,13 @@ Coverage is a regression signal, not a proof that a safety boundary is correct. 
 the full suite with branch coverage on one representative matrix entry (Ubuntu, Python 3.12) and
 enforces the floor in `pyproject.toml`. The other matrix entries still run the full test suite.
 
-The latest local measurement was taken on macOS, Python 3.11, on 2026-08-31, at commit `9876c57`:
+The latest local measurement was taken on macOS, Python 3.11, on 2026-09-01, on the tree that
+became the post-audit remediation commit (see `AGENTS.md`):
 
+```
+uv run pytest --cov=agent2learn --cov-branch --cov-report=term-missing
+928 passed, 4 skipped
+TOTAL: 79.26% branch-aware coverage (11,626 statements; 4,298 branches)
 ```
 uv run pytest --cov=agent2learn --cov-branch --cov-report=term-missing
 898 passed, 4 skipped

@@ -113,21 +113,67 @@ def distinguishing_terms(value: str) -> set[str]:
     return {token for token in tok(value) if token not in GENERIC}
 
 
+@dataclass(frozen=True)
+class _AssignmentRef:
+    """One local assignment folder joined to the ``assignments.json`` row that produced it."""
+
+    title: str
+    folder_id: str | None
+    directory: Path
+
+    def answers_to(self, wanted: str) -> bool:
+        """Whether a compacted selector names this assignment by title, id, or folder."""
+
+        forms = {_compact(self.title), _compact(self.directory.name)}
+        if self.folder_id is not None:
+            forms.add(_compact(self.folder_id))
+            forms.add(_compact(f"{self.title} {self.folder_id}"))
+        return wanted in forms
+
+
 def resolve_item(course_dir: Path, item: str) -> Path:
     """Resolve one coursework item to its assignment directory, refusing ambiguity.
 
-    Matching compares alphanumeric-only casefolded forms, so ``Lab4``, ``Lab 4``, and ``lab_4``
-    all name the same folder.  The selector is never treated as a path: a caller cannot walk out
-    of the course with ``../``.
+    The sync pipeline names a folder ``{title} {dropbox id}`` so two assignments with one title
+    cannot collide, but a student types the title.  A selector therefore matches on any of the
+    title, the bare id, or the folder name, compared as alphanumeric-only casefolded forms so
+    ``Lab4``, ``Lab 4``, and ``lab_4`` agree.  Two assignments sharing a title make the bare title
+    ambiguous, and the error says which id form to use instead.  The selector is never treated as
+    a path: a caller cannot walk out of the course with ``../``.
     """
 
+    return _resolve_ref(course_dir, item).directory
+
+
+def _resolve_ref(course_dir: Path, item: str) -> _AssignmentRef:
     _validate_selector(item, label="grounding item")
     wanted = _compact(item)
     if not wanted:
         raise A2LError("grounding item must contain a letter or digit")
+    refs = _assignment_refs(course_dir)
+    matches = [ref for ref in refs if ref.answers_to(wanted)]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        options = ", ".join(
+            f"'{ref.title} {ref.folder_id}'" if ref.folder_id else f"'{ref.directory.name}'"
+            for ref in matches
+        )
+        raise A2LError(f"grounding item {item!r} is ambiguous; name one of: {options}")
+    raise A2LError("grounding item was not found in the local course")
+
+
+def _assignment_refs(course_dir: Path) -> tuple[_AssignmentRef, ...]:
+    """Pair every assignment folder with its ``assignments.json`` row.
+
+    A row is joined to the folder whose name compacts to ``{title} {id}`` or, for a vault written
+    before ids were appended, to plain ``{title}``.  A folder with no row keeps its own name as its
+    title so an older vault still resolves.
+    """
+
     assignments = course_dir / "assignments"
     try:
-        candidates = [
+        folders = [
             path
             for path in sorted(paths.long_path(assignments).iterdir())
             if path.is_dir() and not paths.is_link(path)
@@ -137,12 +183,35 @@ def resolve_item(course_dir: Path, item: str) -> Path:
     except OSError as exc:
         raise A2LError("local assignments are unreadable") from exc
 
-    matches = [path for path in candidates if _compact(path.name) == wanted]
-    if len(matches) == 1:
-        return assignments / matches[0].name
-    if len(matches) > 1:
-        raise A2LError("grounding item is ambiguous; name the assignment folder exactly")
-    raise A2LError("grounding item was not found in the local course")
+    rows: list[tuple[str, str | None]] = []
+    for row in _json_rows(course_dir / "_meta" / "assignments.json"):
+        title = row.get("title")
+        if not isinstance(title, str) or not title.strip():
+            continue
+        identifier = row.get("id")
+        usable = isinstance(identifier, str) or (
+            isinstance(identifier, int) and not isinstance(identifier, bool)
+        )
+        rows.append((title, str(identifier) if usable else None))
+
+    refs: list[_AssignmentRef] = []
+    for folder in folders:
+        directory = assignments / folder.name
+        compact_folder = _compact(folder.name)
+        joined = next(
+            (
+                (title, identifier)
+                for title, identifier in rows
+                if compact_folder
+                in {_compact(f"{title} {identifier}") if identifier else "", _compact(title)}
+            ),
+            None,
+        )
+        if joined is None:
+            refs.append(_AssignmentRef(title=folder.name, folder_id=None, directory=directory))
+        else:
+            refs.append(_AssignmentRef(title=joined[0], folder_id=joined[1], directory=directory))
+    return tuple(refs)
 
 
 def rank_lectures(
@@ -196,11 +265,11 @@ def select_sources(vault: Vault, course_dir: Path, item: str) -> tuple[Grounding
     digest, is omitted rather than cited with a caveat.
     """
 
-    assignment_dir = resolve_item(course_dir, item)
+    ref = _resolve_ref(course_dir, item)
     verified = _verified_sources(vault, course_dir)
-    title = _assignment_title(course_dir, item, fallback=assignment_dir.name)
+    title = ref.title
 
-    prompt = _prompt_source(vault, course_dir, item, verified)
+    prompt = _prompt_source(vault, course_dir, ref, verified)
     selected: list[GroundingSource] = []
     claimed: set[str] = set()
     if prompt is not None:
@@ -230,7 +299,9 @@ def select_sources(vault: Vault, course_dir: Path, item: str) -> tuple[Grounding
             if _resolved(candidate) not in by_twin
         ),
     ]
-    task_terms = [item, title]
+    # Rank on the assignment's words, not on the selector the student happened to type: a Dropbox
+    # folder id is not a lecture term and must neither inflate nor poison retrieval.
+    task_terms = [title]
     if prompt is not None:
         task_terms.append(_read_excerpt(vault.root / PurePosixPath(prompt.citation_path)) or "")
 
@@ -260,12 +331,22 @@ def write_grounding_pack(vault: Vault, course: str, item: str) -> GroundingPack:
     """Write ``GROUNDING.md`` beside the assignment and return the pack it recorded."""
 
     course_dir = course_index.resolve_course(vault, course)
-    assignment_dir = resolve_item(course_dir, item)
+    ref = _resolve_ref(course_dir, item)
+    assignment_dir = ref.directory
+    title = ref.title
     sources = select_sources(vault, course_dir, item)
     if not sources:
-        raise A2LError("no current course material was verified for this item; run: a2l sync")
+        # Distinguish "this course has nothing verified" (a sync problem) from "nothing verified
+        # matched this assignment" (not a sync problem). Sending someone to `a2l sync` for the
+        # second case is a false next action.
+        if not _verified_sources(vault, course_dir):
+            raise A2LError("this course has no verified material yet; run: a2l sync")
+        raise A2LError(
+            f"no verified course material matched {title!r}: no proven prompt, no rendered "
+            "outline, and no lecture shares a term with it, so the pack would be empty. Check the "
+            "assignment in LEARN, or run `a2l where <term>` to find the material by hand."
+        )
     course_code, course_name = _course_identity(course_dir)
-    title = _assignment_title(course_dir, item, fallback=assignment_dir.name)
     generated_at = clock.stamp()
     pack = GroundingPack(
         course=paths.rel_posix(course_dir, vault.root),
@@ -348,20 +429,26 @@ def _verify(
 def _prompt_source(
     vault: Vault,
     course_dir: Path,
-    item: str,
+    ref: _AssignmentRef,
     verified: Mapping[str, _Verified],
 ) -> GroundingSource | None:
     """Return the assignment prompt only when the manifest proves the twin it declares.
 
     ``assignments.json`` records the instructions twin and the source digest it was rendered
     from.  Both must still match a manifest entry, so an invented or locally written
-    ``instructions.md`` is never presented as the official prompt.
+    ``instructions.md`` is never presented as the official prompt.  The row is matched by Dropbox
+    id when the folder carries one, and by title otherwise, so two same-titled assignments cannot
+    hand each other their prompts.
     """
 
-    wanted = _compact(item)
     for row in _json_rows(course_dir / "_meta" / "assignments.json"):
         title = row.get("title")
-        if not isinstance(title, str) or _compact(title) != wanted:
+        if not isinstance(title, str):
+            continue
+        if ref.folder_id is not None:
+            if str(row.get("id")) != ref.folder_id:
+                continue
+        elif _compact(title) != _compact(ref.title):
             continue
         declared = row.get("instructions_md")
         digest = row.get("instructions_sha256")
@@ -425,13 +512,17 @@ def _matches_assignment(module_path: Sequence[str], title: str) -> bool:
     return bool(wanted) and any(_compact(part) == wanted for part in module_path)
 
 
-def _assignment_title(course_dir: Path, item: str, *, fallback: str) -> str:
-    wanted = _compact(item)
-    for row in _json_rows(course_dir / "_meta" / "assignments.json"):
-        title = row.get("title")
-        if isinstance(title, str) and _compact(title) == wanted:
-            return title
-    return fallback
+def assignment_title(course_dir: Path, item: str, *, fallback: str) -> str:
+    """Return the ``assignments.json`` title an item selector refers to, or ``fallback``.
+
+    ``a2l check`` uses this so a scoped report names the assignment the way the course does,
+    rather than echoing whichever folder name or id the student happened to type.
+    """
+
+    try:
+        return _resolve_ref(course_dir, item).title
+    except A2LError:
+        return fallback
 
 
 def _course_identity(course_dir: Path) -> tuple[str, str]:
@@ -601,6 +692,7 @@ __all__ = [
     "TOP_LECTURES",
     "GroundingPack",
     "GroundingSource",
+    "assignment_title",
     "distinguishing_terms",
     "rank_lectures",
     "resolve_item",

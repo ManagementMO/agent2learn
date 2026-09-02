@@ -455,3 +455,63 @@ def test_the_public_retrieve_helper_matches_the_index_it_wraps(
     assert from_sequence[0].path.endswith("MIP-Modelling.md")
     assert from_sequence[0].retrieval_score_bp >= STRONG_MATCH_FLOOR_BP
     assert len(from_sequence) <= TOP_CITATIONS
+
+
+def test_an_empty_assignment_scope_names_the_scope_not_sync(
+    fixture_course: tuple[Vault, Path], tmp_path: Path
+) -> None:
+    """Verified material exists; the assignment scope just matched none of it.
+
+    Telling the student to run `a2l sync` would be a false next action, and it would hide the
+    real remedy: scan the whole course instead.
+    """
+    _vault, course = fixture_course
+    folder = course / "assignments" / "Team Report 700003"
+    folder.mkdir(parents=True)
+    (course / "_meta" / "assignments.json").write_text(
+        json.dumps([{"id": 700003, "title": "Team Report"}]), encoding="utf-8"
+    )
+    draft = folder / "DRAFT.md"
+    draft.write_text("we use binary variables y_i in {0,1}\n", encoding="utf-8")
+
+    with pytest.raises(A2LError) as raised:
+        check(draft, course)
+
+    message = str(raised.value)
+    assert "a2l sync" not in message
+    assert "Team Report" in message
+    assert "whole course" in message or "--assignment" in message
+
+
+def test_a_course_with_nothing_verified_still_points_at_sync(tmp_path: Path) -> None:
+    root = Vault.claim(tmp_path / "vault")
+    course = root / "Spring 2026" / "COURSE101_1265"
+    write_content_map(course, [])
+    draft = _draft(tmp_path, "we use binary variables y_i in {0,1}")
+
+    with pytest.raises(A2LError, match="a2l sync"):
+        check(draft, course)
+
+
+def test_markdown_images_are_not_claims_and_do_not_pollute_claim_text() -> None:
+    """A data-URI or image link is not a checkable statement.
+
+    Left in, a base64 blob becomes dozens of junk tokens that both inflate |C| for real text on
+    the same line and can 'match' an identical blob in a source twin, producing a confident
+    citation of nothing.
+    """
+    draft = "\n".join(
+        [
+            "![tiny](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP6DwABBQEBzOSxNgAAAABJRU5ErkJggg==)",
+            "",
+            "The relaxation gap is greater than zero ![fig](figures/gap.png) "
+            "for degenerate instances.",
+        ]
+    )
+
+    claims = segment(draft, ".md")
+
+    assert len(claims) == 1, [claim.text for claim in claims]
+    assert "base64" not in claims[0].text
+    assert "figures/gap.png" not in claims[0].text
+    assert "relaxation gap" in claims[0].text

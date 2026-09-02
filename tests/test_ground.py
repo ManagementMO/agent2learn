@@ -12,7 +12,9 @@ from typer.testing import CliRunner
 
 from agent2learn import config
 from agent2learn.cli import app
+from agent2learn.errors import A2LError
 from agent2learn.ground import (
+    assignment_title,
     rank_lectures,
     resolve_item,
     select_sources,
@@ -395,3 +397,91 @@ def test_public_ground_command_is_local_and_has_no_solve_option(
     assert "No such option: --solve" in strip_ansi(solve.output)
     assert help_result.exit_code == 0
     assert "--solve" not in strip_ansi(help_result.output)
+
+
+# ------------------------------------------------------------------------------------------
+# The production pipeline names assignment folders ``{title} {dropbox id}`` (see
+# ingest.py) so two assignments with one title cannot collide. Grounding must accept the
+# title a student actually types, the bare id, and the folder name itself, and must map every
+# form back to the assignments.json title that drives prompt lookup and data matching.
+# ------------------------------------------------------------------------------------------
+
+
+def _pipeline_shaped_course(
+    tmp_path: Path, *, titles: tuple[tuple[str, int], ...]
+) -> tuple[Vault, Path]:
+    root = Vault.claim(tmp_path / "vault")
+    vault = Vault(root)
+    course = root / "Term 1261" / "COURSE101_sec01_1261_1261"
+    for title, folder_id in titles:
+        (course / "assignments" / f"{title} {folder_id}").mkdir(parents=True)
+    rows: list[dict[str, object]] = []
+    row, _entry = _add_source(
+        vault,
+        course,
+        source_key="uwaterloo:101:topic:20",
+        source_id="20",
+        relative="content/Lectures/Flow.pdf",
+        markdown="Practice upload material about network flow capacity.\n",
+        title="Flow",
+        module_path=("Lectures",),
+    )
+    rows.append(row)
+    vault.save_manifest()
+    write_content_map(course, rows)
+    _write_json(
+        course / "_meta" / "assignments.json",
+        [{"id": folder_id, "title": title} for title, folder_id in titles],
+    )
+    _write_json(course / "_meta" / "outlines.json", [])
+    return vault, course
+
+
+@pytest.mark.parametrize(
+    "item", ["Practice Upload", "practice upload", "700002", "Practice Upload 700002"]
+)
+def test_pipeline_named_folders_resolve_from_title_id_or_folder_name(
+    tmp_path: Path, item: str
+) -> None:
+    _vault, course = _pipeline_shaped_course(tmp_path, titles=(("Practice Upload", 700002),))
+
+    assert resolve_item(course, item) == course / "assignments" / "Practice Upload 700002"
+
+
+def test_every_item_form_maps_back_to_the_assignments_json_title(tmp_path: Path) -> None:
+    _vault, course = _pipeline_shaped_course(tmp_path, titles=(("Practice Upload", 700002),))
+
+    for item in ("Practice Upload", "700002", "Practice Upload 700002"):
+        assert assignment_title(course, item, fallback="x") == "Practice Upload", item
+
+
+def test_same_titled_assignments_require_the_id_form(tmp_path: Path) -> None:
+    _vault, course = _pipeline_shaped_course(tmp_path, titles=(("Quiz", 700010), ("Quiz", 700011)))
+
+    with pytest.raises(A2LError, match="ambiguous"):
+        resolve_item(course, "Quiz")
+    assert resolve_item(course, "700011") == course / "assignments" / "Quiz 700011"
+    assert resolve_item(course, "Quiz 700010") == course / "assignments" / "Quiz 700010"
+
+
+def test_ranking_terms_come_from_the_title_not_the_folder_id(tmp_path: Path) -> None:
+    """A folder id is not a lecture term; it must never inflate or poison retrieval."""
+    vault, course = _pipeline_shaped_course(tmp_path, titles=(("Practice Upload", 700002),))
+
+    selected = select_sources(vault, course, "Practice Upload 700002")
+
+    assert [source.role for source in selected] == ["lecture"]
+
+
+def test_an_empty_pack_names_the_real_cause_not_sync(tmp_path: Path) -> None:
+    """Verified material exists; nothing matched this item. Blaming sync is a false next action."""
+    vault, course = _pipeline_shaped_course(tmp_path, titles=(("Team Report", 700003),))
+    from agent2learn.index import resolve_course as _rc  # noqa: F401
+
+    with pytest.raises(A2LError) as raised:
+        write_grounding_pack(vault, "COURSE101", "Team Report")
+
+    message = str(raised.value)
+    assert "a2l sync" not in message
+    assert "Team Report" in message
+    assert "matched" in message or "match" in message
