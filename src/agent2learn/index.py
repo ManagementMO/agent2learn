@@ -339,19 +339,9 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
             continue
         entry = manifest.get(source_key)
         if entry is None:
-            if row.get("availability") in _PRESERVED_GAPS:
-                next_action = row.get("next_action")
-                row.update(
-                    {
-                        "source_path": None,
-                        "path": None,
-                        "next_action": next_action
-                        if isinstance(next_action, str) and next_action
-                        else "retry conversion",
-                    }
-                )
-                reconciled.append(row)
-                continue
+            # Every source-backed gap needs a manifest entry as its proof. Without that proof,
+            # including for conversion/integrity/format gaps, this row is metadata again and must
+            # offer fetch rather than a conversion-only or integrity-only action.
             row.update(
                 {
                     "availability": "metadata_only",

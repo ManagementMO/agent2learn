@@ -49,11 +49,12 @@ Clearing removes the saved session too, and your vault is unaffected.
 No. Run `a2l auth` on each machine. Never paste a session, cookie, or profile anywhere — see
 [AUTHENTICATION.md](AUTHENTICATION.md).
 
-**`a2l init` reported partial metadata.**
+**`a2l init` reported a metadata coverage gap.**
 One or more per-course metadata endpoints (for example assignments or quizzes) failed. The message
-names the failing categories, everything that did sync is kept, and the gaps are recorded in
-`.a2l/AUDIT.md`. Rerun `a2l init` to retry — it resumes where it stopped and reuses your saved
-session instead of asking you to sign in again.
+names the failing categories, everything that did sync is kept, and initialization stops before the
+file phase so it cannot mark incomplete metadata as complete. Rerun `a2l init` to retry; it resumes
+where it stopped and reuses your saved session when it belongs to the same LEARN origin, instead of
+asking you to sign in again.
 
 ## Content and conversion
 
@@ -74,11 +75,12 @@ recorded as links to open in LEARN yourself. This is deliberate, and no flag tur
 
 **A file is listed but has no local copy.**
 Run `a2l fetch <source-id>`. The content map records why each item is unavailable — never fetched,
-no Markdown twin yet, integrity mismatch, or a deliberate external link. Only the first three are
-fetchable. An `integrity_gap` means the on-disk bytes no longer match the manifest and the source
-should be verified or re-fetched; a `conversion_gap` means the source bytes are intact but no
-Markdown twin could be produced — fix the recorded cause (for example install Tesseract) and rerun
-`a2l sync`.
+no Markdown twin yet, unsupported format, conversion gap, integrity mismatch, or a deliberate
+external link. Metadata-only items can be fetched, local source-backed conversion/integrity gaps
+can be repaired, and external links are never fetched. An `integrity_gap` means the on-disk bytes
+no longer match the manifest and the source should be verified or re-fetched; a `conversion_gap`
+means the source bytes are intact but no Markdown twin could be produced — fix the recorded cause
+(for example install Tesseract) and rerun `a2l sync`.
 
 **LEARN reports no size for some files.**
 Some tenants omit file sizes entirely. `a2l sync` still downloads those files through the same

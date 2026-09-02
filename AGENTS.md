@@ -25,7 +25,7 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-08-30
+## Current state — 2026-09-01
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
 - **Tasks 0 through 23 are complete as automated implementations. The v0.1 command surface is
@@ -74,6 +74,15 @@ architecture.
     disagrees with the packaged version, refuses to publish a build with uploads enabled unless the
     supervised gate was recorded, builds exactly once, and promotes those same bytes through
     attestation, TestPyPI, and a protected PyPI environment using Trusted Publishing.
+- **Post-merge PR #4 audit/remediation — 2026-09-01:** the pre-remediation exact merge `bc62d101`
+  passed its remote 17-job CI run, but a fresh local review found and fixed five boundary issues: oversized
+  download refusals no longer fall through to another route; unknown-size topics no longer consume
+  a byte-bounded priority plan as zero bytes; any metadata error keeps `a2l init` before the file
+  phase and leaves `metadata_complete` false; saved sessions are reused only for the selected LEARN
+  origin; and source-less `conversion_gap` rows reconcile to `metadata_only`. The detect-secrets
+  exclusion regex and stale contract documentation were corrected at the same time. These changes
+  are local working-tree remediation pending a separate commit/review; the complete evidence is in
+  [`PR4_POST_MERGE_AUDIT.md`](PR4_POST_MERGE_AUDIT.md).
 - **The review-remediation checkpoint is committed and pushed to `main` as `276bda3`.** A fresh
   local run on that exact tree reports 858 passing tests and 4 skipped. The exact-SHA remote
   acceptance run is [33291418755](https://github.com/ManagementMO/agent2learn/actions/runs/33291418755);
@@ -136,7 +145,7 @@ architecture.
   14-gate perturbation harness plus two one-shot transport perturbations, but recorded as a
   deviation rather than presented as compliance.
 - **The golden vault now exists and is the repository's regression tripwire.**
-  `tests/fixtures/golden_vault.json` pins 49 files by SHA-256 after one full production
+  `tests/fixtures/golden_vault.json` pins 51 files by SHA-256 after one full production
   metadata → explicit outline state → download → convert → index → snapshot → audit run against the
   synthetic API.
   **Never regenerate it to make an unexplained diff green** — a changed hash is either an
@@ -255,7 +264,7 @@ architecture.
   IDs, and installed-wheel skill discovery is a matrix smoke. Final evidence: 637 passed / 4
   skipped / zero warnings locally; independent whole-branch review clean; all 14 jobs passed in
   [CI run 33226466258](https://github.com/ManagementMO/agent2learn/actions/runs/33226466258), including
-  the 49-entry golden vault and installed-wheel smoke on Windows, macOS, and Linux.
+  the 51-entry golden vault and installed-wheel smoke on Windows, macOS, and Linux.
 - **Post-Task 14 hardening — 2026-08-26:** a repository-wide review closed the remaining
   exception-safety, report-redaction, long-path, and cross-platform edges found after the first
   green Task 14 CI run. This includes same-origin API probes, malformed-session containment,

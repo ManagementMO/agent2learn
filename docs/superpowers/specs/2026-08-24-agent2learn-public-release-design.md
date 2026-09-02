@@ -666,11 +666,12 @@ hint, and refuses a 301/302/303/307/308 redirect for such a request so the calle
 follow-up decision explicitly. Non-mutating requests may follow only an allowed same-origin
 redirect one hop at a time. Downloads stream
 with actual-byte accounting, verify advertised size when present, and stop before consuming the
-configured reserve of free disk. The default single-file ceiling is 2 GiB. Oversized or
-unknown-length files that cross the ceiling remain `metadata_only` with a clear reason and an exact
-`a2l fetch --allow-large <id>` action; that one-file override shows the current free space and asks
-for interactive confirmation before transferring further bytes. Limits are safety controls, not
-claims that a file is malicious.
+configured reserve of free disk. The default single-file ceiling is 2 GiB. Oversized or unknown-length
+files that cross the ceiling remain `metadata_only` with a clear reason and an exact
+`a2l fetch --allow-large <id>` action; an unknown length is streamed through the same ceiling rather
+than treated as zero bytes. That one-file override shows the current free space and asks for
+interactive confirmation before transferring further bytes. Limits are safety controls, not claims
+that a file is malicious.
 
 ---
 
@@ -886,11 +887,19 @@ shows exactly what will be removed.
 Every topic row contains its canonical source key/ID, title/kind, `availability`, `source_path`,
 `path` (the trusted markdown path), source/derived hashes when present, and one next action. Allowed
 availability values are `metadata_only`, `source_only`, `markdown_ready`, `external_link`,
-`unsupported_format`, and `integrity_gap`.
+`unsupported_format`, `conversion_gap`, and `integrity_gap`.
+
+`conversion_gap` is an additive availability state within content-map schema version 1: it changes
+no row keys, path rules, or identity invariants, so `CONTENT_MAP_VERSION` remains 1. Consumers must
+handle the state explicitly and may not infer it from a filename or preserve it without a verified
+manifest source.
 
 - `path` is non-null only for a current hash-verified markdown twin.
 - `source_path` may be non-null while `path` is null, distinguishing a conversion gap from a file
-  that has not been downloaded.
+  that has not been downloaded. Every source-backed gap, including `unsupported_format`,
+  `conversion_gap`, and `integrity_gap`, is valid only when the manifest still proves the current
+  source path and source hash; a source-less gap row is reconciled to `metadata_only` and offers
+  `a2l fetch`.
 - External/licensed targets expose only a local `.url.txt` stub and are never offered to `fetch`.
   The stub links back through a deterministic query-free LEARN content-view URL built from the
   course/topic IDs and may show only the parsed destination hostname. Raw external URLs, URL
@@ -1356,8 +1365,10 @@ So:
    `a2l sync` remembers that choice; `--all` and `--priority` override it for one run. Priority
    ordering uses assignment links and an explicit availability/release date when D2L supplies one.
    If those signals are absent, it follows reverse content-tree order within the disclosed byte
-   budget and labels the result heuristic. `LastModifiedDate` is only a tie-breaker, never the
-   inclusion rule. Every mode is resumable by completed item.
+   budget and labels the result heuristic. A topic whose remote size is unknown is omitted from
+   this byte-bounded priority set because selecting it would make the budget unprovable; it remains
+   eligible for the full plan's per-file ceiling or an explicit `a2l fetch`. `LastModifiedDate` is
+   only a tie-breaker, never the inclusion rule. Every mode is resumable by completed item.
 4. Because metadata is always complete, `content_map.json` knows about every topic even when its
    file is not yet on disk. A topic with no local file is `metadata_only` with
    `source_path: null`/`path: null` and is fetched through `a2l fetch`; a local source without a

@@ -112,7 +112,7 @@ def test_content_map_does_not_silently_drop_invalid_topic_items(tmp_path: Path) 
 def test_content_map_represents_each_coverage_state_without_offering_external_fetch(
     tmp_path: Path,
 ) -> None:
-    """Collapsing coverage to missing or offering a fetch for an external link is a bug."""
+    """Only manifest-backed source states survive reconciliation; external links stay non-fetchable."""
     vault = Vault(tmp_path)
     source = tmp_path / "Term" / "COURSE_1" / "content" / "source.pdf"
     source.parent.mkdir(parents=True)
@@ -171,10 +171,34 @@ def test_content_map_represents_each_coverage_state_without_offering_external_fe
     assert resolved["10"]["source_path"] == "Term/COURSE_1/content/source.pdf"
     assert resolved["11"]["availability"] == "metadata_only"
     assert resolved["11"]["next_action"] == "a2l fetch 11"
-    assert resolved["12"]["availability"] == "unsupported_format"
-    assert resolved["13"]["availability"] == "integrity_gap"
+    assert resolved["12"]["availability"] == "metadata_only"
+    assert resolved["12"]["next_action"] == "a2l fetch 12"
+    assert resolved["13"]["availability"] == "metadata_only"
+    assert resolved["13"]["next_action"] == "a2l fetch 13"
     assert resolved["14"]["availability"] == "external_link"
     assert "fetch" not in str(resolved["14"]["next_action"]).casefold()
+
+
+def test_source_less_conversion_gap_is_reconciled_to_metadata_only(tmp_path: Path) -> None:
+    vault = Vault(tmp_path)
+    rows = [
+        {
+            "source_key": "waterloo:1:topic:15",
+            "source_id": "15",
+            "topic_id": 15,
+            "availability": "conversion_gap",
+            "source_path": "Term/COURSE_1/content/missing.pdf",
+            "path": "Term/COURSE_1/content/missing.md",
+            "next_action": "install Tesseract and retry conversion",
+        }
+    ]
+
+    resolved = reconcile_content_map(vault, rows)
+
+    assert resolved[0]["availability"] == "metadata_only"
+    assert resolved[0]["source_path"] is None
+    assert resolved[0]["path"] is None
+    assert resolved[0]["next_action"] == "a2l fetch 15"
 
 
 def test_index_and_submission_readme_use_vault_relative_posix_links_and_remove_empty_stub(

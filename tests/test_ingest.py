@@ -973,6 +973,37 @@ def test_unknown_size_over_ceiling_stays_metadata_only_with_fetch_next_action(
     assert row["next_action"] == "a2l fetch --allow-large 1"
 
 
+def test_file_too_large_does_not_fall_back_to_another_download_route(tmp_path: Path) -> None:
+    topic = _topic(1, "Oversized source")
+    calls: list[str] = []
+    payload = b"a fallback route must not bypass the file ceiling"
+
+    def too_large_then_success(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        del prior
+        calls.append(url)
+        if len(calls) == 1:
+            raise FileTooLarge("response exceeds the per-file ceiling")
+        temp.parent.mkdir(parents=True, exist_ok=True)
+        temp.write_bytes(payload)
+        return DownloadResult(temp, sha256(payload).hexdigest(), len(payload), None, None, False)
+
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic)},
+        download_handler=too_large_then_success,
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert report.downloaded == 0
+    assert report.metadata_only == 1
+    assert report.failed == 0
+    assert len(calls) == 1
+    assert vault.manifest() == {}
+
+
 def test_unknown_size_fetch_is_bounded_by_default_and_unbounded_after_consent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1159,6 +1190,35 @@ def test_public_priority_planner_applies_the_same_200mb_budget_as_ingest() -> No
 
     assert [topic.topic_id for topic in planned] == [1]
     assert sum(topic.remote_size or 0 for topic in planned) <= 200_000_000
+
+
+def test_priority_planner_excludes_unknown_size_from_byte_bounded_set() -> None:
+    selected = course()
+    unknown = ingest_module.TopicRecord(
+        source_key="uwaterloo:111111:topic:unknown",
+        source_id="unknown",
+        topic_id=3,
+        course_org_unit_id=selected.org_unit_id,
+        course_code=selected.code,
+        course_name=selected.name,
+        term=selected.term,
+        title="Assignment with unknown size",
+        kind="File",
+        module_path=("Week 1",),
+        module_ids=(1,),
+        view_url="https://learn.example.test/d2l/home",
+        outline_url=None,
+        url_path="/content/unknown.pdf",
+        external_host=None,
+        etag=None,
+        last_modified="2026-01-01T00:00:00Z",
+        is_broken=False,
+        remote_size=None,
+    )
+
+    planned = ingest_module.select_priority_topics([unknown], budget=1)
+
+    assert planned == ()
 
 
 def test_priority_planner_excludes_media_before_applying_document_budget() -> None:

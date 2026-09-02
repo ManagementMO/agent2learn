@@ -1585,10 +1585,14 @@ def _priority_rows(
     selected: list[TopicRecord] = []
     total = 0
     for topic in ranked:
-        if topic.remote_size is not None and total + topic.remote_size > budget:
+        # An unknown size cannot be charged against a hard byte budget without inventing a
+        # bound. Leave it for the full plan (which still has a per-file ceiling) or explicit
+        # ``a2l fetch``; priority must remain provably byte-bounded.
+        if topic.remote_size is None:
             continue
-        if topic.remote_size is not None:
-            total += topic.remote_size
+        if total + topic.remote_size > budget:
+            continue
+        total += topic.remote_size
         selected.append(topic)
     return selected
 
@@ -1956,6 +1960,10 @@ def _download_with_candidates(
             kwargs["root"] = root
             return client.download(candidate, temporary, **kwargs)  # type: ignore[arg-type]
         except SessionExpired:
+            raise
+        except FileTooLarge:
+            # A size refusal is a safety decision, not a route-health failure. Trying another
+            # provider route could bypass the exact response-size check that protected the vault.
             raise
         except DownloadError as exc:
             last_error = exc

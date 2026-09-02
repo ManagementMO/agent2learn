@@ -188,7 +188,7 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
     monkeypatch.setattr(config, "load", lambda: config.Config(vault=root))
     monkeypatch.setattr(cli, "_interactive_terminal", lambda: True, raising=False)
 
-    fake_session = object()
+    fake_session = SimpleNamespace(base_url=cli.UWaterloo().base_url)
 
     def fake_auth(_school: object, *, backend: str) -> object:
         world.events.append("auth")
@@ -825,7 +825,7 @@ def test_init_reuses_a_saved_session_without_reopening_the_browser(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     world = _prepare_world(monkeypatch, tmp_path)
-    world.saved_session = object()
+    world.saved_session = SimpleNamespace(base_url=cli.UWaterloo().base_url)
 
     result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
 
@@ -834,11 +834,25 @@ def test_init_reuses_a_saved_session_without_reopening_the_browser(
     assert "signed in (saved local session)" in result.stdout
 
 
-def test_init_partial_metadata_warns_with_categories_and_continues(
+def test_init_does_not_reuse_a_saved_session_for_another_school(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    world.saved_session = SimpleNamespace(base_url="https://other-school.example")
+
+    result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
+
+    assert result.exit_code == 0, result.output
+    assert "auth" in world.events
+    assert "signed in (saved local session)" not in result.stdout
+
+
+def test_init_partial_metadata_stops_before_file_phase(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     world = _prepare_world(monkeypatch, tmp_path)
     partial_errors = ("assignments: HTTPError", "assignments: HTTPError", "quizzes: Timeout")
+    pipeline_calls: list[bool] = []
 
     def partial_metadata(*args: object, **kwargs: object) -> MetadataReport:
         del args, kwargs
@@ -847,12 +861,23 @@ def test_init_partial_metadata_warns_with_categories_and_continues(
 
     monkeypatch.setattr(cli, "ingest_metadata", partial_metadata)
 
+    def observed_pipeline(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        pipeline_calls.append(True)
+        return SimpleNamespace(files=FileReport(), exit_code=0, errors=())
+
+    monkeypatch.setattr(cli.pipeline_module, "run_pipeline", observed_pipeline)
+
     result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")
 
-    assert result.exit_code == 0, result.output
-    assert "partial metadata (assignments: HTTPError, quizzes: Timeout)" in result.output
-    assert "HTTPError, quizzes" in result.output
-    assert _state(world.root)["metadata_complete"] is True
+    assert result.exit_code == 1, result.output
+    assert (
+        "init stopped during metadata sync "
+        "(coverage gap: assignments: HTTPError, quizzes: Timeout)."
+    ) in result.output
+    assert "partial metadata" not in result.output
+    assert pipeline_calls == []
+    assert _state(world.root).get("metadata_complete") is not True
 
 
 def test_init_metadata_hard_stop_names_categories_and_resumes_without_reauth(
