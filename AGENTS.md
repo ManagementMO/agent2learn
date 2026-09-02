@@ -110,7 +110,17 @@ architecture.
   Also refreshed `docs/COVERAGE.md`, which the PR #4 remediation had left stale. The lesson is
   recorded here because it is the general one: **a fixture the implementer wrote to match their
   own assumptions cannot catch the assumption being wrong; drive the production pipeline's real
-  output through the CLI at least once per feature.** Two follow-ups are noted below.
+  output through the CLI at least once per feature.** That check is now permanent as
+  `tests/test_cli_over_pipeline.py`.
+  **Evidence:** the fixes landed as `a315a97` and `48e0672`; run
+  [33581973166](https://github.com/ManagementMO/agent2learn/actions/runs/33581973166) on `48e0672`
+  is 17/17 green. The first attempt (`a315a97`) had the new test run the pipeline five times and
+  **all four Windows matrix jobs hit the 20-minute timeout** (cancelled at the Tests step; the other
+  13 jobs passed). Measured: Windows takes 15 min without the test, ~20.2 min with five pipeline
+  runs, 16.5 min with one — so each full-pipeline test costs Windows ~1.3 min. The test now runs
+  the pipeline once, and the matrix job's `timeout-minutes` is 30, documented in `ci.yml` as a
+  hang guard rather than a performance budget. Windows CI is the slowest gate by a factor of 4–8
+  and is the one to watch when adding pipeline-backed tests.
 - **The review-remediation checkpoint is committed and pushed to `main` as `276bda3`.** A fresh
   local run on that exact tree reports 858 passing tests and 4 skipped. The exact-SHA remote
   acceptance run is [33291418755](https://github.com/ManagementMO/agent2learn/actions/runs/33291418755);
