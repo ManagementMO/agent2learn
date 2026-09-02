@@ -70,11 +70,12 @@ Status = Literal[
     "skipped",
 ]
 
-_FETCHABLE = frozenset({"metadata_only", "source_only", "integrity_gap"})
+_FETCHABLE = frozenset({"metadata_only", "source_only", "integrity_gap", "download_gap"})
 _AVAILABILITY_NOTES = {
     "metadata_only": "known from metadata but never fetched",
     "source_only": "fetched, but it has no markdown twin yet",
     "integrity_gap": "on-disk bytes no longer match the manifest",
+    "download_gap": "the server did not serve this file; retry the fetch",
     "conversion_gap": "fetched, but conversion produced no markdown twin",
     "unsupported_format": "no converter handles this format",
     "external_link": "external or licensed link, deliberately not fetched",

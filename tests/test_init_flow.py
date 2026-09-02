@@ -264,7 +264,7 @@ def _prepare_world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> InitWorld
         file_report = FileReport()
         if kwargs.get("download_files", True):
             file_report = cast(Callable[..., FileReport], fake_files)(*args, **kwargs)
-        return SimpleNamespace(files=file_report, exit_code=0, errors=())
+        return SimpleNamespace(files=file_report, exit_code=0, gaps=(), errors=())
 
     def record_destination(**kwargs: object) -> tuple[Destination, ...]:
         world.events.append("skill_preview")
@@ -461,7 +461,9 @@ def test_init_uses_agent2learn_2_for_an_occupied_default_without_touching_origin
     monkeypatch.setattr(
         cli.pipeline_module,
         "run_pipeline",
-        lambda *args, **kwargs: SimpleNamespace(files=FileReport(), exit_code=0, errors=()),
+        lambda *args, **kwargs: SimpleNamespace(
+            files=FileReport(), exit_code=0, gaps=(), errors=()
+        ),
     )
     monkeypatch.setattr(cli.skills_module, "detect_destinations", lambda **kwargs: ())
     monkeypatch.setattr(cli.skills_module, "detect_installed_agents", lambda: ())
@@ -543,6 +545,7 @@ def test_init_full_reuses_production_pipeline_with_completed_metadata(
         return SimpleNamespace(
             files=FileReport(downloaded=2),
             exit_code=0,
+            gaps=(),
             errors=(),
         )
 
@@ -567,7 +570,7 @@ def test_init_later_finalizes_metadata_without_downloading(
 
     def pipeline_run(*_args: object, **kwargs: object) -> object:
         calls.append(kwargs)
-        return SimpleNamespace(files=FileReport(), exit_code=0, errors=())
+        return SimpleNamespace(files=FileReport(), exit_code=0, gaps=(), errors=())
 
     monkeypatch.setattr(cli.pipeline_module, "run_pipeline", pipeline_run)
     result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\nlater\n")

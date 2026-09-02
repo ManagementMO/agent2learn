@@ -293,7 +293,7 @@ def test_outline_timeout_is_a_gap_and_target_is_closed(tmp_path: Path) -> None:
     result = ingest_outlines(browser, vault, school, metadata)
 
     assert result.unavailable == 1
-    assert result.errors == ("outline: TimeoutError",)
+    assert result.errors == ()
     assert browser.closed == 1
 
 

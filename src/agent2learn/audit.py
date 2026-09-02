@@ -36,6 +36,7 @@ _GAP_LABELS: dict[str, str] = {
     "unsupported_format": "no converter for this format",
     "conversion_gap": "fetched, but conversion produced no markdown twin",
     "integrity_gap": "on-disk bytes do not match the manifest",
+    "download_gap": "the server did not serve this file; retry the fetch",
     "external_link": "external link, deliberately not fetched",
 }
 # Tokens that appear in nearly every coursework title and so carry no matching signal.

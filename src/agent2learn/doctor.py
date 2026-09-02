@@ -666,7 +666,12 @@ def _vault(vault: Vault | None) -> list[Check]:
                 if isinstance(path, str) and _is_empty_vault_file(vault, path):
                     empty_twins += 1
                     stats[4] += 1
-            elif availability in {"unsupported_format", "conversion_gap", "integrity_gap"}:
+            elif availability in {
+                "unsupported_format",
+                "conversion_gap",
+                "integrity_gap",
+                "download_gap",
+            }:
                 gaps += 1
                 stats[3] += 1
 

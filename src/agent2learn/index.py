@@ -25,6 +25,7 @@ from agent2learn.vault import ManifestEntry, Vault
 CONTENT_MAP_VERSION = 1
 _EMPTY_HTML = re.compile(r"(?:<[^>]*>|&nbsp;|\s)+", re.IGNORECASE)
 _PRESERVED_GAPS = frozenset({"unsupported_format", "conversion_gap", "integrity_gap"})
+_PRESERVED_UNFETCHED_GAPS = _PRESERVED_GAPS | {"download_gap"}
 _SENSITIVE_SEARCH_MARKERS = frozenset({"grade", "grades", "discussion", "discussions"})
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -339,7 +340,7 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
             continue
         entry = manifest.get(source_key)
         if entry is None:
-            if row.get("availability") in _PRESERVED_GAPS:
+            if row.get("availability") in _PRESERVED_UNFETCHED_GAPS:
                 next_action = row.get("next_action")
                 row.update(
                     {

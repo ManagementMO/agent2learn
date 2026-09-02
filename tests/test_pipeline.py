@@ -288,7 +288,7 @@ def test_absent_or_declined_profile_consent_records_outlines_without_opening_pro
         observed_factories.append(factory)
         with pytest.raises(AuthenticationError, match="not enabled"):
             factory.open_browser()
-        return OutlineReport(unavailable=1, errors=("outline: AuthenticationError",))
+        return OutlineReport(unavailable=1)
 
     monkeypatch.setattr(pipeline, "ingest_outlines", outlines)
     monkeypatch.setattr(
@@ -317,7 +317,7 @@ def test_absent_or_declined_profile_consent_records_outlines_without_opening_pro
 def test_declined_outline_profile_is_coverage_not_a_sync_failure() -> None:
     pipeline = _pipeline()
 
-    errors, exit_code = pipeline._result_status(
+    gaps, errors, exit_code = pipeline._result_status(
         MetadataReport(courses=(), topic_count=0, deadline_count=0),
         OutlineReport(unavailable=1),
         FileReport(),
@@ -325,14 +325,15 @@ def test_declined_outline_profile_is_coverage_not_a_sync_failure() -> None:
         outline_failure=False,
     )
 
+    assert gaps == ()
     assert errors == ()
     assert exit_code == 0
 
 
-def test_actual_outline_failure_makes_the_typed_report_nonzero() -> None:
+def test_unavailable_outline_is_a_recorded_gap_not_a_failure() -> None:
     pipeline = _pipeline()
 
-    errors, exit_code = pipeline._result_status(
+    gaps, errors, exit_code = pipeline._result_status(
         MetadataReport(courses=(), topic_count=0, deadline_count=0),
         OutlineReport(unavailable=1),
         FileReport(),
@@ -340,7 +341,56 @@ def test_actual_outline_failure_makes_the_typed_report_nonzero() -> None:
         outline_failure=True,
     )
 
-    assert errors == ("outline unavailable",)
+    assert gaps == ("outline gaps",)
+    assert errors == ()
+    assert exit_code == 0
+
+
+def test_persistent_download_gap_is_recorded_without_failing_the_sync() -> None:
+    pipeline = _pipeline()
+
+    gaps, errors, exit_code = pipeline._result_status(
+        MetadataReport(courses=(), topic_count=0, deadline_count=0),
+        OutlineReport(),
+        FileReport(downloaded=3, download_gaps=1),
+        ConversionReport(),
+        outline_failure=True,
+    )
+
+    assert gaps == ("download gaps",)
+    assert errors == ()
+    assert exit_code == 0
+
+
+def test_outline_renderer_infrastructure_failure_makes_the_typed_report_nonzero() -> None:
+    pipeline = _pipeline()
+
+    gaps, errors, exit_code = pipeline._result_status(
+        MetadataReport(courses=(), topic_count=0, deadline_count=0),
+        OutlineReport(rendered=1, errors=("outline: target cleanup failed (RuntimeError)",)),
+        FileReport(),
+        ConversionReport(),
+        outline_failure=True,
+    )
+
+    assert gaps == ()
+    assert errors == ("outline renderer incomplete",)
+    assert exit_code == 1
+
+
+def test_local_download_failure_still_makes_the_typed_report_nonzero() -> None:
+    pipeline = _pipeline()
+
+    gaps, errors, exit_code = pipeline._result_status(
+        MetadataReport(courses=(), topic_count=0, deadline_count=0),
+        OutlineReport(),
+        FileReport(failed=1, errors=("download: DiskSpaceExhausted",)),
+        ConversionReport(),
+        outline_failure=True,
+    )
+
+    assert gaps == ()
+    assert errors == ("file sync incomplete",)
     assert exit_code == 1
 
 

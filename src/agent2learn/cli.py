@@ -1277,6 +1277,12 @@ def _run_init(requested_vault: Path | None) -> None:
             "a2l init",
             lambda: _update_init_state(claimed, state, file_complete=True),
         )
+        if pipeline_report.gaps:
+            typer.echo(
+                f"{console.GLYPH['warn']} recorded gaps ({', '.join(pipeline_report.gaps)}); "
+                "details are in .a2l/AUDIT.md",
+                err=True,
+            )
         if download_files:
             typer.echo(
                 f"{console.GLYPH['ok']} files · {pipeline_report.files.downloaded} downloaded · "

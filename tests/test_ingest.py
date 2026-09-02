@@ -14,7 +14,7 @@ import pytest
 from ingest_support import DownloadHandler, FakeClient, course
 
 from agent2learn import ingest as ingest_module
-from agent2learn.api import DownloadError, DownloadResult, FileTooLarge
+from agent2learn.api import DiskSpaceExhausted, DownloadError, DownloadResult, FileTooLarge
 from agent2learn.errors import A2LError
 from agent2learn.ingest import fetch_topic, ingest_files, ingest_metadata
 from agent2learn.vault import Vault
@@ -971,6 +971,66 @@ def test_unknown_size_over_ceiling_stays_metadata_only_with_fetch_next_action(
     row = _topic_rows(tmp_path)[0]
     assert row["availability"] == "metadata_only"
     assert row["next_action"] == "a2l fetch --allow-large 1"
+
+
+def test_persistent_download_failure_is_recorded_as_a_resumable_gap(tmp_path: Path) -> None:
+    broken_topic = _topic(1, "Broken on the server")
+
+    def refuse(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        del url, temp, prior
+        raise DownloadError("server refused the file")
+
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(broken_topic)},
+        download_handler=refuse,
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert report.download_gaps == 1
+    assert report.failed == 0
+    assert report.errors == ()
+    assert report.exit_code == 0
+    row = _topic_rows(tmp_path)[0]
+    assert row["availability"] == "download_gap"
+    assert row["next_action"] == "download failed (DownloadError); retry: a2l fetch 1"
+
+    # The gap survives a metadata refresh and a later successful download clears it.
+    ingest_metadata(fake_client, vault, fake_client.school)
+    row = _topic_rows(tmp_path)[0]
+    assert row["availability"] == "download_gap"
+
+    fake_client.download_handler = _handler_for({"topic-1.pdf": b"served on retry"})
+    retry = ingest_files(fake_client, vault, fake_client.school)
+    assert retry.downloaded == 1
+    assert retry.download_gaps == 0
+    row = _topic_rows(tmp_path)[0]
+    assert row["availability"] == "source_only"
+
+
+def test_disk_space_exhaustion_still_fails_the_file_phase(tmp_path: Path) -> None:
+    topic_row = _topic(1, "Any file")
+
+    def no_space(url: str, temp: Path, prior: object | None) -> DownloadResult:
+        del url, temp, prior
+        raise DiskSpaceExhausted("insufficient disk space")
+
+    fake_client = FakeClient(
+        [course()],
+        tocs={111111: _toc(topic_row)},
+        download_handler=no_space,
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(fake_client, vault, fake_client.school)
+
+    report = ingest_files(fake_client, vault, fake_client.school)
+
+    assert report.failed == 1
+    assert report.download_gaps == 0
+    assert report.errors == ("download: DiskSpaceExhausted",)
 
 
 def test_unknown_size_fetch_is_bounded_by_default_and_unbounded_after_consent(

@@ -131,7 +131,6 @@ def ingest_outlines(
                     )
                 except Exception as exc:
                     unavailable += 1
-                    errors.append(f"outline: {type(exc).__name__}")
                     status = _status(topic, "outline_unavailable", type(exc).__name__)
                 else:
                     rendered += 1
