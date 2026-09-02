@@ -201,6 +201,74 @@ def test_source_less_conversion_gap_is_reconciled_to_metadata_only(tmp_path: Pat
     assert resolved[0]["next_action"] == "a2l fetch 15"
 
 
+def test_download_gap_with_a_stale_manifest_revision_is_not_promoted(tmp_path: Path) -> None:
+    """An older downloaded revision is not citation evidence for the revision that failed."""
+    vault = Vault(tmp_path)
+    course = tmp_path / "Term" / "COURSE_1"
+    source = course / "content" / "Module" / "notes.pdf"
+    twin = source.with_suffix(".md")
+    source.parent.mkdir(parents=True)
+    entry = _entry(source, twin, "1")
+    stale = ManifestEntry(
+        path=entry.path,
+        sha256=entry.sha256,
+        source_id=entry.source_id,
+        etag="old-revision",
+        last_modified="Mon, 05 Jan 2026 14:00:00 GMT",
+        size=entry.size,
+        fetched_at=entry.fetched_at,
+        derived=entry.derived,
+    )
+    vault.mark("waterloo:1:topic:1", stale)
+    vault.save_manifest()
+    rows = [
+        {
+            "source_key": "waterloo:1:topic:1",
+            "source_id": "1",
+            "topic_id": 1,
+            "title": "Notes",
+            "availability": "download_gap",
+            "etag": "new-revision",
+            "last_modified": "Tue, 06 Jan 2026 09:00:00 GMT",
+            "next_action": "download failed (DownloadError); retry: a2l fetch 1",
+        }
+    ]
+
+    resolved = reconcile_content_map(vault, rows)
+
+    assert resolved[0]["availability"] == "download_gap"
+    assert resolved[0]["path"] is None
+    assert resolved[0]["next_action"] == "download failed (DownloadError); retry: a2l fetch 1"
+
+
+def test_download_gap_for_the_current_manifest_revision_is_reconciled(tmp_path: Path) -> None:
+    vault = Vault(tmp_path)
+    course = tmp_path / "Term" / "COURSE_1"
+    source = course / "content" / "Module" / "notes.pdf"
+    twin = source.with_suffix(".md")
+    source.parent.mkdir(parents=True)
+    entry = _entry(source, twin, "1")
+    vault.mark("waterloo:1:topic:1", entry)
+    vault.save_manifest()
+    rows = [
+        {
+            "source_key": "waterloo:1:topic:1",
+            "source_id": "1",
+            "topic_id": 1,
+            "title": "Notes",
+            "availability": "download_gap",
+            "etag": None,
+            "last_modified": None,
+            "next_action": "download failed (DownloadError); retry: a2l fetch 1",
+        }
+    ]
+
+    resolved = reconcile_content_map(vault, rows)
+
+    assert resolved[0]["availability"] == "markdown_ready"
+    assert resolved[0]["path"] == "Term/COURSE_1/content/Module/notes.md"
+
+
 def test_index_and_submission_readme_use_vault_relative_posix_links_and_remove_empty_stub(
     tmp_path: Path,
 ) -> None:

@@ -293,8 +293,79 @@ def test_outline_timeout_is_a_gap_and_target_is_closed(tmp_path: Path) -> None:
     result = ingest_outlines(browser, vault, school, metadata)
 
     assert result.unavailable == 1
-    assert result.errors == ("outline: TimeoutError",)
+    assert result.errors == ()
     assert browser.closed == 1
+
+
+def test_outline_local_install_failure_is_an_error_not_a_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault, metadata = _metadata(tmp_path)
+    metadata = _retarget(metadata, "https://learn.example.test/outline.html")
+    browser = FakeOutlineBrowser(
+        OutlinePage(
+            html="<html><body>outline</body></html>",
+            canonical_url="https://learn.example.test/outline.html",
+        )
+    )
+    school = type("ReviewSchool", (UWaterloo,), {"base_url": "https://learn.example.test"})()
+
+    def refuse_write(*args: object, **kwargs: object) -> None:
+        raise OSError("disk write refused")
+
+    monkeypatch.setattr(outlines_module, "_install_bytes", refuse_write)
+
+    result = ingest_outlines(browser, vault, school, metadata)
+
+    assert result.rendered == 0
+    assert result.unavailable == 1
+    assert result.errors == ("outline: local install failed (OSError)",)
+    assert browser.closed == 1
+
+
+def test_outline_status_persistence_failure_propagates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault, metadata = _metadata(tmp_path)
+    metadata = _retarget(metadata, "https://learn.example.test/outline.html")
+    browser = FakeOutlineBrowser(
+        OutlinePage(
+            html="<html><body>outline</body></html>",
+            canonical_url="https://learn.example.test/outline.html",
+        )
+    )
+    school = type("ReviewSchool", (UWaterloo,), {"base_url": "https://learn.example.test"})()
+
+    def refuse_write(*args: object, **kwargs: object) -> None:
+        raise OSError("status write refused")
+
+    monkeypatch.setattr(outlines_module, "_write_json", refuse_write)
+
+    with pytest.raises(OSError):
+        ingest_outlines(browser, vault, school, metadata)
+
+
+def test_outline_browser_target_creation_failure_is_an_error_not_a_gap(tmp_path: Path) -> None:
+    vault, metadata = _metadata(tmp_path)
+    metadata = _retarget(metadata, "https://learn.example.test/outline.html")
+
+    class RefusingFactory(FakeOutlineBrowser):
+        def open_browser(self) -> FakeOutlineBrowser:
+            raise RuntimeError("no browser available")
+
+    browser = RefusingFactory(
+        OutlinePage(
+            html="<html><body>never rendered</body></html>",
+            canonical_url="https://learn.example.test/outline.html",
+        )
+    )
+    school = type("ReviewSchool", (UWaterloo,), {"base_url": "https://learn.example.test"})()
+
+    result = ingest_outlines(browser, vault, school, metadata)
+
+    assert result.rendered == 0
+    assert result.unavailable == 1
+    assert result.errors == ("outline: browser target failed (RuntimeError)",)
 
 
 def test_outline_target_cleanup_failure_is_reported_and_stops_following_targets(

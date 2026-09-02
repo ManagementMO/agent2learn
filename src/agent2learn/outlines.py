@@ -22,6 +22,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from agent2learn import aipolicy, clock, paths
 from agent2learn import index as course_index
+from agent2learn.errors import AuthenticationError
 from agent2learn.ingest import (
     CourseMetadata,
     MetadataReport,
@@ -120,30 +121,56 @@ def ingest_outlines(
                     status_rows.append(_status(topic, "outline_unavailable", "unsafe URL"))
                     continue
 
-                target: OutlineBrowser | None = None
-                status: dict[str, object]
                 try:
-                    target = factory.open_browser()
-                    page = _render(target, url, school)
-                    page = _validate_page(page, school)
-                    source_path, markdown_path = _install_outline(
-                        vault, school, course_metadata, topic, page
-                    )
+                    target: OutlineBrowser = factory.open_browser()
+                except AuthenticationError as exc:
+                    # The dedicated profile is deliberately not enabled; that is a declined
+                    # capability, not a broken renderer.
+                    unavailable += 1
+                    status_rows.append(_status(topic, "outline_unavailable", type(exc).__name__))
+                    continue
                 except Exception as exc:
                     unavailable += 1
-                    errors.append(f"outline: {type(exc).__name__}")
-                    status = _status(topic, "outline_unavailable", type(exc).__name__)
-                else:
-                    rendered += 1
-                    status = {
-                        "source_key": topic.source_key,
-                        "url": page.canonical_url,
-                        "status": "rendered",
-                        "source_path": source_path,
-                        "path": markdown_path,
-                    }
+                    errors.append(f"outline: browser target failed ({type(exc).__name__})")
+                    status_rows.append(_status(topic, "outline_unavailable", type(exc).__name__))
+                    continue
+
+                status: dict[str, object]
+                install_error: str | None = None
+                try:
+                    try:
+                        page = _render(target, url, school)
+                        page = _validate_page(page, school)
+                    except Exception as exc:
+                        # A remote render or validation failure is a per-topic coverage gap,
+                        # not evidence that the local vault or renderer is broken.
+                        unavailable += 1
+                        status = _status(topic, "outline_unavailable", type(exc).__name__)
+                    else:
+                        try:
+                            source_path, markdown_path = _install_outline(
+                                vault, school, course_metadata, topic, page
+                            )
+                        except Exception as exc:
+                            # The outline rendered but could not be persisted locally; the
+                            # vault write failure must fail the sync, not hide as a gap.
+                            unavailable += 1
+                            install_error = type(exc).__name__
+                            status = _status(topic, "outline_unavailable", type(exc).__name__)
+                        else:
+                            rendered += 1
+                            status = {
+                                "source_key": topic.source_key,
+                                "url": page.canonical_url,
+                                "status": "rendered",
+                                "source_path": source_path,
+                                "path": markdown_path,
+                            }
                 finally:
-                    close_error = _close_target(target) if target is not None else None
+                    close_error = _close_target(target)
+
+                if install_error is not None:
+                    errors.append(f"outline: local install failed ({install_error})")
 
                 if close_error is not None:
                     errors.append(f"outline: target cleanup failed ({close_error})")

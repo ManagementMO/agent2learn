@@ -149,6 +149,7 @@ class FileReport:
     skipped: int = 0
     failed: int = 0
     metadata_only: int = 0
+    download_gaps: int = 0
     interrupted: bool = False
     errors: tuple[str, ...] = ()
     exit_code: int = 0
@@ -506,7 +507,7 @@ def ingest_files(
         raise ValueError("priority_budget_bytes must be positive")
 
     selected = _selected_courses(client, term=term, only=only)
-    downloaded = skipped = failed = metadata_only = 0
+    downloaded = skipped = failed = metadata_only = download_gaps = 0
     errors: list[str] = []
 
     for course in selected:
@@ -609,6 +610,7 @@ def ingest_files(
                     skipped=skipped,
                     failed=failed,
                     metadata_only=metadata_only,
+                    download_gaps=download_gaps,
                     interrupted=True,
                     errors=tuple(errors),
                     exit_code=130,
@@ -626,9 +628,22 @@ def ingest_files(
                     next_action=f"a2l fetch --allow-large {topic.source_id}",
                 )
                 continue
-            except DownloadError as exc:
+            except api.DiskSpaceExhausted as exc:
                 failed += 1
                 errors.append(_safe_error("download", exc))
+                continue
+            except DownloadError as exc:
+                download_gaps += 1
+                _update_row_state(
+                    course_dir,
+                    topic.source_key,
+                    root=vault.root,
+                    availability="download_gap",
+                    next_action=(
+                        f"download failed ({type(exc).__name__}); "
+                        f"retry: a2l fetch {topic.source_id}"
+                    ),
+                )
                 continue
 
             if result == "downloaded":
@@ -641,6 +656,7 @@ def ingest_files(
         skipped=skipped,
         failed=failed,
         metadata_only=metadata_only,
+        download_gaps=download_gaps,
         errors=tuple(errors),
     )
 
@@ -1093,6 +1109,7 @@ def _merge_topic_records(
             "unsupported_format",
             "conversion_gap",
             "integrity_gap",
+            "download_gap",
         }:
             row["availability"] = prior["availability"]
             row["next_action"] = prior.get("next_action", row["next_action"])
@@ -1964,6 +1981,10 @@ def _download_with_candidates(
         except FileTooLarge:
             # A size refusal is a safety decision, not a route-health failure. Trying another
             # provider route could bypass the exact response-size check that protected the vault.
+            raise
+        except api.DiskSpaceExhausted:
+            # Exhausted local disk space is fatal for every route; a later route's ordinary
+            # failure must not downgrade it to a retryable download error.
             raise
         except DownloadError as exc:
             last_error = exc

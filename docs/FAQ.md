@@ -88,6 +88,15 @@ bounded, streaming downloader with the default per-file ceiling. A file that tur
 the ceiling is left `metadata_only` with the exact one-file override to run:
 `a2l fetch --allow-large <id>`, which asks for confirmation first.
 
+**A file or outline on LEARN never downloads.**
+Some tenants have individual topics whose download endpoint persistently errors, or course
+outlines that fail to render server-side. Agent2Learn records those as gaps rather than failing
+the whole run: the topic becomes a `download_gap` with a retry command (`a2l fetch <id>`), an
+unrendered outline is recorded in the audit, and `a2l init`/`a2l sync` finish with
+`sync completed with recorded gaps` and exit code 0. The gaps stay visible in `.a2l/AUDIT.md`,
+`a2l doctor`, and the content map, and every later sync retries them automatically. Local
+problems (for example running out of disk space) still stop the sync with a nonzero exit code.
+
 **How much disk will this use?**
 It depends on your courses; slide decks and recordings dominate. `a2l init` estimates before
 downloading and offers full, priority, or later. Media files are classified and counted so the

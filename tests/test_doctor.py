@@ -316,7 +316,7 @@ def test_vault_coverage_counts_citable_topics_and_gaps(
     checks = doctor.run_checks(_cfg(vault), vault)
 
     assert next(c for c in checks if c.name == "vault.citable").detail == "1 of 3 topic(s) citable"
-    assert next(c for c in checks if c.name == "vault.gaps").detail == "1 conversion gap(s)"
+    assert next(c for c in checks if c.name == "vault.gaps").detail == "1 coverage gap(s)"
 
 
 def test_vault_reports_terms_empty_twins_and_last_sync(
@@ -353,7 +353,7 @@ def test_vault_reports_terms_empty_twins_and_last_sync(
     last_sync = next(c for c in checks if c.name == "vault.last_sync")
     assert "Fall 2026" in terms.detail and "Winter 2027" in terms.detail
     assert "1/2" in terms.detail and "1/1" in terms.detail
-    assert "0 conversion gap(s)" in terms.detail
+    assert "0 coverage gap(s)" in terms.detail
     assert "1 empty twin(s)" in terms.detail
     assert empty.status == "warn"
     assert empty.detail == "1 empty markdown twin(s)"

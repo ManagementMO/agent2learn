@@ -79,6 +79,7 @@ class PipelineReport:
     indexed_courses: int
     snapshot_path: str
     audit_path: str
+    gaps: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
     exit_code: int = 0
 
@@ -226,7 +227,7 @@ def run_pipeline(
         timestamp=timestamp,
     )
     audit_path = write_audit(vault, timestamp=timestamp)
-    errors, exit_code = _result_status(
+    gaps, errors, exit_code = _result_status(
         metadata,
         outlines,
         files,
@@ -245,6 +246,7 @@ def run_pipeline(
         indexed_courses=indexed_courses,
         snapshot_path=paths.rel_posix(snapshot_path, vault.root),
         audit_path=paths.rel_posix(audit_path, vault.root),
+        gaps=gaps,
         errors=errors,
         exit_code=exit_code,
     )
@@ -305,7 +307,13 @@ def render_report(report: PipelineReport) -> str:
         f"audit · {report.audit_path}",
     ]
     if report.errors:
-        lines.append("sync completed with gaps · " + ", ".join(report.errors))
+        lines.append("sync incomplete · " + ", ".join(report.errors))
+    elif report.gaps:
+        lines.append(
+            "sync completed with recorded gaps · "
+            + ", ".join(report.gaps)
+            + f" · details: {report.audit_path}"
+        )
     else:
         lines.append("sync complete")
     return "\n".join(lines) + "\n"
@@ -345,23 +353,28 @@ def _result_status(
     conversion: ConversionReport,
     *,
     outline_failure: bool = True,
-) -> tuple[tuple[str, ...], int]:
+) -> tuple[tuple[str, ...], tuple[str, ...], int]:
+    gaps: list[str] = []
     errors: list[str] = []
     if metadata.errors or metadata.exit_code:
         errors.append("metadata incomplete")
-    if outline_failure and (outlines.unavailable or outlines.errors):
-        errors.append("outline unavailable")
+    if outline_failure and outlines.unavailable:
+        gaps.append("outline gaps")
+    if outlines.errors:
+        errors.append("outline renderer incomplete")
+    if files.download_gaps:
+        gaps.append("download gaps")
     if files.failed or files.errors or files.exit_code:
         errors.append("file sync incomplete")
     if conversion.errors:
         errors.append("conversion incomplete")
     if files.interrupted or files.exit_code == 130:
-        return tuple(errors), 130
+        return tuple(gaps), tuple(errors), 130
     if metadata.exit_code:
-        return tuple(errors), metadata.exit_code
+        return tuple(gaps), tuple(errors), metadata.exit_code
     if files.exit_code:
-        return tuple(errors), files.exit_code
-    return tuple(errors), 1 if errors else 0
+        return tuple(gaps), tuple(errors), files.exit_code
+    return tuple(gaps), tuple(errors), 1 if errors else 0
 
 
 __all__ = [

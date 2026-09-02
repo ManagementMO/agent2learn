@@ -36,6 +36,7 @@ _GAP_LABELS: dict[str, str] = {
     "unsupported_format": "no converter for this format",
     "conversion_gap": "fetched, but conversion produced no markdown twin",
     "integrity_gap": "on-disk bytes do not match the manifest",
+    "download_gap": "the server did not serve this file; retry the fetch",
     "external_link": "external link, deliberately not fetched",
 }
 # Tokens that appear in nearly every coursework title and so carry no matching signal.
@@ -75,6 +76,7 @@ class CourseAudit:
     quizzes_with_due_dates: int = 0
     assignments: int = 0
     metadata_gaps: tuple[str, ...] = ()
+    outline_gaps: tuple[tuple[str, str], ...] = ()
     unmatched_assignments: tuple[AssignmentMatch, ...] = ()
 
     @property
@@ -134,6 +136,12 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
 
     assignments, assignments_gap = _read_json_list(course_dir / "_meta" / "assignments.json")
     quizzes, quizzes_gap = _read_json_list(course_dir / "_meta" / "quizzes.json")
+    outline_rows, _ = _read_json_list(course_dir / "_meta" / "outlines.json")
+    outline_gaps = tuple(
+        (str(row.get("source_key") or "unknown"), str(row.get("reason") or "unknown"))
+        for row in outline_rows
+        if row.get("status") == "outline_unavailable"
+    )
     unmatched = _unmatched_assignments(assignments, titles)
     metadata_gaps = tuple(gap for gap in (assignments_gap, quizzes_gap) if gap is not None)
 
@@ -151,6 +159,7 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
         quizzes_with_due_dates=sum(1 for row in quizzes if row.get("due_date")),
         assignments=len(assignments),
         metadata_gaps=metadata_gaps,
+        outline_gaps=outline_gaps,
         unmatched_assignments=unmatched,
     )
 
@@ -293,6 +302,22 @@ def _render(audits: Sequence[CourseAudit], stamp: str) -> str:
                     "",
                 ]
             )
+
+        if audit.outline_gaps:
+            lines.extend(
+                [
+                    "### Outline gaps",
+                    "",
+                    "These outlines could not be rendered from LEARN. They are retried on "
+                    "every sync.",
+                    "",
+                    "| Outline | Reason |",
+                    "| --- | --- |",
+                ]
+            )
+            for source_key, reason in audit.outline_gaps:
+                lines.append(f"| `{source_key}` | {reason} |")
+            lines.append("")
 
         if audit.links:
             lines.extend(["### Links not fetched", "", "| Kind | Count |", "| --- | --- |"])
