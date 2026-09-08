@@ -97,3 +97,12 @@ files remain local; the Git source checkpoint is not a public music release.
 Only three reviewed picture-only stills are included from the render directory.
 The focused repository smoke/documentation tests passed all 53 cases; video-tool
 Ruff checks and formatting passed, and the complete staged pre-commit gate passed.
+
+The subsequent all-files scan exposed a pre-existing baseline omission that
+also reproduced unchanged on `main` at `d610b93`: the five golden-fixture
+digests introduced by `def7b7c` were never recorded in `.secrets.baseline`.
+The fixture diff identifies exactly the manifest, assignment metadata, prompt
+README and two instruction twins; all are existing public synthetic outputs.
+The golden-vault tests passed without regenerating or changing the fixture.
+Five exact reviewed false-positive records are added to the baseline, with no
+filter/exclusion changes. This is scanner bookkeeping, not a source-data change.
