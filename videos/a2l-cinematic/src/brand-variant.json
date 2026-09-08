@@ -1,0 +1,15 @@
+{
+  "active": "editorial",
+  "variants": {
+    "editorial": {
+      "src": "assets/brand/a2l-editorial-experiment.png",
+      "alt": "A2L editorial logo experiment",
+      "sha256": "ddbd02a881678ea3e1abb9fc9476d6253a1ebfb06fed788cc59f9acaf1b63f0d"
+    },
+    "frontend": {
+      "src": "assets/brand/frontend-mark.svg",
+      "alt": "Agent2Learn book mark",
+      "sha256": "ea3b7fdb9152b63cfadc7f0bd163ced1519d5562316b95c239f6955db9461483"
+    }
+  }
+}

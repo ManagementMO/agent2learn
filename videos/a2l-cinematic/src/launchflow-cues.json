@@ -1,0 +1,38 @@
+{
+  "duration": 17.5,
+  "audioPrefix": "signalflow-polish",
+  "exportPrefix": "signalflow-agent",
+  "typing": [
+    {"selector":"#install-command","text":"uv tool install git+https://github.com/ManagementMO/agent2learn","start":0.36,"duration":0.45,"hideCaret":1.51,"mode":"paste"},
+    {"selector":"#init-command","text":"a2l init","start":2.13,"duration":0.37,"hideCaret":2.56},
+    {"selector":"#sync-command","text":"a2l sync","start":4.92,"duration":0.31,"hideCaret":5.29},
+    {"selector":"#launch-command","text":"codex","start":6.44,"duration":0.34,"hideCaret":6.83},
+    {"selector":"#question","text":"Help me review Week 1.","start":8.55,"duration":1.65,"hideCaret":10.28,"pausesAfter":{"Help":0.11,"Help me":0.17,"Help me review":0.12}}
+  ],
+  "response": [
+    {"selector":"#response-first","start":10.77,"chunks":[[0,"Start with"],[0.10,"Start with prefix"],[0.18,"Start with prefix notation"],[0.29,"Start with prefix notation in Racket."]]},
+    {"selector":"#response-second","start":11.19,"chunks":[[0,"Then review"],[0.13,"Then review function"],[0.29,"Then review function definitions."]]}
+  ],
+  "actions": {
+    "installEnter":1.51,
+    "installDone":2.02,
+    "initEnter":2.56,
+    "selectCourse":4.87,
+    "syncComplete":5.33,
+    "launchEnter":6.83,
+    "sourceArrival0":7.20,
+    "sourceArrival1":7.36,
+    "sourceArrival2":7.52,
+    "contextReady":7.82,
+    "questionEnter":10.28,
+    "read":10.47,
+    "answerStart":10.77,
+    "citation":11.81,
+    "openSource":12.8,
+    "highlight":13.52,
+    "proof":13.74,
+    "outro":15.65
+  },
+  "sweeps": [[3.12,-27],[5.62,-24],[12.92,-26],[15.65,-26]],
+  "musicEnvelope": [[0,0],[0.2,0.8],[0.32,0.57],[1.6,0.57],[2.02,0.8],[2.55,0.8],[3.2,0.95],[4.8,0.95],[4.9,0.65],[5.5,0.95],[6.7,0.95],[6.84,0.56],[7.8,0.8],[8.45,0.56],[10.38,0.56],[10.77,0.77],[12.6,0.77],[12.8,0.53],[13.7,0.7],[15.6,0.7],[16.1,0.96],[16.7,0.96],[17.5,0]]
+}

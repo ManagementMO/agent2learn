@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=1920,height=1080"><title>Agent2Learn — Your LEARN, agent-ready</title><link rel="stylesheet" href="white.css"><script src="assets/gsap.min.js"></script></head>
+<body>
+<!-- A2L_ICON_SPRITE -->
+<div id="root" data-composition-id="main" data-start="0" data-duration="10" data-fps="120" data-width="1920" data-height="1080">
+<div id="film" class="clip" data-start="0" data-duration="10" data-track-index="1">
+  <div class="background"></div>
+  <div id="corner-brand"><span class="corner-monogram" aria-hidden="true"></span><span>Agent2Learn</span></div>
+  <section class="scene" id="learn">
+    <h1 id="learn-headline">Your LEARN. <span class="secondary">Agent-ready.</span></h1>
+    <div id="learn-browser" class="shell"><div class="window-content">
+      <div class="browser-chrome"><span class="chrome-dots"><i></i><i></i><i></i></span><span class="address mono">learn.uwaterloo.ca</span><span class="browser-demo mono">SYNTHETIC DEMO</span></div>
+      <div class="learn-masthead"><div class="waterloo-label"><span class="waterloo-bar"></span><span>University of Waterloo</span><strong>LEARN</strong></div><span class="brightspace">D2L Brightspace</span><span class="demo-student">Demo student</span></div>
+      <div class="course-heading"><span class="course-code mono">DEMO 101</span><h2>Decision Models</h2><nav><span class="active">Content</span><span>Assignments</span><span>Calendar</span></nav></div>
+      <div class="learn-content">
+        <aside><div>{{icon:outline}}<span>Course overview</span></div><div><span class="module-dot"></span><span>Week 1 · Foundations</span></div><div><span class="module-dot"></span><span>Week 2 · Models</span></div><div class="selected"><span class="module-dot"></span><span>Week 3 · Feasibility</span></div></aside>
+        <div class="course-material"><h3>Week 3 <span>Models &amp; constraints</span></h3>
+          <div class="course-resource" id="lecture-resource"><span class="resource-icon">{{icon:pdf}}</span><div><strong>Lecture 06.pdf</strong><span>Feasibility and constraints</span></div><span class="resource-arrow">{{icon:arrow-up-right}}</span></div>
+          <div class="course-resource"><span class="resource-icon">{{icon:lab}}</span><div><strong>Lab 4</strong><span>Practice problems · instructions</span></div><span class="resource-arrow">{{icon:arrow-up-right}}</span></div>
+        </div>
+      </div>
+    </div></div>
+    <span class="demo-note">INDEPENDENT TOOL · STYLIZED LEARN VIEW · FICTIONAL COURSE</span>
+  </section>
+  <section class="scene" id="document-handoff" aria-hidden="true"></section>
+  <section class="scene" id="twins">
+    <h1 id="twins-title"><span>Course files.</span><span class="secondary">Agent context.</span></h1>
+    <div class="document-shell" id="pdf-card"><div class="document"><div class="document-meta"><span class="document-type-icon">{{icon:pdf}}</span><span>LOCAL ORIGINAL</span></div><h2>Lecture 06</h2><p class="paper-topic">Feasibility &amp; constraints</p><svg class="feasibility-chart" viewBox="0 0 260 150" aria-label="Synthetic feasibility diagram"><path d="M20 12V130H250" class="axis"/><path d="M20 130L20 44L120 67L166 130Z" class="region"/><path d="M20 44L240 95M74 12L166 130" class="constraint"/><circle cx="76" cy="87" r="5"/></svg><div class="paper-line"></div><div class="paper-line shorter"></div><div class="document-filename mono">Lecture 06.pdf</div></div></div>
+    <div id="twin-link">{{icon:arrow-right}}</div>
+    <div class="document-shell" id="md-card"><div class="document"><div class="document-meta"><span class="document-type-icon">{{icon:markdown}}</span><span>MARKDOWN TWIN</span></div><h2><span class="blue-text">#</span> Lecture 06</h2><div class="markdown-text"><span class="blue-text">##</span> Feasibility<p>A feasible solution satisfies every constraint.</p></div><div class="document-filename mono">Lecture 06.md</div></div></div>
+    <span class="demo-note">SAVED LOCALLY · ORIGINAL + READABLE MARKDOWN TWIN</span>
+  </section>
+  <section class="scene" id="ask">
+    <h1 id="ask-title">Your agent. <span class="secondary">Grounded.</span></h1>
+    <div class="shell" id="agent-window"><div class="window-content"><div class="toolbar"><span class="agent-label"><span class="agent-symbol">{{icon:agent}}</span> Your coding agent</span><span class="mono">LOCAL COURSE CONTEXT</span></div><div class="agent-body"><div class="context-chip" id="context-chip"><span class="blue-dot"></span><span class="mono">a2l ground DEMO101 "Lab 4"</span></div><div class="question" id="question"><span>What matters for Lab 4?</span><span class="send-icon">{{icon:arrow-up}}</span></div><div id="answer"><strong>A feasible solution satisfies every constraint.</strong></div><div class="citation-chip" id="citation-chip"><span class="citation-document">{{icon:markdown}}</span><span class="mono">Lecture 06.md<span class="citation-line">:145</span></span><span class="citation-arrow">{{icon:arrow-right}}</span></div></div></div></div>
+    <svg id="cursor" viewBox="0 0 38 48" aria-hidden="true"><path d="M3 3V39L13 30L21 45L29 41L21 27H35Z" fill="#242732" stroke="#fff" stroke-width="3"/></svg>
+    <span class="demo-note">SYNTHETIC DEMO · CONCEPTUAL CODING-AGENT VIEW</span>
+  </section>
+  <section class="scene" id="source">
+    <h1 id="source-title">See the exact source.</h1>
+    <div class="shell" id="source-window"><div class="window-content"><div class="toolbar source-bar"><span class="mono"><span class="source-dir">content / Week 3 / </span>Lecture 06.md</span><span class="line-locator" id="line-locator">:145</span></div><div class="source-code"><div class="code-line"><span class="line-number">142</span><span class="code-heading">## Feasibility</span></div><div class="code-line"><span class="line-number">143</span><span></span></div><div class="code-line"><span class="line-number">144</span><span>Define the decision variables first.</span></div><div class="code-line highlight" id="source-highlight"><span class="line-number">145</span><span>A feasible solution satisfies every constraint.</span></div><div class="code-line"><span class="line-number">146</span><span>The objective ranks feasible solutions.</span></div><div class="code-line"><span class="line-number">147</span><span>Check each constraint against your values.</span></div></div><div class="source-proof" id="source-proof"><span class="blue-dot"></span><span>Local file. Exact line.</span><span class="mono">Lecture 06.md:145</span></div></div></div>
+    <span class="demo-note">AUTHORED SYNTHETIC SOURCE · EXACT LOCAL LINE</span>
+  </section>
+  <section class="scene" id="end">
+    <img id="brand-mark" src="assets/brand/a2l-monogram.png" alt="Agent2Learn a2 monogram">
+    <h1 id="wordmark">Agent2Learn<span>.</span></h1>
+    <p id="end-tagline">Your LEARN courses. Ready for your agent.</p>
+    <div id="end-url" class="mono">github.com/ManagementMO/agent2learn<span>{{icon:arrow-up-right}}</span></div>
+  </section>
+</div>
+<audio id="score" src="assets/score.wav" data-start="0" data-duration="10" data-track-index="10" data-timeline-role="music" data-volume="1"></audio>
+</div>
+<script src="src/launch10-motion.js"></script>
+<script>window.__timelines["main"]=window.__initA2LAnimation();</script>
+</body></html>

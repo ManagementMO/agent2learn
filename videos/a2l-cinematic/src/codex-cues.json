@@ -1,0 +1,22 @@
+{
+  "duration": 13.5,
+  "typing": [
+    {"selector":"#sync-command","text":"a2l sync","start":2.15,"duration":0.4,"hideCaret":2.66},
+    {"selector":"#launch-command","text":"codex","start":3.8,"duration":0.42,"hideCaret":4.28},
+    {"selector":"#question","text":"What makes a solution feasible?","start":4.7,"duration":1.65,"hideCaret":6.45}
+  ],
+  "actions": {
+    "selectCourse":0.8,
+    "syncComplete":2.75,
+    "launchEnter":4.27,
+    "questionEnter":6.45,
+    "read":6.67,
+    "answerStart":7.05,
+    "citation":7.82,
+    "openSource":9.0,
+    "highlight":9.55,
+    "proof":9.68,
+    "outro":11.65
+  },
+  "musicEnvelope": [[0,0],[0.2,0.88],[1.9,0.88],[2.1,0.58],[2.75,0.75],[3.65,0.58],[6.55,0.58],[7.0,0.78],[8.8,0.78],[9,0.55],[9.7,0.68],[11.6,0.68],[12,0.95],[12.75,0.95],[13.5,0]]
+}

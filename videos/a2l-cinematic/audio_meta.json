@@ -1,0 +1,785 @@
+{
+  "duration": 17.5,
+  "sample_rate": 48000,
+  "channels": 2,
+  "music": {
+    "id": "bgm_011",
+    "source_start": 15.6,
+    "normalization_lufs": -18,
+    "mastering_gain_db": 3,
+    "authorship": "catalog music; custom editorial and synchronized Foley mix"
+  },
+  "typing": [
+    {
+      "selector": "#install-command",
+      "text": "uv tool install git+https://github.com/ManagementMO/agent2learn",
+      "start": 0.36,
+      "duration": 0.45,
+      "hideCaret": 1.51,
+      "mode": "paste",
+      "rows": [
+        {
+          "time": 0.81,
+          "count": 63,
+          "kind": "paste"
+        }
+      ],
+      "end": 0.81
+    },
+    {
+      "selector": "#init-command",
+      "text": "a2l init",
+      "start": 2.13,
+      "duration": 0.37,
+      "hideCaret": 2.56,
+      "rows": [
+        {
+          "time": 2.1726341772264495,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 2.2121903384572104,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 2.2566702762805235,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 2.331764188463079,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 2.3785920007744195,
+          "count": 5,
+          "kind": "key"
+        },
+        {
+          "time": 2.4299962142061378,
+          "count": 6,
+          "kind": "key"
+        },
+        {
+          "time": 2.4659860098860875,
+          "count": 7,
+          "kind": "key"
+        },
+        {
+          "time": 2.5,
+          "count": 8,
+          "kind": "key"
+        }
+      ],
+      "end": 2.5
+    },
+    {
+      "selector": "#sync-command",
+      "text": "a2l sync",
+      "start": 4.92,
+      "duration": 0.31,
+      "hideCaret": 5.29,
+      "rows": [
+        {
+          "time": 4.955720526865404,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 4.988862175464149,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 5.026129150397195,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 5.089045671415012,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 5.128279784432622,
+          "count": 5,
+          "kind": "key"
+        },
+        {
+          "time": 5.171348179470007,
+          "count": 6,
+          "kind": "key"
+        },
+        {
+          "time": 5.201501792066722,
+          "count": 7,
+          "kind": "key"
+        },
+        {
+          "time": 5.2299999999999995,
+          "count": 8,
+          "kind": "key"
+        }
+      ],
+      "end": 5.2299999999999995
+    },
+    {
+      "selector": "#launch-command",
+      "text": "codex",
+      "start": 6.44,
+      "duration": 0.34,
+      "hideCaret": 6.83,
+      "rows": [
+        {
+          "time": 6.4831054921005755,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 6.561927335010172,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 6.634237067856756,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 6.694589231053052,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 6.78,
+          "count": 5,
+          "kind": "key"
+        }
+      ],
+      "end": 6.78
+    },
+    {
+      "selector": "#question",
+      "text": "Help me review Week 1.",
+      "start": 8.55,
+      "duration": 1.65,
+      "hideCaret": 10.28,
+      "pausesAfter": {
+        "Help": 0.11,
+        "Help me": 0.17,
+        "Help me review": 0.12
+      },
+      "rows": [
+        {
+          "time": 8.620382934185631,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 8.678381059348807,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 8.71961598839609,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 8.76188721185496,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 8.923428354935897,
+          "count": 5,
+          "kind": "key"
+        },
+        {
+          "time": 8.983563509315765,
+          "count": 6,
+          "kind": "key"
+        },
+        {
+          "time": 9.019624823065575,
+          "count": 7,
+          "kind": "key"
+        },
+        {
+          "time": 9.261829898295915,
+          "count": 8,
+          "kind": "key"
+        },
+        {
+          "time": 9.294213617350145,
+          "count": 9,
+          "kind": "key"
+        },
+        {
+          "time": 9.333040944034899,
+          "count": 10,
+          "kind": "key"
+        },
+        {
+          "time": 9.393042599121689,
+          "count": 11,
+          "kind": "key"
+        },
+        {
+          "time": 9.462467291640687,
+          "count": 12,
+          "kind": "key"
+        },
+        {
+          "time": 9.540856230066073,
+          "count": 13,
+          "kind": "key"
+        },
+        {
+          "time": 9.597957400280196,
+          "count": 14,
+          "kind": "key"
+        },
+        {
+          "time": 9.77250710737535,
+          "count": 15,
+          "kind": "key"
+        },
+        {
+          "time": 9.83846772048874,
+          "count": 16,
+          "kind": "key"
+        },
+        {
+          "time": 9.87617478002466,
+          "count": 17,
+          "kind": "key"
+        },
+        {
+          "time": 9.934770525311952,
+          "count": 18,
+          "kind": "key"
+        },
+        {
+          "time": 9.99797202900424,
+          "count": 19,
+          "kind": "key"
+        },
+        {
+          "time": 10.067227122995382,
+          "count": 20,
+          "kind": "key"
+        },
+        {
+          "time": 10.127280434695274,
+          "count": 21,
+          "kind": "key"
+        },
+        {
+          "time": 10.200000000000001,
+          "count": 22,
+          "kind": "key"
+        }
+      ],
+      "end": 10.200000000000001
+    }
+  ],
+  "events": [
+    {
+      "time": 0.81,
+      "kind": "clipboard_paste",
+      "selector": "#install-command",
+      "peak_dbfs": -17.609378854166128
+    },
+    {
+      "time": 1.51,
+      "kind": "installEnter",
+      "selector": null,
+      "peak_dbfs": -13
+    },
+    {
+      "time": 2.02,
+      "kind": "installDone",
+      "selector": null,
+      "peak_dbfs": -18
+    },
+    {
+      "time": 2.1726341772264495,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -17.24456752400976
+    },
+    {
+      "time": 2.2121903384572104,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -16.550692041051562
+    },
+    {
+      "time": 2.2566702762805235,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -17.320270944201493
+    },
+    {
+      "time": 2.331764188463079,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -17.951810239761613
+    },
+    {
+      "time": 2.3785920007744195,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -18.985528763764158
+    },
+    {
+      "time": 2.4299962142061378,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -17.93050461886676
+    },
+    {
+      "time": 2.4659860098860875,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -16.722605792014495
+    },
+    {
+      "time": 2.5,
+      "kind": "recorded_key",
+      "selector": "#init-command",
+      "peak_dbfs": -16.77677951336806
+    },
+    {
+      "time": 2.56,
+      "kind": "initEnter",
+      "selector": null,
+      "peak_dbfs": -15
+    },
+    {
+      "time": 3.12,
+      "kind": "soft_camera_sweep",
+      "selector": null,
+      "peak_dbfs": -24
+    },
+    {
+      "time": 4.87,
+      "kind": "selectCourse",
+      "selector": null,
+      "peak_dbfs": -12
+    },
+    {
+      "time": 4.955720526865404,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -17.24456752400976
+    },
+    {
+      "time": 4.988862175464149,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -16.550692041051562
+    },
+    {
+      "time": 5.026129150397195,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -17.320270944201493
+    },
+    {
+      "time": 5.089045671415012,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -17.951810239761613
+    },
+    {
+      "time": 5.128279784432622,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -18.985528763764158
+    },
+    {
+      "time": 5.171348179470007,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -17.93050461886676
+    },
+    {
+      "time": 5.201501792066722,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -16.722605792014495
+    },
+    {
+      "time": 5.2299999999999995,
+      "kind": "recorded_key",
+      "selector": "#sync-command",
+      "peak_dbfs": -16.77677951336806
+    },
+    {
+      "time": 5.33,
+      "kind": "syncComplete",
+      "selector": null,
+      "peak_dbfs": -18
+    },
+    {
+      "time": 5.62,
+      "kind": "soft_camera_sweep",
+      "selector": null,
+      "peak_dbfs": -21
+    },
+    {
+      "time": 6.4831054921005755,
+      "kind": "recorded_key",
+      "selector": "#launch-command",
+      "peak_dbfs": -19.047046237860023
+    },
+    {
+      "time": 6.561927335010172,
+      "kind": "recorded_key",
+      "selector": "#launch-command",
+      "peak_dbfs": -18.39480846231639
+    },
+    {
+      "time": 6.634237067856756,
+      "kind": "recorded_key",
+      "selector": "#launch-command",
+      "peak_dbfs": -17.045804891889127
+    },
+    {
+      "time": 6.694589231053052,
+      "kind": "recorded_key",
+      "selector": "#launch-command",
+      "peak_dbfs": -16.580274552413805
+    },
+    {
+      "time": 6.78,
+      "kind": "recorded_key",
+      "selector": "#launch-command",
+      "peak_dbfs": -17.543545289032007
+    },
+    {
+      "time": 6.83,
+      "kind": "launchEnter",
+      "selector": null,
+      "peak_dbfs": -11.5
+    },
+    {
+      "time": 7.2,
+      "kind": "sourceArrival0",
+      "selector": null,
+      "peak_dbfs": -22
+    },
+    {
+      "time": 7.36,
+      "kind": "sourceArrival1",
+      "selector": null,
+      "peak_dbfs": -21
+    },
+    {
+      "time": 7.52,
+      "kind": "sourceArrival2",
+      "selector": null,
+      "peak_dbfs": -20
+    },
+    {
+      "time": 7.82,
+      "kind": "contextReady",
+      "selector": null,
+      "peak_dbfs": -22
+    },
+    {
+      "time": 8.620382934185631,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -18.72717928820235
+    },
+    {
+      "time": 8.678381059348807,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -18.94714753991231
+    },
+    {
+      "time": 8.71961598839609,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -17.82333335049311
+    },
+    {
+      "time": 8.76188721185496,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -16.672186193347933
+    },
+    {
+      "time": 8.923428354935897,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -16.142173709392182
+    },
+    {
+      "time": 8.983563509315765,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -18.134170475501183
+    },
+    {
+      "time": 9.019624823065575,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -19.03471592284035
+    },
+    {
+      "time": 9.261829898295915,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -17.788900270872013
+    },
+    {
+      "time": 9.294213617350145,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -17.13609854651258
+    },
+    {
+      "time": 9.333040944034899,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -16.560998978847596
+    },
+    {
+      "time": 9.393042599121689,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -17.43728012624996
+    },
+    {
+      "time": 9.462467291640687,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -18.738455701296008
+    },
+    {
+      "time": 9.540856230066073,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -18.94031296783961
+    },
+    {
+      "time": 9.597957400280196,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -17.806393893275548
+    },
+    {
+      "time": 9.77250710737535,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -15.964984935139224
+    },
+    {
+      "time": 9.83846772048874,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -16.85314629076881
+    },
+    {
+      "time": 9.87617478002466,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -18.150463482517058
+    },
+    {
+      "time": 9.934770525311952,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -19.037243530891917
+    },
+    {
+      "time": 9.99797202900424,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -18.474701609452644
+    },
+    {
+      "time": 10.067227122995382,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -16.42180609857588
+    },
+    {
+      "time": 10.127280434695274,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -16.563355090002904
+    },
+    {
+      "time": 10.200000000000001,
+      "kind": "recorded_key",
+      "selector": "#question",
+      "peak_dbfs": -17.45352481951984
+    },
+    {
+      "time": 10.28,
+      "kind": "questionEnter",
+      "selector": null,
+      "peak_dbfs": -10.5
+    },
+    {
+      "time": 12.8,
+      "kind": "openSource",
+      "selector": null,
+      "peak_dbfs": -11
+    },
+    {
+      "time": 12.92,
+      "kind": "soft_camera_sweep",
+      "selector": null,
+      "peak_dbfs": -23
+    },
+    {
+      "time": 13.74,
+      "kind": "proof",
+      "selector": null,
+      "peak_dbfs": -20
+    },
+    {
+      "time": 15.65,
+      "kind": "soft_camera_sweep",
+      "selector": null,
+      "peak_dbfs": -23
+    }
+  ],
+  "sources": [
+    {
+      "id": "sfx_002",
+      "path": ".media/audio/sfx/sfx_002.mp3",
+      "description": "A very short, sharp, and dry mechanical click.",
+      "sha256": "984d554a8e26e2a4d536c162284c6f6c335c81401c0e93f620d9bf224050136a"
+    },
+    {
+      "id": "sfx_003",
+      "path": ".media/audio/sfx/sfx_003.mp3",
+      "description": "A rapid sequence of crisp, dry plastic clicks and clacks typical of fast keyboard typing.",
+      "sha256": "1ebc43b557a95d3eeb51525e075e38140c760c8107d8f77275a8658a475bf5a4"
+    },
+    {
+      "id": "sfx_004",
+      "path": ".media/audio/sfx/sfx_004.mp3",
+      "description": "A quick, crisp mechanical double click resembling a small plastic switch.",
+      "sha256": "962b606078efd65880bae823bcefb2b8db08fe84378766b2cbc9ed48637c5811"
+    },
+    {
+      "id": "sfx_005",
+      "path": ".media/audio/sfx/sfx_005.mp3",
+      "description": "A brief, synthetic sweeping whoosh with a fast decay.",
+      "sha256": "7bb0f183f589c996ffba9fdde5e41f76f561bb0d7dcd832291f9bc96cb82c355"
+    },
+    {
+      "id": "bgm_011",
+      "path": ".media/audio/bgm/bgm_011.wav",
+      "description": "Sleek minimal tech-ambient underscore, slow build, pulsing synth, premium SaaS product demo mood.",
+      "sha256": "c5d29a61b37f981a9d93877943625696bdfdf4cf884b3aa3264d9911083e8dd2"
+    }
+  ],
+  "reference_peak_dbfs": -3.26631825655663,
+  "automation": [
+    [
+      0,
+      0
+    ],
+    [
+      0.2,
+      0.8
+    ],
+    [
+      0.32,
+      0.57
+    ],
+    [
+      1.6,
+      0.57
+    ],
+    [
+      2.02,
+      0.8
+    ],
+    [
+      2.55,
+      0.8
+    ],
+    [
+      3.2,
+      0.95
+    ],
+    [
+      4.8,
+      0.95
+    ],
+    [
+      4.9,
+      0.65
+    ],
+    [
+      5.5,
+      0.95
+    ],
+    [
+      6.7,
+      0.95
+    ],
+    [
+      6.84,
+      0.56
+    ],
+    [
+      7.8,
+      0.8
+    ],
+    [
+      8.45,
+      0.56
+    ],
+    [
+      10.38,
+      0.56
+    ],
+    [
+      10.77,
+      0.77
+    ],
+    [
+      12.6,
+      0.77
+    ],
+    [
+      12.8,
+      0.53
+    ],
+    [
+      13.7,
+      0.7
+    ],
+    [
+      15.6,
+      0.7
+    ],
+    [
+      16.1,
+      0.96
+    ],
+    [
+      16.7,
+      0.96
+    ],
+    [
+      17.5,
+      0
+    ]
+  ]
+}

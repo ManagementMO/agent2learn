@@ -1,0 +1,32 @@
+{
+  "name": "a2l-cinematic",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "score": "npm run build && uv run --no-project --python 3.12 --with numpy==2.2.6 --with scipy==1.15.3 python tools/design_codex_audio.py",
+    "score:catalog-18s": "uv run --no-project --python 3.12 --with numpy==2.2.6 --with scipy==1.15.3 python tools/mix_score.py",
+    "score:electronic-18s": "uv run --no-project --python 3.12 --with numpy==2.2.6 --with scipy==1.15.3 python tools/compose_score.py",
+    "score:rock": "uv run --no-project --python 3.12 --with numpy==2.2.6 --with scipy==1.15.3 --with mido==1.3.3 python tools/compose_rock_score.py",
+    "test": "node tools/verify-launchflow.mjs",
+    "test:export": "node tools/verify-export.mjs",
+    "test:audio": "uv run --no-project --python 3.12 --with numpy==2.2.6 python tools/verify-codex-audio.py",
+    "review:export": "node tools/review-launchflow-export.mjs",
+    "dev": "npx --yes hyperframes@0.8.31 preview",
+    "check": "npx --yes hyperframes@0.8.31 check",
+    "render": "npx --yes hyperframes@0.8.31 render",
+    "publish": "npx --yes hyperframes@0.8.31 publish"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource/geist-mono": "5.3.0",
+    "@fontsource-variable/inter": "5.2.8",
+    "@fontsource/jetbrains-mono": "5.2.8",
+    "gsap": "3.14.2",
+    "three": "0.183.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "playwright": "1.58.2"
+  }
+}

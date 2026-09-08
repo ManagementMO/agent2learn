@@ -1,0 +1,51 @@
+{
+  "title": "In Context \u2014 custom electronic score",
+  "duration": 18,
+  "sample_rate": 48000,
+  "channels": 2,
+  "bpm": 160,
+  "key": "D major",
+  "source": "original deterministic synthesis; no samples",
+  "seed": 240907,
+  "loudness_target_lufs": -14,
+  "true_peak_ceiling_dbtp": -1.5,
+  "events": [
+    {
+      "time": 1.8,
+      "event": "picture-cut accent"
+    },
+    {
+      "time": 4.8,
+      "event": "picture-cut accent"
+    },
+    {
+      "time": 6.5,
+      "event": "picture-cut accent"
+    },
+    {
+      "time": 9,
+      "event": "picture-cut accent"
+    },
+    {
+      "time": 12.5,
+      "event": "picture-cut accent"
+    },
+    {
+      "time": 15,
+      "event": "picture-cut accent"
+    },
+    {
+      "time": 7.76,
+      "event": "citation motif"
+    },
+    {
+      "time": 8.76,
+      "event": "citation motif"
+    },
+    {
+      "time": 9.35,
+      "event": "citation motif"
+    }
+  ],
+  "file": "assets/score-custom.wav"
+}

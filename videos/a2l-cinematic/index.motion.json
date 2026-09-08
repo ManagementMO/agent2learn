@@ -1,0 +1,16 @@
+{
+  "duration": 17.5,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#install-success", "bySec": 2.2 },
+    { "kind": "appearsBy", "selector": "#lecture-resource", "bySec": 4 },
+    { "kind": "appearsBy", "selector": "#codex-banner", "bySec": 7.6 },
+    { "kind": "appearsBy", "selector": "#context-ready", "bySec": 8.05 },
+    { "kind": "appearsBy", "selector": "#citation-chip", "bySec": 12.1 },
+    { "kind": "appearsBy", "selector": "#source-window", "bySec": 13.75 },
+    { "kind": "appearsBy", "selector": "#wordmark", "bySec": 16.5 },
+    { "kind": "before", "a": "#answer", "b": "#citation-chip" },
+    { "kind": "before", "a": "#citation-chip", "b": "#source-window" },
+    { "kind": "before", "a": "#wordmark", "b": "#end-url" },
+    { "kind": "staysInFrame", "selector": "#end-url" }
+  ]
+}
