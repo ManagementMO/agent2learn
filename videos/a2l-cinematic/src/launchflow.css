@@ -91,7 +91,7 @@ html,body,#root{color:#272725;background:#faf9f6}
 .learn-utilities{display:flex;align-items:center;gap:25px;margin-left:auto;color:#565951}
 .learn-utilities svg{width:28px;height:28px;stroke-width:1.7}.learn-profile{width:37px;height:37px;border-radius:8px;background:#232621;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-left:2px}.demo-user{font-size:17px;margin-left:-12px;color:#40433b}
 .learn-navbar{height:68px;display:flex;align-items:center;gap:30px;padding:0 32px;background:#fff;border-bottom:1px solid #dedfd9;font-size:21px;color:#3e4139;white-space:nowrap}
-.learn-navbar>span{height:68px;display:flex;align-items:center;gap:7px}.learn-navbar .current{color:#076bab;box-shadow:inset 0 -3px #0074af}.learn-navbar i{font-style:normal;font-size:20px;color:#45493e}
+.learn-navbar>span{height:68px;display:flex;align-items:center;gap:7px}.learn-navbar .current{color:#076bab;background:linear-gradient(#0074af,#0074af) left bottom/100% 3px no-repeat}.learn-navbar i{font-style:normal;font-size:20px;color:#45493e}
 .learn-body{height:calc(100% - 274px);border-radius:0 0 18px 18px}
 .learn-body aside{width:300px;padding:20px 15px;background:#f9f9f6;border-color:#e5e7df}
 .learn-body aside>span{height:62px;padding:0 14px;font-size:19px;color:#62655d;border-radius:6px}

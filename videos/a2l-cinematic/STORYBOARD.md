@@ -3,7 +3,7 @@ duration: 17.5
 format: landscape
 resolution: 1920x1080
 fps: 120
-music: catalog electronic with synchronized recorded Foley
+music: upbeat catalog house/disco with synchronized recorded Foley
 captions: no narration; essential meaning is on screen
 ---
 
@@ -22,6 +22,20 @@ captions: no narration; essential meaning is on screen
 | 15.65–17.50 | Experimental editorial A2L mark, Agent2Learn, Your LEARN courses. Ready for your agent., repository URL. | Scene clears, masked wordmark and sequential lockup. Final complete composition holds from 16.77s; audio fades cleanly. Original mark remains a selectable variant. |
 
 ## Geometry and motion contract
+
+### Launchbeat soundtrack-only follow-up (2026-09-08)
+
+All picture and input/response/action times above remain unchanged. The subsequent
+visual cleanup removes the long bottom disclaimer and replaces the Content tab's
+inset shadow with a bottom-only blue underline, retaining its blue text. The active
+music is a house/disco instrumental beginning at source 0.454s, played at 1.04x
+with pitch preservation. It maintains its rhythmic section throughout this cut.
+Music-volume automation remains editable in Studio, with a shorter opening fade,
+typing pockets, a deeper dip at the 12.80s citation click, and a lift into the
+15.65s brand transition. Recorded keyboard audio is byte-identical. Camera sweeps
+and source receipts have slightly more presence; quiet chimes land at 7.82s and
+16.10s. See VERIFICATION-LAUNCHBEAT.md. Final movie exports below that revision
+name are not yet created; the existing approved MP4s are preserved.
 
 1920×1080. Header ends at y240; stage is 1920×795 and clips departing UI.
 The two application shells remain opaque, spatially separate and readable.

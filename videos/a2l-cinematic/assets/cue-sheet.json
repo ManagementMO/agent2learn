@@ -1,7 +1,40 @@
 {
   "duration": 17.5,
-  "audioPrefix": "signalflow-polish",
-  "exportPrefix": "signalflow-agent",
+  "audioPrefix": "signalflow-launchbeat",
+  "exportPrefix": "signalflow-launchbeat",
+  "music": {
+    "id": "bgm_012",
+    "path": ".media/audio/bgm/bgm_012.wav",
+    "sourceStart": 0.454,
+    "playbackRate": 1.04,
+    "normalizationLufs": -17,
+    "truePeakDb": -6,
+    "masteringGainDb": 3,
+    "label": "Launchbeat — energetic house/disco instrumental"
+  },
+  "soundGainOverridesDb": {
+    "sourceArrival0": -24,
+    "sourceArrival1": -23,
+    "sourceArrival2": -22,
+    "openSource": -12.5,
+    "proof": -22
+  },
+  "shimmerSource": {
+    "id": "sfx_006",
+    "path": ".media/audio/sfx/sfx_006.mp3"
+  },
+  "audioAccents": [
+    {
+      "time": 7.82,
+      "gainDb": -31,
+      "kind": "context_chime"
+    },
+    {
+      "time": 16.1,
+      "gainDb": -28,
+      "kind": "brand_chime"
+    }
+  ],
   "typing": [
     {
       "selector": "#install-command",
@@ -345,19 +378,19 @@
   "sweeps": [
     [
       3.12,
-      -27
+      -25
     ],
     [
       5.62,
-      -24
+      -23
     ],
     [
       12.92,
-      -26
+      -25
     ],
     [
       15.65,
-      -26
+      -25
     ]
   ],
   "musicEnvelope": [
@@ -366,88 +399,124 @@
       0
     ],
     [
-      0.2,
-      0.8
+      0.04,
+      0.9
     ],
     [
-      0.32,
-      0.57
+      0.36,
+      0.82
     ],
     [
-      1.6,
-      0.57
+      1.38,
+      0.82
+    ],
+    [
+      1.5,
+      0.66
+    ],
+    [
+      1.74,
+      0.92
     ],
     [
       2.02,
-      0.8
+      1
     ],
     [
-      2.55,
-      0.8
+      2.44,
+      1
     ],
     [
-      3.2,
-      0.95
+      2.56,
+      0.78
     ],
     [
-      4.8,
-      0.95
+      2.78,
+      1
+    ],
+    [
+      4.78,
+      1
     ],
     [
       4.9,
-      0.65
+      0.7
     ],
     [
-      5.5,
-      0.95
+      5.33,
+      0.7
     ],
     [
-      6.7,
-      0.95
+      5.62,
+      1
+    ],
+    [
+      6.72,
+      1
     ],
     [
       6.84,
-      0.56
-    ],
-    [
-      7.8,
       0.8
     ],
     [
-      8.45,
-      0.56
+      7.15,
+      0.96
+    ],
+    [
+      7.9,
+      0.96
+    ],
+    [
+      8.4,
+      0.7
     ],
     [
       10.38,
-      0.56
+      0.7
     ],
     [
       10.77,
-      0.77
+      0.84
     ],
     [
-      12.6,
-      0.77
+      12.5,
+      0.84
     ],
     [
-      12.8,
-      0.53
+      12.78,
+      0.34
     ],
     [
-      13.7,
-      0.7
+      12.96,
+      0.34
     ],
     [
-      15.6,
-      0.7
+      13.45,
+      0.82
     ],
     [
-      16.1,
-      0.96
+      13.8,
+      0.92
     ],
     [
-      16.7,
-      0.96
+      15.4,
+      0.92
+    ],
+    [
+      15.65,
+      1
+    ],
+    [
+      16.65,
+      1
+    ],
+    [
+      17.1,
+      0.4
+    ],
+    [
+      17.48,
+      0
     ],
     [
       17.5,

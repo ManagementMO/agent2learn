@@ -69,7 +69,6 @@
         <span id="click-ring" aria-hidden="true"></span>
       </div>
     </div>
-    <div class="demo-note">CS135-INSPIRED SYNTHETIC DEMO · STYLIZED CODEX · SETUP &amp; RESPONSES TIME-COMPRESSED</div>
   </section>
   <section id="end"><img id="brand-mark" src="{{brandSrc}}" alt="{{brandAlt}}"><h1 id="wordmark">Agent2Learn<span>.</span></h1><p id="end-tagline">Your LEARN courses. Ready for your agent.</p><div id="end-url" class="mono">github.com/ManagementMO/agent2learn <span>{{icon:arrow-up-right}}</span></div></section>
 </div>

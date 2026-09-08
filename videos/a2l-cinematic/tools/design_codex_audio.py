@@ -49,17 +49,54 @@ def write(name, samples):
     wavfile.write(OUT / name, RATE, np.round(samples * 32767).astype(np.int16))
 
 
-music_path = ".media/audio/bgm/bgm_011.wav"
-# The second half already has an established pulse: skip the slow intro. A mild
-# high pass keeps the keyboard's low thud from accumulating with the bass bed.
-bed = decode(
-    music_path,
-    f"atrim=start=15.6:duration={CUES['duration']},asetpts=PTS-STARTPTS,highpass=f=45,loudnorm=I=-18:TP=-3:LRA=8",
+music = CUES.get("music", {})
+music_id = music.get("id", "bgm_011")
+music_path = music.get("path", ".media/audio/bgm/bgm_011.wav")
+source_start = music.get("sourceStart", 15.6)
+playback_rate = music.get("playbackRate", 1)
+normalization_lufs = music.get("normalizationLufs", -18)
+true_peak_db = music.get("truePeakDb", -3)
+mastering_gain_db = music.get("masteringGainDb", 3)
+if not 0.5 <= playback_rate <= 2 or source_start < 0:
+    raise ValueError("Unsupported music edit")
+# Pitch-preserving tempo matching is source preparation, not a picture retime.
+# The new source's onset at ~16.73s lands on the 15.65s brand transition.
+source_filters = (
+    f"atrim=start={source_start}:duration={CUES['duration'] * playback_rate},"
+    f"asetpts=PTS-STARTPTS,atempo={playback_rate},highpass=f=45"
 )
+normalizer = f"loudnorm=I={normalization_lufs}:TP={true_peak_db}:LRA=8"
+measurement = subprocess.run(
+    [
+        "ffmpeg",
+        "-v",
+        "info",
+        "-i",
+        str(ROOT / music_path),
+        "-af",
+        f"{source_filters},{normalizer}:print_format=json",
+        "-f",
+        "null",
+        "-",
+    ],
+    check=True,
+    capture_output=True,
+    text=True,
+).stderr
+# FFmpeg may append its output-summary line after loudnorm's JSON report.
+measured, _ = json.JSONDecoder().raw_decode(measurement[measurement.rfind("{") :])
+normalizer += (
+    f":measured_I={measured['input_i']}:measured_TP={measured['input_tp']}"
+    f":measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}"
+    f":offset={measured['target_offset']}:linear=true"
+)
+bed = decode(music_path, f"{source_filters},{normalizer}")
 bed = bed[:N]
-if len(bed) < N:
+if N - len(bed) > RATE * 0.05:
+    raise ValueError("Music source is too short for the complete cut")
+if len(bed) < N:  # atempo may round its final analysis window by a few samples
     bed = np.pad(bed, ((0, N - len(bed)), (0, 0)))
-MASTER_GAIN = 10 ** (3 / 20)
+MASTER_GAIN = 10 ** (mastering_gain_db / 20)
 bed *= MASTER_GAIN
 write(f"{PREFIX}-bed.wav", bed)
 
@@ -142,9 +179,15 @@ for key, db, sound in [
     ("proof", -23, click),
 ]:
     if key in CUES["actions"]:
-        place(interface, sound, CUES["actions"][key], db, key)
+        gain = CUES.get("soundGainOverridesDb", {}).get(key, db)
+        place(interface, sound, CUES["actions"][key], gain, key)
 for at, db in CUES.get("sweeps", [(1.5, -26), (3.0, -25), (9.08, -25), (11.65, -25)]):
     place(interface, whoosh, at, db, "soft_camera_sweep")
+
+if CUES.get("audioAccents"):
+    shimmer = trim_silence(decode(CUES["shimmerSource"]["path"], "highpass=f=900,lowpass=f=6500"))
+    for cue in CUES["audioAccents"]:
+        place(interface, shimmer, cue["time"], cue["gainDb"], cue["kind"])
 
 write(f"{PREFIX}-typing.wav", typing)
 write(f"{PREFIX}-interface.wav", interface)
@@ -159,7 +202,9 @@ write(f"{PREFIX}-mix-reference.wav", mix)
 catalog = [
     json.loads(row) for row in (ROOT / ".media/manifest.jsonl").read_text().splitlines() if row
 ]
-used = ["bgm_011", "sfx_002", "sfx_003", "sfx_004", "sfx_005"]
+used = [music_id, "sfx_002", "sfx_003", "sfx_004", "sfx_005"]
+if CUES.get("audioAccents"):
+    used.append(CUES["shimmerSource"]["id"])
 sources = []
 for row in catalog:
     if row.get("id") in used:
@@ -177,10 +222,13 @@ meta = {
     "sample_rate": RATE,
     "channels": 2,
     "music": {
-        "id": "bgm_011",
-        "source_start": 15.6,
-        "normalization_lufs": -18,
-        "mastering_gain_db": 3,
+        "id": music_id,
+        "source_start": source_start,
+        "playback_rate": playback_rate,
+        "normalization_lufs": normalization_lufs,
+        "true_peak_target_db": true_peak_db,
+        "mastering_gain_db": mastering_gain_db,
+        "normalization_measurement": measured,
         "authorship": "catalog music; custom editorial and synchronized Foley mix",
     },
     "typing": CUES["typing"],
