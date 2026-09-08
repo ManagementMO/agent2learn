@@ -1,0 +1,457 @@
+{
+  "duration": 17.5,
+  "audioPrefix": "signalflow-polish",
+  "exportPrefix": "signalflow-agent",
+  "typing": [
+    {
+      "selector": "#install-command",
+      "text": "uv tool install git+https://github.com/ManagementMO/agent2learn",
+      "start": 0.36,
+      "duration": 0.45,
+      "hideCaret": 1.51,
+      "mode": "paste",
+      "rows": [
+        {
+          "time": 0.81,
+          "count": 63,
+          "kind": "paste"
+        }
+      ],
+      "end": 0.81
+    },
+    {
+      "selector": "#init-command",
+      "text": "a2l init",
+      "start": 2.13,
+      "duration": 0.37,
+      "hideCaret": 2.56,
+      "rows": [
+        {
+          "time": 2.1726341772264495,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 2.2121903384572104,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 2.2566702762805235,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 2.331764188463079,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 2.3785920007744195,
+          "count": 5,
+          "kind": "key"
+        },
+        {
+          "time": 2.4299962142061378,
+          "count": 6,
+          "kind": "key"
+        },
+        {
+          "time": 2.4659860098860875,
+          "count": 7,
+          "kind": "key"
+        },
+        {
+          "time": 2.5,
+          "count": 8,
+          "kind": "key"
+        }
+      ],
+      "end": 2.5
+    },
+    {
+      "selector": "#sync-command",
+      "text": "a2l sync",
+      "start": 4.92,
+      "duration": 0.31,
+      "hideCaret": 5.29,
+      "rows": [
+        {
+          "time": 4.955720526865404,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 4.988862175464149,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 5.026129150397195,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 5.089045671415012,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 5.128279784432622,
+          "count": 5,
+          "kind": "key"
+        },
+        {
+          "time": 5.171348179470007,
+          "count": 6,
+          "kind": "key"
+        },
+        {
+          "time": 5.201501792066722,
+          "count": 7,
+          "kind": "key"
+        },
+        {
+          "time": 5.2299999999999995,
+          "count": 8,
+          "kind": "key"
+        }
+      ],
+      "end": 5.2299999999999995
+    },
+    {
+      "selector": "#launch-command",
+      "text": "codex",
+      "start": 6.44,
+      "duration": 0.34,
+      "hideCaret": 6.83,
+      "rows": [
+        {
+          "time": 6.4831054921005755,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 6.561927335010172,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 6.634237067856756,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 6.694589231053052,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 6.78,
+          "count": 5,
+          "kind": "key"
+        }
+      ],
+      "end": 6.78
+    },
+    {
+      "selector": "#question",
+      "text": "Help me review Week 1.",
+      "start": 8.55,
+      "duration": 1.65,
+      "hideCaret": 10.28,
+      "pausesAfter": {
+        "Help": 0.11,
+        "Help me": 0.17,
+        "Help me review": 0.12
+      },
+      "rows": [
+        {
+          "time": 8.620382934185631,
+          "count": 1,
+          "kind": "key"
+        },
+        {
+          "time": 8.678381059348807,
+          "count": 2,
+          "kind": "key"
+        },
+        {
+          "time": 8.71961598839609,
+          "count": 3,
+          "kind": "key"
+        },
+        {
+          "time": 8.76188721185496,
+          "count": 4,
+          "kind": "key"
+        },
+        {
+          "time": 8.923428354935897,
+          "count": 5,
+          "kind": "key"
+        },
+        {
+          "time": 8.983563509315765,
+          "count": 6,
+          "kind": "key"
+        },
+        {
+          "time": 9.019624823065575,
+          "count": 7,
+          "kind": "key"
+        },
+        {
+          "time": 9.261829898295915,
+          "count": 8,
+          "kind": "key"
+        },
+        {
+          "time": 9.294213617350145,
+          "count": 9,
+          "kind": "key"
+        },
+        {
+          "time": 9.333040944034899,
+          "count": 10,
+          "kind": "key"
+        },
+        {
+          "time": 9.393042599121689,
+          "count": 11,
+          "kind": "key"
+        },
+        {
+          "time": 9.462467291640687,
+          "count": 12,
+          "kind": "key"
+        },
+        {
+          "time": 9.540856230066073,
+          "count": 13,
+          "kind": "key"
+        },
+        {
+          "time": 9.597957400280196,
+          "count": 14,
+          "kind": "key"
+        },
+        {
+          "time": 9.77250710737535,
+          "count": 15,
+          "kind": "key"
+        },
+        {
+          "time": 9.83846772048874,
+          "count": 16,
+          "kind": "key"
+        },
+        {
+          "time": 9.87617478002466,
+          "count": 17,
+          "kind": "key"
+        },
+        {
+          "time": 9.934770525311952,
+          "count": 18,
+          "kind": "key"
+        },
+        {
+          "time": 9.99797202900424,
+          "count": 19,
+          "kind": "key"
+        },
+        {
+          "time": 10.067227122995382,
+          "count": 20,
+          "kind": "key"
+        },
+        {
+          "time": 10.127280434695274,
+          "count": 21,
+          "kind": "key"
+        },
+        {
+          "time": 10.200000000000001,
+          "count": 22,
+          "kind": "key"
+        }
+      ],
+      "end": 10.200000000000001
+    }
+  ],
+  "response": [
+    {
+      "selector": "#response-first",
+      "start": 10.77,
+      "chunks": [
+        [
+          0,
+          "Start with"
+        ],
+        [
+          0.1,
+          "Start with prefix"
+        ],
+        [
+          0.18,
+          "Start with prefix notation"
+        ],
+        [
+          0.29,
+          "Start with prefix notation in Racket."
+        ]
+      ]
+    },
+    {
+      "selector": "#response-second",
+      "start": 11.19,
+      "chunks": [
+        [
+          0,
+          "Then review"
+        ],
+        [
+          0.13,
+          "Then review function"
+        ],
+        [
+          0.29,
+          "Then review function definitions."
+        ]
+      ]
+    }
+  ],
+  "actions": {
+    "installEnter": 1.51,
+    "installDone": 2.02,
+    "initEnter": 2.56,
+    "selectCourse": 4.87,
+    "syncComplete": 5.33,
+    "launchEnter": 6.83,
+    "sourceArrival0": 7.2,
+    "sourceArrival1": 7.36,
+    "sourceArrival2": 7.52,
+    "contextReady": 7.82,
+    "questionEnter": 10.28,
+    "read": 10.47,
+    "answerStart": 10.77,
+    "citation": 11.81,
+    "openSource": 12.8,
+    "highlight": 13.52,
+    "proof": 13.74,
+    "outro": 15.65
+  },
+  "sweeps": [
+    [
+      3.12,
+      -27
+    ],
+    [
+      5.62,
+      -24
+    ],
+    [
+      12.92,
+      -26
+    ],
+    [
+      15.65,
+      -26
+    ]
+  ],
+  "musicEnvelope": [
+    [
+      0,
+      0
+    ],
+    [
+      0.2,
+      0.8
+    ],
+    [
+      0.32,
+      0.57
+    ],
+    [
+      1.6,
+      0.57
+    ],
+    [
+      2.02,
+      0.8
+    ],
+    [
+      2.55,
+      0.8
+    ],
+    [
+      3.2,
+      0.95
+    ],
+    [
+      4.8,
+      0.95
+    ],
+    [
+      4.9,
+      0.65
+    ],
+    [
+      5.5,
+      0.95
+    ],
+    [
+      6.7,
+      0.95
+    ],
+    [
+      6.84,
+      0.56
+    ],
+    [
+      7.8,
+      0.8
+    ],
+    [
+      8.45,
+      0.56
+    ],
+    [
+      10.38,
+      0.56
+    ],
+    [
+      10.77,
+      0.77
+    ],
+    [
+      12.6,
+      0.77
+    ],
+    [
+      12.8,
+      0.53
+    ],
+    [
+      13.7,
+      0.7
+    ],
+    [
+      15.6,
+      0.7
+    ],
+    [
+      16.1,
+      0.96
+    ],
+    [
+      16.7,
+      0.96
+    ],
+    [
+      17.5,
+      0
+    ]
+  ]
+}

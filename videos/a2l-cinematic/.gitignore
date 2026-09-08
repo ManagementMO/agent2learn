@@ -1,0 +1,27 @@
+node_modules/
+.media/
+.archive/
+.checks*.json
+.hyperframes/
+.thumbnails/
+.waveform-cache/
+.checks/
+snapshots/
+renders/*
+# Public stills contain only the original, synthetic demo picture, no soundtrack.
+!renders/signalflow-agent-poster.png
+!renders/signalflow-agent-storyboard.jpg
+!renders/signalflow-agent-ingestion-review.jpg
+assets/scene3d.js
+assets/gsap.min.js
+assets/MotionPathPlugin.min.js
+assets/CustomEase.min.js
+assets/fonts/
+assets/brand/a2l-corner.png
+# Superseded generated experiment, not used by the approved film.
+assets/brand/a2l-monogram.png
+assets/score-raw.wav
+assets/score.wav
+assets/score-custom*.wav
+assets/audio/
+__pycache__/

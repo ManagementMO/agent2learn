@@ -1,0 +1,49 @@
+/* The 10-second LEARN-led cut has no canvas, piles of files or 3D folder hero. */
+#corner-brand{display:flex;align-items:center;gap:9px;left:87px;top:32px;font-size:27px;letter-spacing:-1px}
+#corner-brand .corner-monogram{display:block;width:63px;height:63px;background:url('assets/brand/a2l-corner.png') center/contain no-repeat}
+#corner-brand span{color:#363c4c}
+#learn-headline{position:absolute;left:108px;top:136px;font-size:106px;letter-spacing:-5.8px;white-space:nowrap}
+#learn-headline .secondary{display:inline}
+#learn-browser{position:absolute;left:155px;top:301px;width:1610px;height:648px;border-radius:31px}
+.browser-chrome{height:50px;display:flex;align-items:center;gap:35px;padding:0 28px;background:#f2f4f8;border-bottom:1px solid #e5e8ef}
+.chrome-dots{display:flex;gap:8px}.chrome-dots i{width:9px;height:9px;border-radius:50%;background:#c5cad5}
+.address{font-size:18px;color:#5d677b;letter-spacing:.2px}.browser-demo{margin-left:auto;font-size:13px;letter-spacing:1px;color:#727b8c}
+.learn-masthead{height:74px;display:flex;align-items:center;padding:0 35px;border-bottom:1px solid #e8ebf2}
+.waterloo-label{display:flex;align-items:center;gap:17px;font-size:23px;color:#414854}
+.waterloo-label strong{font-size:28px;margin-left:11px;padding-left:25px;border-left:1px solid #d8dce6;letter-spacing:-.7px}
+.waterloo-bar{display:block;width:5px;height:29px;background:#e5b641;border-radius:3px}
+.brightspace{font-size:18px;color:#6a7384;margin-left:27px}.demo-student{margin-left:auto;font-size:18px;color:#6a7384}
+.course-heading{height:103px;display:flex;align-items:center;gap:23px;padding:0 35px;border-bottom:1px solid #e7ebf2}
+.course-code{font-size:17px;border-radius:8px;background:#eff2f8;padding:9px 12px;color:#65718a}
+.course-heading h2{font-size:31px;letter-spacing:-.8px;font-weight:560}
+.course-heading nav{margin-left:auto;display:flex;gap:31px;height:100%;align-items:center;font-size:19px;color:#69738a}
+.course-heading nav .active{height:100%;display:flex;align-items:center;border-bottom:3px solid #597de0;color:#38599f}
+.learn-content{display:flex;height:calc(100% - 227px)}
+.learn-content aside{width:360px;flex-shrink:0;padding:24px 19px;border-right:1px solid #e7ebf2;background:#fcfdff}
+.learn-content aside>div{height:67px;display:flex;align-items:center;gap:15px;padding:0 17px;font-size:18px;color:#65708a;border-radius:11px}
+.learn-content aside .a2l-icon{width:26px;height:34px}.module-dot{width:8px;height:8px;display:block;border-radius:50%;background:#b9c6df;flex-shrink:0}
+.learn-content aside .selected{background:#eaf0ff;color:#385ca9}.selected .module-dot{background:#6686d7}
+.course-material{flex:1;padding:24px 36px}.course-material h3{font-size:28px;letter-spacing:-.6px;font-weight:570;margin:0 0 15px}
+.course-material h3>span{font-size:21px;color:#788296;margin-left:14px;font-weight:400;letter-spacing:-.2px}
+.course-resource{height:129px;display:flex;align-items:center;gap:24px;border-bottom:1px solid #e8ecf4}
+.course-resource:last-child{border:0}.resource-icon{width:61px;height:77px;flex-shrink:0}.course-resource strong{font-size:30px;letter-spacing:-.65px;font-weight:550}
+.course-resource div>span{display:block;font-size:21px;color:#68758d;margin-top:9px}.resource-arrow{display:block;width:26px;height:26px;color:#94a2bf;margin-left:auto}
+#document-handoff{z-index:6}
+#handoff-document{left:916px;top:244px}
+#twins-title{font-size:94px;top:386px}
+#twin-link{width:43px;height:43px;left:1346px;top:492px}
+#ask-title{font-size:101px;white-space:nowrap}
+#ask-title .secondary{display:inline}
+#agent-window{top:320px;height:570px}
+#answer{margin-top:29px}
+#answer strong{font-size:35px;letter-spacing:-.8px}
+#citation-chip{margin-top:25px}
+#cursor{left:716px;top:726px}
+#source{z-index:7}
+#source-title{font-size:102px}
+#brand-mark{position:absolute;left:770px;top:40px;width:380px;height:380px;object-fit:contain}
+#wordmark{top:442px;font-size:155px}
+#end-tagline{top:664px;font-size:36px;color:#667289}
+#end-url{top:807px}
+.browser-demo{color:#606b7e}.course-code{color:#596780}
+.course-material h3>span{color:#687387}.demo-note{color:#606b7e}

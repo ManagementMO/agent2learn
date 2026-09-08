@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=1920,height=1080"><title>Agent2Learn — In Context</title><link rel="stylesheet" href="white.css"><script src="assets/gsap.min.js"></script></head>
+<body>
+<!-- A2L_ICON_SPRITE -->
+<div id="root" data-composition-id="main" data-start="0" data-duration="18" data-fps="60" data-width="1920" data-height="1080">
+<div id="film" class="clip" data-start="0" data-duration="18" data-track-index="1">
+  <div class="background"></div><canvas id="three-layer" width="1920" height="1080" aria-label="Sculptural glass course vault"></canvas>
+  <div id="corner-brand">a2l<span>.</span></div>
+  <section class="scene" id="intro">
+    <h1 id="intro-title"><span>Your courses.</span><span id="in-context">In context.</span></h1>
+    <div id="intro-label" class="object-caption"><span class="blue-dot"></span> A new home for course material.</div>
+  </section>
+  <section class="scene" id="learn">
+    <h1 id="learn-title">From LEARN. <span class="secondary">To your vault.</span></h1>
+    <div class="shell" id="learn-window"><div class="window-content">
+      <div class="toolbar"><span class="product-label">LEARN</span><span class="mono">COURSE101</span></div>
+      <div class="course-list">
+        <div class="course-row" id="learn-row-1"><div class="file-icon">{{icon:pdf}}</div><div><strong>Lecture 06.pdf</strong><span>Week 3 · Feasibility</span></div><span class="row-arrow">{{icon:arrow-up-right}}</span></div>
+        <div class="course-row" id="learn-row-2"><div class="file-icon">{{icon:lab}}</div><div><strong>Lab 4</strong><span>Assignment instructions</span></div><span class="row-arrow">{{icon:arrow-up-right}}</span></div>
+        <div class="course-row" id="learn-row-3"><div class="file-icon">{{icon:outline}}</div><div><strong>Course outline.pdf</strong><span>Course information</span></div><span class="row-arrow">{{icon:arrow-up-right}}</span></div>
+      </div>
+    </div></div>
+    <svg id="transfer-path" viewBox="0 0 1920 1080" aria-hidden="true"><path d="M900 600 C1020 600 1000 600 1120 600"/><path d="M1106 586L1120 600L1106 614"/></svg>
+    <div id="copy-pdf" class="transfer-file" aria-label="Lecture PDF copying to the vault">{{icon:pdf}}</div><div id="copy-lab" class="transfer-file" aria-label="Lab instructions copying to the vault">{{icon:lab}}</div><div id="copy-outline" class="transfer-file" aria-label="Course outline copying to the vault">{{icon:outline}}</div>
+    <div id="vault-caption" class="object-caption"><span class="blue-dot"></span> Your local vault</div>
+    <span class="demo-note">SYNTHETIC COURSE · STYLIZED DEMO</span>
+  </section>
+  <section class="scene" id="document-handoff" aria-hidden="true"></section>
+  <section class="scene" id="twins">
+    <h1 id="twins-title"><span>Your originals.</span><span class="secondary">Made readable.</span></h1>
+    <div class="document-shell" id="pdf-card"><div class="document"><div class="document-meta"><span class="document-type-icon">{{icon:pdf}}</span><span>ORIGINAL</span></div><h2>Lecture 06</h2><p class="paper-topic">Feasibility &amp; constraints</p><svg class="feasibility-chart" viewBox="0 0 260 150" aria-label="Synthetic feasibility diagram"><path d="M20 12V130H250" class="axis"/><path d="M20 130L20 44L120 67L166 130Z" class="region"/><path d="M20 44L240 95M74 12L166 130" class="constraint"/><circle cx="76" cy="87" r="5"/></svg><div class="paper-line"></div><div class="paper-line shorter"></div><div class="document-filename mono">Lecture 06.pdf</div></div></div>
+    <div id="twin-link" aria-hidden="true">↔</div>
+    <div class="document-shell" id="md-card"><div class="document"><div class="document-meta"><span class="document-type-icon">{{icon:markdown}}</span><span>MARKDOWN TWIN</span></div><h2><span class="blue-text">#</span> Lecture 06</h2><div class="markdown-text"><span class="blue-text">##</span> Feasibility<p>A feasible solution satisfies every constraint.</p></div><div class="document-filename mono">Lecture 06.md</div></div></div>
+    <span class="demo-note">ORIGINAL FILE + MARKDOWN TWIN · SYNTHETIC CONTENT</span>
+  </section>
+  <section class="scene" id="ask">
+    <h1 id="ask-title">Ask your course.</h1>
+    <div class="shell" id="agent-window"><div class="window-content"><div class="toolbar"><span class="agent-label"><span class="agent-symbol">{{icon:agent}}</span> Your coding agent</span><span class="mono">LOCAL COURSE CONTEXT</span></div><div class="agent-body"><div class="context-chip" id="context-chip"><span class="blue-dot"></span><span class="mono">a2l ground COURSE101 "Lab 4"</span></div><div class="question" id="question"><span>What do I need to know for Lab 4?</span><span class="send-icon">{{icon:arrow-up}}</span></div><div id="answer"><strong>Start with feasibility.</strong><p>A feasible solution satisfies every constraint.</p></div><div class="citation-chip" id="citation-chip"><span class="citation-document">{{icon:markdown}}</span><span class="mono">Lecture 06.md<span class="citation-line">:145</span></span><span class="citation-arrow">{{icon:arrow-right}}</span></div></div></div></div>
+    <svg id="cursor" viewBox="0 0 38 48" aria-hidden="true"><path d="M3 3V39L13 30L21 45L29 41L21 27H35Z" fill="#242732" stroke="#fff" stroke-width="3"/></svg>
+    <span class="demo-note">SYNTHETIC DEMO · CONCEPTUAL CODING-AGENT VIEW</span>
+  </section>
+  <section class="scene" id="source">
+    <h1 id="source-title">Go to the source.</h1>
+    <div class="shell" id="source-window"><div class="window-content"><div class="toolbar source-bar"><span class="mono"><span class="source-dir">content / Week 3 / </span>Lecture 06.md</span><span class="line-locator" id="line-locator">:145</span></div><div class="source-code"><div class="code-line"><span class="line-number">142</span><span class="code-heading">## Feasibility</span></div><div class="code-line"><span class="line-number">143</span><span></span></div><div class="code-line"><span class="line-number">144</span><span>Define the decision variables first.</span></div><div class="code-line highlight" id="source-highlight"><span class="line-number">145</span><span>A feasible solution satisfies every constraint.</span></div><div class="code-line"><span class="line-number">146</span><span>The objective ranks feasible solutions.</span></div><div class="code-line"><span class="line-number">147</span><span>Check each constraint against your values.</span></div></div><div class="source-proof" id="source-proof"><span class="blue-dot"></span><span>Local files. Exact lines.</span><span class="mono">Lecture 06.md:145</span></div></div></div>
+    <span class="demo-note">AUTHORED SYNTHETIC SOURCE · EXACT LOCAL LINE</span>
+  </section>
+  <section class="scene" id="vault">
+    <h1 id="vault-title"><span>One vault.</span><span class="secondary">Yours.</span></h1>
+    <div id="vault-tree">
+      <svg id="tree-connectors" viewBox="0 0 800 680" aria-hidden="true"><path d="M85 103V560Q85 572 97 572H150"/><path d="M85 205H150"/><path d="M187 246V420Q187 432 199 432H226"/><path d="M187 338H226"/></svg>
+      <div class="tree-card tree-root" id="tree-root"><span class="tree-folder">{{icon:folder}}</span><span class="mono">COURSE101</span><span class="tree-note">LOCAL VAULT</span></div>
+      <div class="tree-card tree-content" id="tree-content"><span class="tree-folder">{{icon:folder}}</span><span class="mono">content / Week 3</span></div>
+      <div class="tree-card tree-pdf" id="tree-pdf"><span class="tree-file">{{icon:pdf}}</span><span class="mono">Lecture 06.pdf</span><span class="tree-note">ORIGINAL</span></div>
+      <div class="tree-card tree-markdown" id="tree-markdown"><span class="tree-file">{{icon:markdown}}</span><span class="mono">Lecture 06.md</span><span class="tree-citation mono">:145</span></div>
+      <div class="tree-card tree-index" id="tree-index"><span class="tree-folder">{{icon:index}}</span><span class="mono">INDEX.md</span><span class="tree-note">A STABLE WAY IN</span></div>
+    </div>
+    <div id="local-tags"><span>Local-first</span><i></i><span>Open source</span></div>
+  </section>
+  <section class="scene" id="end">
+    <h1 id="wordmark">Agent2Learn<span>.</span></h1><p id="end-tagline">Your courses, as a vault your agent can actually read.</p><div id="end-url" class="mono">github.com/ManagementMO/agent2learn<span>{{icon:arrow-up-right}}</span></div>
+  </section>
+</div>
+<audio id="score" src="assets/score.wav" data-start="0" data-duration="18" data-track-index="10" data-timeline-role="music" data-volume="1"></audio>
+</div>
+<script src="assets/scene3d.js"></script><script src="src/pearl-motion.js"></script>
+<script>window.__initA2L3D();window.__timelines["main"]=window.__initA2LAnimation();</script>
+</body></html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=1920,height=1080"><title>Agent2Learn — From LEARN to your agent</title><link rel="stylesheet" href="white.css"><script src="assets/gsap.min.js"></script></head>
+<body>
+<!-- A2L_ICON_SPRITE -->
+<div id="root" data-composition-id="main" data-start="0" data-duration="10" data-fps="120" data-width="1920" data-height="1080">
+<div id="film" class="clip" data-start="0" data-duration="10" data-track-index="1">
+  <div class="background"></div>
+  <section id="showcase">
+    <header id="demo-header"><div id="corner-brand"><span class="corner-monogram"></span><span>Agent2Learn</span></div><h1>Your LEARN. <span>In the flow.</span></h1>
+      <div id="step-labels"><span id="step-learn"><b>01</b> Your course</span><span id="step-vault"><b>02</b> Local context</span><span id="step-agent"><b>03</b> Ask your agent</span><span id="step-source"><b>04</b> Follow the source</span></div>
+    </header>
+    <div id="camera-viewport">
+      <div id="demo-world" data-layout-allow-overflow>
+        <svg id="connections" viewBox="0 0 2800 850" aria-hidden="true"><defs><linearGradient id="route-color"><stop stop-color="#dc9d8c"/><stop offset=".5" stop-color="#8f8fdf"/><stop offset="1" stop-color="#547de8"/></linearGradient></defs><path id="route-original" d="M1080 440 C1150 440 1135 420 1200 420"/><path id="route-context" d="M1560 420 C1620 420 1588 206 1660 206"/></svg>
+        <article class="window" id="learn-window" data-layout-allow-overflow>
+          <div class="browser-chrome"><span class="chrome-dots"><i></i><i></i><i></i></span><span class="mono">learn.uwaterloo.ca</span><span class="browser-demo">STYLIZED DEMO</span></div>
+          <div class="learn-masthead"><span class="waterloo-bar"></span><span>University of Waterloo</span><strong>LEARN</strong><span class="brightspace">D2L Brightspace</span></div>
+          <div class="course-heading"><span class="course-code mono">DEMO 101</span><h2>Decision Models</h2><span class="content-tab">Content</span></div>
+          <div class="learn-body"><aside><span>{{icon:outline}} Course overview</span><span>Week 1 · Foundations</span><span>Week 2 · Models</span><span class="active-module">Week 3 · Feasibility</span></aside>
+            <div class="resource-list"><h3>Week 3 <span>Models &amp; constraints</span></h3>
+              <div class="resource" id="lecture-resource"><span class="resource-icon">{{icon:pdf}}</span><div><strong>Lecture 06.pdf</strong><span>Feasibility &amp; constraints</span></div><span class="resource-open">{{icon:arrow-up-right}}</span></div>
+              <div class="resource" id="lab-resource"><span class="resource-icon">{{icon:lab}}</span><div><strong>Lab 4</strong><span>Practice problems</span></div><span class="resource-open">{{icon:arrow-up-right}}</span></div>
+            </div>
+          </div>
+        </article>
+        <div id="sync-terminal" class="terminal-card"><span class="terminal-symbol">{{icon:agent}}</span><span class="prompt-glyph">$</span><span id="sync-command" class="typed mono" data-full-text="a2l sync"></span><span id="sync-complete"><span class="status-dot"></span> Local sources refreshed</span></div>
+        <div id="local-vault" class="vault-card" data-layout-allow-overflow><span class="vault-eyebrow mono">AGENT2LEARN</span><h2>Local course vault</h2><div class="vault-formats"><span>{{icon:pdf}}</span><span class="format-arrow">{{icon:arrow-right}}</span><span>{{icon:markdown}}</span></div><p>Originals + Markdown twins</p></div>
+        <div id="original-packet" class="source-packet">{{icon:pdf}}</div><div id="markdown-packet" class="source-packet">{{icon:markdown}}</div>
+        <article id="agent-window" class="window" data-layout-allow-overflow>
+          <div class="agent-chrome"><span class="terminal-symbol">{{icon:agent}}</span><strong>Your coding agent</strong><span class="mono">DEMO 101</span></div>
+          <div class="agent-tabs"><span id="agent-tab" class="selected-tab">Agent</span><span id="source-tab">{{icon:markdown}} Lecture 06.md</span><span class="tabs-note mono">LOCAL WORKSPACE</span></div>
+          <div id="agent-view">
+            <div id="agent-context"><span class="context-document">{{icon:markdown}}</span><span class="mono">Lecture 06.md</span><span class="context-document">{{icon:lab}}</span><span class="mono">Lab 4</span><span class="context-state">Local sources</span></div>
+            <div id="composer"><div id="question" class="typed mono" data-full-text="What matters for Lab 4?"></div><span id="send-button">{{icon:arrow-up}}</span></div>
+            <div id="reading"><span class="reading-dots"><i></i><i></i><i></i></span><span>Reading your course sources</span></div>
+            <div id="answer"><span>A</span> <span>feasible</span> <span>solution</span> <span>satisfies</span> <span>every</span> <span>constraint.</span></div>
+            <div id="citation-chip"><span>{{icon:markdown}}</span><span class="mono">Lecture 06.md<b>:145</b></span><span class="citation-arrow">{{icon:arrow-up-right}}</span></div>
+            <div id="agent-terminal"><span class="prompt-glyph">$</span><span id="ground-command" class="typed mono" data-full-text="a2l ground DEMO101 &quot;Lab 4&quot;"></span><span class="terminal-note mono">LOCAL VAULT</span></div>
+          </div>
+          <div id="source-view"><div class="source-path mono"><span>content / Week 3 / </span>Lecture 06.md<span class="source-badge">:145</span></div>
+            <div class="source-code"><div class="code-line"><span class="line-number">142</span><span>## Feasibility</span></div><div class="code-line"><span class="line-number">143</span><span></span></div><div class="code-line"><span class="line-number">144</span><span>Define the decision variables first.</span></div><div class="code-line" id="source-highlight"><span class="line-number">145</span><span>A feasible solution satisfies every constraint.</span></div><div class="code-line"><span class="line-number">146</span><span>The objective ranks feasible solutions.</span></div><div class="code-line"><span class="line-number">147</span><span>Check each constraint against your values.</span></div></div>
+            <div id="source-proof"><span class="status-dot"></span><strong>Local file. Exact line.</strong><span class="mono">Lecture 06.md:145</span></div>
+          </div>
+        </article>
+        <svg id="cursor" viewBox="0 0 38 48" aria-hidden="true"><path d="M3 3V39L13 30L21 45L29 41L21 27H35Z" fill="#283146" stroke="#fff" stroke-width="3"/></svg>
+        <span id="click-ring" aria-hidden="true"></span>
+      </div>
+    </div>
+    <div class="demo-note">SYNTHETIC DEMO · TIME-COMPRESSED · CONCEPTUAL CODING-AGENT VIEW</div>
+  </section>
+  <section id="end"><img id="brand-mark" src="assets/brand/a2l-monogram.png" alt="Agent2Learn a2 monogram"><h1 id="wordmark">Agent2Learn<span>.</span></h1><p id="end-tagline">Your LEARN courses. Ready for your agent.</p><div id="end-url" class="mono">github.com/ManagementMO/agent2learn <span>{{icon:arrow-up-right}}</span></div></section>
+</div>
+<audio id="score" src="assets/score.wav" data-start="0" data-duration="10" data-track-index="10" data-timeline-role="music" data-volume="1"></audio>
+</div>
+<!-- A2L_MOTION --><script>window.__initA2LAnimation();</script>
+</body></html>
