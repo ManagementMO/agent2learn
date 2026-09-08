@@ -1,0 +1,11 @@
+---
+import { release, releaseNotice } from '../lib/site';
+---
+
+{
+  !release.published && (
+    <aside class="release-note" aria-label="Release status">
+      <strong>{releaseNotice.title}</strong> {releaseNotice.description}
+    </aside>
+  )
+}

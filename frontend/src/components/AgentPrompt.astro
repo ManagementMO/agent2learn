@@ -1,0 +1,18 @@
+---
+import CopyButton from './CopyButton.astro';
+import { agentPrompt } from '../lib/site';
+interface Props {
+  expanded?: boolean;
+}
+const { expanded = false } = Astro.props;
+---
+
+<div class="agent-prompt">
+  <div class="agent-prompt-toolbar">
+    <span>AGENT INSTRUCTIONS</span><CopyButton text={agentPrompt} label="Copy prompt" />
+  </div>
+  <details open={expanded}>
+    <summary>Read the full prompt</summary>
+    <pre class="prompt-text" tabindex="0"><code>{agentPrompt}</code></pre>
+  </details>
+</div>

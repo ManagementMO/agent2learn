@@ -1,0 +1,171 @@
+@import './shared.css';
+
+:root {
+  --sl-font: var(--font-sans);
+  --sl-font-mono: var(--font-mono);
+  --sl-content-width: 42rem;
+  --sl-sidebar-width: 17rem;
+  --sl-color-accent-low: var(--color-zinc-800);
+  --sl-color-accent: var(--color-zinc-300);
+  --sl-color-accent-high: var(--color-zinc-100);
+  --sl-color-white: var(--color-zinc-50);
+  --sl-color-gray-1: var(--color-zinc-200);
+  --sl-color-gray-2: var(--color-zinc-300);
+  --sl-color-gray-3: var(--color-zinc-400);
+  --sl-color-gray-4: var(--color-zinc-600);
+  --sl-color-gray-5: var(--color-zinc-800);
+  --sl-color-gray-6: var(--color-zinc-900);
+  --sl-color-black: var(--color-zinc-950);
+  --sl-color-bg-nav: var(--color-zinc-950);
+  --sl-color-bg-sidebar: var(--color-zinc-950);
+  --paper: var(--color-zinc-950);
+  --surface: var(--color-zinc-900);
+  --ink: var(--color-zinc-100);
+  --muted: var(--color-zinc-300);
+  --subtle: var(--color-zinc-400);
+  --line: var(--color-zinc-800);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: var(--color-zinc-100);
+  --sl-color-accent: var(--color-zinc-700);
+  --sl-color-accent-high: var(--color-zinc-900);
+  --sl-color-white: var(--color-zinc-900);
+  --sl-color-gray-1: var(--color-zinc-800);
+  --sl-color-gray-2: var(--color-zinc-700);
+  --sl-color-gray-3: var(--color-zinc-500);
+  --sl-color-gray-4: var(--color-zinc-400);
+  --sl-color-gray-5: var(--color-zinc-200);
+  --sl-color-gray-6: var(--color-zinc-100);
+  --sl-color-gray-7: var(--color-zinc-50);
+  --sl-color-black: var(--color-white);
+  --sl-color-bg-nav: var(--color-white);
+  --sl-color-bg-sidebar: var(--color-zinc-50);
+  --paper: var(--color-white);
+  --surface: var(--color-zinc-50);
+  --ink: var(--color-zinc-900);
+  --muted: var(--color-zinc-600);
+  --subtle: var(--color-zinc-500);
+  --line: var(--color-zinc-200);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+.docs-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 650;
+}
+.docs-brand-label {
+  margin-left: 3px;
+  padding-left: 13px;
+  border-left: 1px solid var(--line);
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 450;
+}
+header.header {
+  border-bottom-color: var(--line);
+}
+h1#_top {
+  font-size: clamp(2rem, 4vw, 2.65rem);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.docs-page-actions {
+  display: flex;
+  margin-top: 18px;
+}
+.docs-page-actions .copy-feedback.copy-error {
+  left: 0;
+  right: auto;
+}
+.sl-markdown-content {
+  font-size: 16px;
+  line-height: 1.75;
+}
+.sl-markdown-content h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  padding-top: 10px;
+}
+.sl-markdown-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.sl-markdown-content a:not(:where(.not-content *)) {
+  text-underline-offset: 4px;
+}
+.sl-markdown-content table {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.sl-markdown-content code {
+  font-size: 0.85em;
+}
+.sl-markdown-content :not(pre) > code {
+  /* Keep short commands together, but let a long path fit a narrow column.
+     This preserves normal spaces when the reader copies a command. */
+  display: inline-block;
+  max-inline-size: 100%;
+  vertical-align: baseline;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sidebar-content {
+  font-size: 13px;
+}
+.sidebar-content a[aria-current='page'] {
+  background: var(--sl-color-gray-6);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 var(--accent);
+}
+.sidebar-content .top-level > li + li {
+  margin-top: 1.3rem;
+}
+.sl-markdown-content .agent-prompt {
+  margin-block: 24px;
+}
+.sl-markdown-content .agent-prompt * + * {
+  margin-top: 0;
+}
+.sl-markdown-content .agent-prompt summary {
+  display: list-item;
+}
+.sl-markdown-content .docs-command .copy-control {
+  margin-top: 0;
+}
+.sl-markdown-content .docs-command pre code {
+  font-size: 13px;
+}
+.pagination-links a {
+  border-radius: 8px;
+  box-shadow: none;
+}
+.right-sidebar-panel {
+  font-size: 12px;
+}
+.sl-link-button {
+  border-radius: 6px;
+}
+
+@media (max-width: 400px) {
+  .docs-brand .brand-mark {
+    width: 44px;
+    height: auto;
+  }
+  .docs-brand {
+    font-size: 15px;
+    gap: 7px;
+  }
+  .docs-brand-label {
+    font-size: 10px;
+    padding-left: 8px;
+  }
+}

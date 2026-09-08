@@ -1,0 +1,223 @@
+@import '@fontsource-variable/dm-sans';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+:root {
+  --font-sans: 'DM Sans Variable', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --ink: var(--color-zinc-900);
+  --muted: var(--color-zinc-600);
+  --subtle: var(--color-zinc-500);
+  --line: var(--color-zinc-200);
+  --paper: var(--color-white);
+  --surface: var(--color-zinc-50);
+  --accent: var(--ink);
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+button,
+a,
+summary,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+:where(a, button, summary, input, [tabindex]):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 5px;
+}
+button,
+summary {
+  cursor: pointer;
+}
+code,
+pre {
+  font-family: var(--font-mono);
+}
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+[data-theme='dark'] .brand-mark {
+  filter: invert(1);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.copy-control {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.copied-glyph {
+  display: none;
+}
+.copy-button[data-copied] .copied-glyph {
+  display: inline-flex;
+}
+.copy-button[data-copied] .copy-glyph {
+  display: none;
+}
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.copy-button:hover {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--color-zinc-400);
+}
+.copy-feedback {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.copy-feedback.copy-error {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 250px;
+  height: auto;
+  padding: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 12px/1.5 var(--font-sans);
+  clip-path: none;
+}
+.is-compact .copy-button {
+  min-width: 36px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+}
+.is-compact .copy-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.agent-prompt {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  overflow: visible;
+}
+.agent-prompt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  font: 10px var(--font-mono);
+  color: var(--muted);
+}
+.agent-prompt details {
+  border-top: 1px solid var(--line);
+}
+.agent-prompt summary {
+  padding: 12px 14px;
+  color: var(--muted);
+  font: 12px var(--font-sans);
+}
+.agent-prompt summary:hover {
+  color: var(--ink);
+}
+.agent-prompt .prompt-text {
+  margin: 0;
+  padding: 6px 16px 18px;
+  max-height: 350px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: transparent;
+  color: var(--muted);
+  font: 12px/1.8 var(--font-mono);
+  border: 0;
+}
+.agent-prompt .prompt-text code {
+  white-space: pre-wrap;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+}
+.release-note {
+  margin-block: 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.release-note strong {
+  display: block;
+}
+.docs-command {
+  position: relative;
+  margin-block: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.docs-command pre {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow-x: auto;
+  font-size: 13px;
+}
+.docs-command pre code {
+  padding: 0;
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

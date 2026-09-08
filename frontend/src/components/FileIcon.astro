@@ -1,0 +1,71 @@
+---
+interface Props {
+  kind: 'index' | 'linear' | 'prompt' | 'pdf';
+  size?: number;
+}
+const { kind, size = 18 } = Astro.props;
+---
+
+<svg
+  class={`file-icon file-icon-${kind}`}
+  width={size}
+  height={size}
+  viewBox="0 0 24 24"
+  fill="none"
+  aria-hidden="true"
+>
+  <path
+    d="M6 2.75h8l4.75 4.75V20A1.25 1.25 0 0 1 17.5 21.25h-11A1.25 1.25 0 0 1 5.25 20V4A1.25 1.25 0 0 1 6.5 2.75Z"
+    class="file-icon-paper"
+    stroke="currentColor"
+    stroke-width="1.25"
+    stroke-linejoin="round"></path>
+  <path d="M14 3v5h4.5" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+  {
+    kind === 'index' && (
+      <path
+        d="M8 11h2m2 0h4m-8 3h2m2 0h4m-8 3h2m2 0h4"
+        stroke="currentColor"
+        stroke-width="1.2"
+        stroke-linecap="round"
+      />
+    )
+  }
+  {
+    kind === 'linear' && (
+      <>
+        <>
+          <rect x="7" y="11" width="10" height="7" rx="1.5" fill="var(--ink)" />
+          <path
+            d="M9 16v-3l2 2 2-2v3m2-3v3"
+            stroke="var(--paper)"
+            stroke-width="1.1"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </>
+      </>
+    )
+  }
+  {
+    kind === 'prompt' && (
+      <path
+        d="m7.5 11 1 1 2-2m2 1h3m-8 5 1 1 2-2m2 1h3"
+        stroke="currentColor"
+        stroke-width="1.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    )
+  }
+  {
+    kind === 'pdf' && (
+      <path
+        d="M8 17c3-4 4-6 3-7-1 1 0 5 5 6-3-1-6 0-8 1Z"
+        stroke="currentColor"
+        stroke-width="1.15"
+        stroke-linejoin="round"
+      />
+    )
+  }
+</svg>

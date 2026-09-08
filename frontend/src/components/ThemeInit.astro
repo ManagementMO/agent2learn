@@ -1,0 +1,16 @@
+<!-- Use Starlight's storage key so the landing page and docs share a preference. -->
+<script is:inline>
+  (() => {
+    let saved;
+    try {
+      saved = localStorage.getItem('starlight-theme');
+    } catch {}
+    const theme =
+      saved === 'light' || saved === 'dark'
+        ? saved
+        : matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark';
+    document.documentElement.dataset.theme = theme;
+  })();
+</script>
