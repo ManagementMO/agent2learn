@@ -31,11 +31,13 @@ Pagefind indexes the production HTML during the build. Search is entirely local 
 | `src/components/FeatureIcon.astro` | Custom illustrations for files, citations, and revision history.                   |
 | `src/components/FileIcon.astro`    | Distinct icons for the index, Markdown, assignment instructions, and original PDF. |
 | `src/components/Mark.astro`        | Shared, lightweight logo rendering at each display size.                           |
-| `public/brand/mark.svg`            | Original vector artwork: an open book with a bookmark on charcoal.                 |
+| `src/assets/brand/a2l-source.png`  | Unchanged, approved A2L master from the launch film, pinned by SHA-256.            |
+| `public/brand/mark.svg`            | Self-contained SVG wrapper around the cropped, web-sized A2L raster artwork.       |
 | `public/brand/icon.png`            | A 512px logo export; the UI uses the SVG.                                          |
 | `public/brand/social-card.png`     | The 1200 by 630 sharing image, composed with the real synthetic vault.             |
 | `scripts/render-social-card.js`    | Reproduce the sharing image from the local production preview with Playwright CLI. |
-| `public/favicon.svg`               | The same vector artwork, used by browser tabs.                                     |
+| `public/favicon.svg`               | The A2L wordmark on a light tile, readable in light and dark browser chrome.       |
+| `scripts/build-brand.mjs`          | Reproducible wordmark, favicon and icon exports; the build checks for drift.       |
 | `src/styles/shared.css`            | Typography, common controls, and shared tokens.                                    |
 | `src/styles/home.css`              | Responsive landing-page composition and both themes.                               |
 | `src/styles/docs.css`              | The Starlight documentation theme.                                                 |
@@ -45,7 +47,11 @@ Pagefind indexes the production HTML during the build. Search is entirely local 
 
 The site uses Astro, Starlight, Tailwind's neutral color tokens, DM Sans, and IBM Plex Mono. Dependencies are pinned in `package-lock.json`. Fonts are served locally; their license notices are included under `public/licenses/`. No analytics, remote font calls, or background network integrations are added.
 
-The logo is an original, hand-authored SVG. Its open pages and bookmark keep the identity focused on reading and study. The interface and feature icons are also editable vectors. The header loads the small SVG directly; a separate PNG is available for social previews.
+The logo is the approved, image-generated editorial **A2L** wordmark from the launch film. The master is preserved byte-for-byte; the export script trims transparent padding and resizes it for web use without redrawing the lettering. The SVG files embed raster artwork and are not claimed to be vector masters. Interface and feature icons remain editable vectors and are not brand marks.
+
+`Mark.astro` supplies the homepage header/footer, setup prompt, citation demo, and all documentation headers (including the 404 page). It reserves the wordmark's wide proportions and displays a white version via CSS inversion in dark mode. Mobile headers use a smaller optical size to preserve navigation space. The browser favicon and 512px icon use a light tile for a consistent silhouette in either browser theme.
+
+After an approved master change, review its source hash in `scripts/build-brand.mjs`, run `npm run brand:build`, then rebuild and regenerate the sharing image below. `npm run brand:check` verifies that the checked-in exports still match the approved master; the normal build includes this gate. Do not edit generated SVGs or PNGs independently.
 
 ## Light and dark themes
 
@@ -119,6 +125,12 @@ npm run format:check
 npm run build
 npm run check:release
 ```
+
+For the logo-specific browser regression, open the production preview with Playwright CLI,
+then run `run-code --filename scripts/verify-brand-browser.js` in that session. It checks
+the homepage and documentation at 320, 375, 768 and 1440px in both themes, including
+image decoding, aspect ratio, theme treatment and mobile header spacing. Screenshots
+are saved under `output/playwright/`.
 
 The build runs Astro/TypeScript checks, freshly renders all static pages, creates the search index, verifies internal navigation and anchors, and checks the agent index, setup prompt, and code-example labels. `astro build --force` clears the content cache so changes to rendering hooks cannot leave stale documentation HTML. Browser checks should cover both themes, phone and desktop widths, file selection, citation focus, copy success/failure, docs search, tabs, and the mobile menu. Keep temporary screenshots and browser reports under the ignored `output/playwright/` folder.
 

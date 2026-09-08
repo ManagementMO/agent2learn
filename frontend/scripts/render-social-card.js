@@ -56,7 +56,7 @@ async function renderSocialCard(page) {
       </head>
       <body>
         <main class="social-card">
-          <div class="social-brand"><img src="${origin}/brand/mark.svg" width="40" height="40" alt="">Agent2Learn</div>
+          <div class="social-brand"><img src="${origin}/brand/mark.svg" width="88" height="34" alt="">Agent2Learn</div>
           <div class="social-copy">
             <h1 class="social-title">Your courses.<span>Ready for your<br>agent.</span></h1>
             <p class="social-description">Local course files your coding agent can read and cite.</p>

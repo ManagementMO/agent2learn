@@ -10,7 +10,9 @@
     "dev": "astro dev --host 127.0.0.1",
     "check": "astro check",
     "check:release": "node scripts/verify-release.mjs",
-    "build": "astro check && astro build --force && node scripts/verify-build.mjs",
+    "brand:build": "node scripts/build-brand.mjs",
+    "brand:check": "node scripts/build-brand.mjs --check",
+    "build": "npm run brand:check && astro check && astro build --force && node scripts/verify-build.mjs",
     "preview": "astro preview --host 127.0.0.1",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -31,6 +33,7 @@
     "linkedom": "0.18.13",
     "prettier": "3.9.6",
     "prettier-plugin-astro": "0.14.1",
+    "sharp": "0.35.4",
     "typescript": "6.0.3"
   }
 }

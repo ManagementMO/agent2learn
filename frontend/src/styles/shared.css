@@ -49,6 +49,9 @@ pre {
   flex-shrink: 0;
   object-fit: contain;
 }
+[data-theme='dark'] .brand-mark {
+  filter: invert(1);
+}
 .sr-only {
   position: absolute;
   width: 1px;

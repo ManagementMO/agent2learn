@@ -156,6 +156,10 @@ h1#_top {
 }
 
 @media (max-width: 400px) {
+  .docs-brand .brand-mark {
+    width: 44px;
+    height: auto;
+  }
   .docs-brand {
     font-size: 15px;
     gap: 7px;

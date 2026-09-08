@@ -53,6 +53,17 @@ for (const [file, document] of documents) {
   if (document.querySelectorAll('h1').length !== 1)
     failures.push(`${path}: expected one main heading`);
   const codeLabels = new Set();
+  // A wide wordmark in the old square slot is visibly compressed. Check the
+  // emitted component on every route, not just its source or the home page.
+  const marks = document.querySelectorAll('img.brand-mark');
+  if (!marks.length) failures.push(`${path}: missing shared brand mark`);
+  for (const mark of marks) {
+    const ratio = Number(mark.getAttribute('width')) / Number(mark.getAttribute('height'));
+    if (!Number.isFinite(ratio) || ratio < 2.45 || ratio > 2.8)
+      failures.push(`${path}: A2L wordmark must retain its wide optical proportions`);
+    if (mark.getAttribute('alt') !== '' || mark.getAttribute('aria-hidden') !== 'true')
+      failures.push(`${path}: adjacent brand name already labels this decorative mark`);
+  }
   for (const block of document.querySelectorAll('.expressive-code pre')) {
     const label = block.getAttribute('aria-label');
     if (!label || codeLabels.has(label))

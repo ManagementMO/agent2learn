@@ -3,13 +3,17 @@ interface Props {
   size?: number;
 }
 const { size = 34 } = Astro.props;
+// Preserve the wide A2L silhouette while keeping each existing slot's visual
+// weight. Explicit dimensions reserve space before the image decodes.
+const width = size * 2;
+const height = Math.round((width * 561) / 1450);
 ---
 
 <img
   class="brand-mark"
   src="/brand/mark.svg"
-  width={size}
-  height={size}
+  width={width}
+  height={height}
   alt=""
   aria-hidden="true"
   decoding="async"

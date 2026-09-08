@@ -876,9 +876,9 @@ h3 {
     font-size: 16px;
     gap: 8px;
   }
-  .brand > svg {
-    width: 26px;
-    height: 26px;
+  .site-header .brand-mark {
+    width: 48px;
+    height: auto;
   }
   .site-header nav {
     gap: 16px;
