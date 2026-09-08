@@ -50,6 +50,12 @@ for(const item of cues.typing){
   item.end=item.start+item.duration;
 }
 await writeFile('assets/cue-sheet.json',JSON.stringify(cues,null,2)+'\n');
+// Prepare sound timing first; keep Studio on its existing valid audio paths
+// until the score builder has successfully written all replacement stems.
+if(process.argv.includes('--cues-only')){
+  console.log('Prepared the shared cue sheet; Studio composition left unchanged.');
+  process.exit(0);
+}
 const escapeAttribute=s=>s.replaceAll('&','&amp;').replaceAll('"','&quot;');
 const automation={version:1,lanes:[{target:'volume',points:cues.musicEnvelope.map(([t,v])=>({t,v}))}]};
 const iconViewBoxes={pdf:'0 0 64 80',lab:'0 0 64 80',csv:'0 0 64 80',outline:'0 0 64 80',markdown:'0 0 64 80',agent:'0 0 32 32',folder:'0 0 32 28',index:'0 0 32 32','arrow-up-right':'0 0 24 24','arrow-right':'0 0 24 24','arrow-up':'0 0 24 24'};

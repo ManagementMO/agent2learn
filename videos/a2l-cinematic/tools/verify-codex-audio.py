@@ -1,5 +1,6 @@
 """Check rendered AAC against the independently assembled editable-stem mix."""
 
+import argparse
 import json
 import subprocess
 from pathlib import Path
@@ -35,8 +36,14 @@ def decode(path):
 
 cues = json.loads((ROOT / "src/launchflow-cues.json").read_text())
 revision = cues["exportPrefix"]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument(
+    "--audio", type=Path, help="An audio-only review encode instead of the final MP4"
+)
+args = parser.parse_args()
+encoded_path = args.audio or Path(f"renders/agent2learn-{revision}-120fps.mp4")
 ref = decode(f"assets/audio/{cues['audioPrefix']}-mix-reference.wav")
-encoded = decode(f"renders/agent2learn-{revision}-120fps.mp4")[: len(ref)]
+encoded = decode(encoded_path)[: len(ref)]
 assert len(encoded) == len(ref), "Encoded audio must span the complete film"
 assert np.isfinite(encoded).all()
 results = []
@@ -69,6 +76,8 @@ assert peak < -1, "AAC must preserve at least 1 dB sample-peak headroom"
 assert tail < -45, "End of encoded music must fade cleanly"
 report = {
     "status": "passed",
+    "encoded_file": str(encoded_path),
+    "audio_only_review": args.audio is not None,
     "samples_per_channel": len(encoded),
     "sample_peak_dbfs": peak,
     "last_10ms_rms_dbfs": tail,

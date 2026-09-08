@@ -3,6 +3,27 @@
 The active revision is a **17.5-second product-demo launch film**, 1920×1080,
 with a native 120fps master and a 60fps sharing version.
 
+## Current Studio soundtrack — Launchbeat (2026-09-08)
+
+Studio now previews a punchier house/disco instrumental with a 4% pitch-preserving
+tempo lift, stronger information-transfer accents, quiet context/logo chimes, and
+a deliberate music dip at the source click. The subsequent visual cleanup removes
+the long bottom disclaimer and replaces the Content tab's inset shadow with a
+bottom-only blue underline. Other visuals, the logo, 17.5s timing and recorded
+input Foley are unchanged. The previous MP4s below still use
+the previous soundtrack; **no new final movie export has been approved or replaced
+them**.
+
+- [Listen to the new 17.5s audio mix](renders/agent2learn-signalflow-launchbeat-audio.m4a)
+- [Open the updated Studio](http://localhost:3017/#project/a2l-cinematic)
+- [Soundtrack verification and boundaries](VERIFICATION-LAUNCHBEAT.md)
+
+The active stems use `signalflow-launchbeat`; the prior `signalflow-polish`
+stems remain intact. Prior cues and metadata are also saved locally in
+`.archive/signalflow-agent-audio/`. To revert the preview, restore its saved
+`launchflow-cues.json` to `src/` and run `npm run build` using the preserved stems.
+Do not regenerate the old score merely to switch back.
+
 The poster, storyboard and ingestion contact sheet are included in Git.
 Video links refer to preserved **local** MP4s, not files distributed by this
 checkout. See [Git publication scope](#git-publication-scope).
@@ -19,6 +40,9 @@ checkout. See [Git publication scope](#git-publication-scope).
 - [Editable Studio](http://localhost:3017/#project/a2l-cinematic)
 
 ## This revision
+
+The following describes the approved picture revision; the newer audio-only
+preview above supersedes its soundtrack description.
 
 A recognizable CS135-inspired Chrome/LEARN course, standard monochrome Lucide
 icons, softer phrase-paced typing, document-to-information streams, chunked
@@ -83,7 +107,8 @@ approved soundtrack. Asset hashes and exact final MP4 hashes are recorded in
 Edit src/launchflow.html.template, src/launchflow.css,
 src/launchflow-motion.js and src/launchflow-cues.json. The names are historical;
 their active output is Signalflow Polish. tools/build.mjs compiles HTML/CSS and the
-single shared picture/Foley cue table, plus the exact local demo note.
+single shared picture/Foley cue table. Demo provenance remains in the project
+documentation and synthetic fixtures; the long on-screen footer was removed.
 The older base styles and scripts are historical, not the active cut.
 
 Requires Node 22+, Chrome and FFmpeg. `npm ci` plus `npm run build` restores

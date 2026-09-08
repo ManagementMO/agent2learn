@@ -3,10 +3,24 @@
   "sample_rate": 48000,
   "channels": 2,
   "music": {
-    "id": "bgm_011",
-    "source_start": 15.6,
-    "normalization_lufs": -18,
+    "id": "bgm_012",
+    "source_start": 0.454,
+    "playback_rate": 1.04,
+    "normalization_lufs": -17,
+    "true_peak_target_db": -6,
     "mastering_gain_db": 3,
+    "normalization_measurement": {
+      "input_i": "-13.67",
+      "input_tp": "0.40",
+      "input_lra": "0.60",
+      "input_thresh": "-23.67",
+      "output_i": "-17.13",
+      "output_tp": "-6.00",
+      "output_lra": "0.60",
+      "output_thresh": "-27.13",
+      "normalization_type": "dynamic",
+      "target_offset": "0.13"
+    },
     "authorship": "catalog music; custom editorial and synchronized Foley mix"
   },
   "typing": [
@@ -364,7 +378,7 @@
       "time": 3.12,
       "kind": "soft_camera_sweep",
       "selector": null,
-      "peak_dbfs": -24
+      "peak_dbfs": -22
     },
     {
       "time": 4.87,
@@ -430,7 +444,7 @@
       "time": 5.62,
       "kind": "soft_camera_sweep",
       "selector": null,
-      "peak_dbfs": -21
+      "peak_dbfs": -20
     },
     {
       "time": 6.4831054921005755,
@@ -472,25 +486,31 @@
       "time": 7.2,
       "kind": "sourceArrival0",
       "selector": null,
-      "peak_dbfs": -22
+      "peak_dbfs": -21
     },
     {
       "time": 7.36,
       "kind": "sourceArrival1",
       "selector": null,
-      "peak_dbfs": -21
+      "peak_dbfs": -20
     },
     {
       "time": 7.52,
       "kind": "sourceArrival2",
       "selector": null,
-      "peak_dbfs": -20
+      "peak_dbfs": -19
     },
     {
       "time": 7.82,
       "kind": "contextReady",
       "selector": null,
       "peak_dbfs": -22
+    },
+    {
+      "time": 7.82,
+      "kind": "context_chime",
+      "selector": null,
+      "peak_dbfs": -28
     },
     {
       "time": 8.620382934185631,
@@ -634,25 +654,31 @@
       "time": 12.8,
       "kind": "openSource",
       "selector": null,
-      "peak_dbfs": -11
+      "peak_dbfs": -9.5
     },
     {
       "time": 12.92,
       "kind": "soft_camera_sweep",
       "selector": null,
-      "peak_dbfs": -23
+      "peak_dbfs": -22
     },
     {
       "time": 13.74,
       "kind": "proof",
       "selector": null,
-      "peak_dbfs": -20
+      "peak_dbfs": -19
     },
     {
       "time": 15.65,
       "kind": "soft_camera_sweep",
       "selector": null,
-      "peak_dbfs": -23
+      "peak_dbfs": -22
+    },
+    {
+      "time": 16.1,
+      "kind": "brand_chime",
+      "selector": null,
+      "peak_dbfs": -25
     }
   ],
   "sources": [
@@ -681,101 +707,143 @@
       "sha256": "7bb0f183f589c996ffba9fdde5e41f76f561bb0d7dcd832291f9bc96cb82c355"
     },
     {
-      "id": "bgm_011",
-      "path": ".media/audio/bgm/bgm_011.wav",
-      "description": "Sleek minimal tech-ambient underscore, slow build, pulsing synth, premium SaaS product demo mood.",
-      "sha256": "c5d29a61b37f981a9d93877943625696bdfdf4cf884b3aa3264d9911083e8dd2"
+      "id": "bgm_012",
+      "path": ".media/audio/bgm/bgm_012.wav",
+      "description": "energetic house disco instrumental, upbeat tempo, neon vibes",
+      "sha256": "0178bbb88df28736c66a1fea9f1b4eb02c5cfab9859482a655069a0098d82fb0"
+    },
+    {
+      "id": "sfx_006",
+      "path": ".media/audio/sfx/sfx_006.mp3",
+      "description": "A quick, bright, high-pitched synthesized chime resembling a user interface notification.",
+      "sha256": "b0813dcb9a2d0a354c06d3d57bc4964f6443597deeb76c20a665c8a0e483f6ab"
     }
   ],
-  "reference_peak_dbfs": -3.26631825655663,
+  "reference_peak_dbfs": -2.7614835826222555,
   "automation": [
     [
       0,
       0
     ],
     [
-      0.2,
-      0.8
+      0.04,
+      0.9
     ],
     [
-      0.32,
-      0.57
+      0.36,
+      0.82
     ],
     [
-      1.6,
-      0.57
+      1.38,
+      0.82
+    ],
+    [
+      1.5,
+      0.66
+    ],
+    [
+      1.74,
+      0.92
     ],
     [
       2.02,
-      0.8
+      1
     ],
     [
-      2.55,
-      0.8
+      2.44,
+      1
     ],
     [
-      3.2,
-      0.95
+      2.56,
+      0.78
     ],
     [
-      4.8,
-      0.95
+      2.78,
+      1
+    ],
+    [
+      4.78,
+      1
     ],
     [
       4.9,
-      0.65
+      0.7
     ],
     [
-      5.5,
-      0.95
+      5.33,
+      0.7
     ],
     [
-      6.7,
-      0.95
+      5.62,
+      1
+    ],
+    [
+      6.72,
+      1
     ],
     [
       6.84,
-      0.56
-    ],
-    [
-      7.8,
       0.8
     ],
     [
-      8.45,
-      0.56
+      7.15,
+      0.96
+    ],
+    [
+      7.9,
+      0.96
+    ],
+    [
+      8.4,
+      0.7
     ],
     [
       10.38,
-      0.56
+      0.7
     ],
     [
       10.77,
-      0.77
+      0.84
     ],
     [
-      12.6,
-      0.77
+      12.5,
+      0.84
     ],
     [
-      12.8,
-      0.53
+      12.78,
+      0.34
     ],
     [
-      13.7,
-      0.7
+      12.96,
+      0.34
     ],
     [
-      15.6,
-      0.7
+      13.45,
+      0.82
     ],
     [
-      16.1,
-      0.96
+      13.8,
+      0.92
     ],
     [
-      16.7,
-      0.96
+      15.4,
+      0.92
+    ],
+    [
+      15.65,
+      1
+    ],
+    [
+      16.65,
+      1
+    ],
+    [
+      17.1,
+      0.4
+    ],
+    [
+      17.48,
+      0
     ],
     [
       17.5,

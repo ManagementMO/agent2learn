@@ -53,7 +53,42 @@ Registry references: ui-focus-zoom, code-terminal-run, tilt-card,
 arc-motion-path. These informed authored mechanisms; their showcase UI and
 branding are not mounted.
 
-## Music and Foley
+## Current preview music and Foley — Launchbeat (2026-09-08)
+
+New bed: `.media/audio/bgm/bgm_012.wav`, retrieved through the existing signed-in
+HeyGen catalog. Provider track ID: `840f825204824c678f82835e27044fca`; catalog
+description: “energetic house disco instrumental, upbeat tempo, neon vibes”.
+This is catalog music, **not a newly composed original song**.
+
+The editorial source window starts at 0.454s and consumes 18.2 source seconds
+at a pitch-preserving rate of 1.04, producing the 17.5s bed without looping.
+Two-pass loudness preparation and the existing separate-stem workflow are used;
+the final volume envelope is authored in HyperFrames, not baked into its bed.
+The prepared bed is additionally registered as `bgm_016` in the local media ledger.
+
+New quiet context/brand accent: `.media/audio/sfx/sfx_006.mp3`, HeyGen catalog
+track `fd8d6893299c363d`, described as a brief bright synthesized UI chime.
+It lands at 7.82s and 16.10s, with bounded level and bandwidth. All original
+keyboard/click/sweep sources below remain in use. The keyboard stem is
+byte-identical; some interface gains and sweep levels are slightly increased.
+
+Active local stems: `assets/audio/signalflow-launchbeat-{bed,typing,interface}.wav`.
+The independent listening mix is `signalflow-launchbeat-mix-reference.wav`.
+An AAC audio-only review is in `renders/agent2learn-signalflow-launchbeat-audio.m4a`.
+No finished MP4 was replaced. `audio_meta.json` records the active sources,
+hashes, normalization measurement, events and automation.
+
+Two other newly retrieved alternatives are retained but unused: `bgm_013`
+(short pop beat with a long quiet tail) and `bgm_015` (slower bounce-style groove).
+The resolver also adopted an older local `assets/audio/music.wav` as `bgm_014`;
+that is not a fresh download and was not selected. Selection uses catalog
+descriptions and waveform/rhythm checks; a human listening review is still owed.
+
+The owner allowed non-copyright-free material for this audition. Catalog access
+and provenance do not independently establish public-distribution rights.
+No subscription change, public upload, or new rights-clearance claim was made.
+
+## Previous approved movie soundtrack — preserved
 
 Music is catalog sourced, not an original composition. Custom work is the
 editorial trim, 43 recorded-key placements and one paste gesture, varied key

@@ -23,6 +23,8 @@ try{
   assert.equal(await page.evaluate(()=>window.__a2lTimeline.duration()),17.5);
   assert.equal(await page.locator('#local-vault,#connections,#composer,canvas').count(),0);
   assert.equal(await page.locator('audio').count(),3);
+  assert.equal(await page.locator('.demo-note').count(),0,'The removed footer must not return to the film');
+  assert.ok(!(await page.locator('#film').textContent()).includes('SETUP & RESPONSES TIME-COMPRESSED'),'The removed disclaimer cannot be moved elsewhere');
   // This is the preserved pre-rebrand option, not a live frontend dependency.
   // The website now adopts the editorial A2L artwork separately.
   const logo=await readFile('assets/brand/frontend-mark.svg');
@@ -47,6 +49,8 @@ try{
   assert.equal(audio.duration,17.5);
   assert.equal(await page.locator('.chapter-step b').count(),0,'No numbered chapter labels');
   assert.equal(await page.locator('.chrome-tab,.omnibox,.learn-navbar,.editor-explorer,.editor-tabs').count(),5);
+  const contentTab=await page.locator('.learn-navbar .current').evaluate(el=>{const s=getComputedStyle(el);return {color:s.color,left:s.borderLeftWidth,right:s.borderRightWidth,shadow:s.boxShadow,underline:s.backgroundImage,size:s.backgroundSize,position:s.backgroundPosition,repeat:s.backgroundRepeat};});
+  assert.deepEqual(contentTab,{color:'rgb(7, 107, 171)',left:'0px',right:'0px',shadow:'none',underline:'linear-gradient(rgb(0, 116, 175), rgb(0, 116, 175))',size:'100% 3px',position:'0% 100%',repeat:'no-repeat'},'Content retains its blue text and bottom-only underline without a surrounding box');
   for(const label of await page.locator('.chapter-step').all()){
     const style=await label.evaluate(e=>{const s=getComputedStyle(e);return {size:parseFloat(s.fontSize),weight:Number(s.fontWeight),left:parseFloat(s.left)};});
     assert.ok(style.size>=32&&style.weight>=600&&style.left<1400,'Prominent dark chapter text closer to the centre');

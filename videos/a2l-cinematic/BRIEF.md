@@ -5,7 +5,7 @@ storyboard: skip-review
 length: 17.5s
 format: landscape
 source: local-repository
-audio: catalog-electronic-with-custom-recorded-foley-edit
+audio: upbeat-house-disco-with-synchronized-recorded-foley
 ---
 
 # Agent2Learn — Signalflow Polish
@@ -13,7 +13,18 @@ audio: catalog-electronic-with-custom-recorded-foley-edit
 Authorized edit-and-render pass on the existing film. Keep the previous cut.
 Do not reopen the intake or change the product engine.
 
-Current follow-up: change only the top agent-scene title to "Your Agent ×
+Current follow-up (2026-09-08): replace the restrained ambient-tech bed with a
+more fun, energetic, brisk product-launch groove and matching sound effects.
+Keep picture timing unchanged. The subsequent approved visual cleanup removes
+the long bottom disclaimer and changes the Content tab to a bottom-only blue
+underline; its blue text and all other picture elements remain unchanged.
+`signalflow-launchbeat` is the new Studio/audio-review revision; retain earlier
+stems and finished movies.
+Human listening/approval precedes replacing or making a final movie export.
+The owner allows non-copyright-free tracks for audition; this does not establish
+public-distribution rights for a catalog asset.
+
+Previous follow-up: change only the top agent-scene title to "Your Agent ×
 Agent2Learn." Keep Codex in the terminal, all motion, audio and timing. Export
 under `signalflow-agent` so the previous `signalflow-polish` cut remains intact.
 The owner has also approved adoption of this exact A2L artwork on the frontend;
@@ -51,8 +62,9 @@ Stillness after the move gives the viewer time to read.
 
 Typing uses non-periodic intervals and phrase pauses, plus a caret that rests
 while typing and blinks during pauses. Codex response streams token groups
-without fake typing sounds. Existing music is retained, with softer recorded
-keyboard variants and tightly timed clicks. No narration or reference audio.
+without fake typing sounds. Recorded keyboard variants and all their cue times
+remain unchanged. Launchbeat replaces the music and lifts selected interface
+accents, with subtle context/brand chimes. No narration or reference audio.
 Catalog editing/Foley is not original musical composition.
 
 The demo is stylized and time-compressed; install/auth/sync are not live tests.
