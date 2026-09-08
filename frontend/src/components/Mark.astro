@@ -1,0 +1,16 @@
+---
+interface Props {
+  size?: number;
+}
+const { size = 34 } = Astro.props;
+---
+
+<img
+  class="brand-mark"
+  src="/brand/mark.svg"
+  width={size}
+  height={size}
+  alt=""
+  aria-hidden="true"
+  decoding="async"
+/>

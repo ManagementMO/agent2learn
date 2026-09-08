@@ -1,0 +1,27 @@
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import CopyButton from './CopyButton.astro';
+import { installMethods } from '../lib/site';
+const [uv, posix, windows] = installMethods;
+---
+
+<Tabs>
+  <TabItem label={uv.label}>
+    <p>{uv.description}</p>
+    <div class="docs-command">
+      <pre><code>{uv.command}</code></pre><CopyButton text={uv.command} />
+    </div>
+  </TabItem>
+  <TabItem label={posix.label}>
+    <p>{posix.description}</p>
+    <div class="docs-command">
+      <pre><code>{posix.command}</code></pre><CopyButton text={posix.command} />
+    </div>
+  </TabItem>
+  <TabItem label={windows.label}>
+    <p>{windows.description}</p>
+    <div class="docs-command">
+      <pre><code>{windows.command}</code></pre><CopyButton text={windows.command} />
+    </div>
+  </TabItem>
+</Tabs>

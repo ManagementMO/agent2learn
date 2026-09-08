@@ -1,0 +1,186 @@
+---
+import Icon from './Icon.astro';
+import FileIcon from './FileIcon.astro';
+import Mark from './Mark.astro';
+const files = [
+  {
+    id: 'index',
+    name: 'INDEX.md',
+    shortName: 'Index',
+    folder: 'DEMO 101',
+    lines: [
+      '# DEMO 101',
+      'Foundations of modelling',
+      '',
+      '## Course material',
+      '- Week 3 / Linear models',
+      '',
+      '## Assignments',
+      '- Problem Set 1',
+      '',
+      'Start here. Follow the source files.',
+    ],
+  },
+  {
+    id: 'linear',
+    name: 'Linear models.md',
+    shortName: 'Lecture',
+    folder: 'content / Week 3',
+    lines: [
+      '# Linear models',
+      '',
+      '## Feasible solutions',
+      'A feasible solution satisfies every',
+      'constraint in the model.',
+      '',
+      'The objective selects the best feasible',
+      'solution for the quantity being modelled.',
+      '',
+      '## Next: the graphical method',
+    ],
+  },
+  {
+    id: 'prompt',
+    name: 'instructions.md',
+    shortName: 'Assignment',
+    folder: 'assignments / Problem Set 1',
+    lines: [
+      '# Problem Set 1',
+      '',
+      '## Before you begin',
+      'Read the linear models lecture.',
+      '',
+      '## Your task',
+      'Identify the decision variables.',
+      'Write each constraint in your model.',
+      'Explain what makes a solution feasible.',
+      '',
+      'Cite the course material you use.',
+    ],
+  },
+] as const;
+---
+
+<figure class="vault-demo" aria-labelledby="vault-caption">
+  <div class="vault-window">
+    <div class="vault-bar">
+      <span class="vault-location"><Icon name="folder" size={16} /><span>~/agent2learn</span></span
+      ><span class="local-label"><span></span> YOUR LOCAL VAULT</span>
+    </div>
+    <div class="vault-body">
+      <fieldset class="file-tree">
+        <legend class="sr-only">Choose a file in the example vault</legend>
+        <div class="tree-title"><Icon name="chevron" size={12} /> Fall term</div>
+        <div class="tree-course"><Icon name="folder" size={15} /> DEMO 101</div>
+        {
+          files.map((file) => (
+            <div class="file-option">
+              <input
+                type="radio"
+                name="demo-file"
+                id={`choose-${file.id}`}
+                value={file.id}
+                aria-label={file.name}
+                checked={file.id === 'prompt'}
+              />
+              <label for={`choose-${file.id}`}>
+                <FileIcon kind={file.id} size={18} />
+                <span class="file-name-full">{file.name}</span>
+                <span class="file-name-compact" aria-hidden="true">
+                  {file.shortName}
+                </span>
+                {file.id === 'linear' && <span class="file-dot" />}
+              </label>
+            </div>
+          ))
+        }
+        <div class="original-file">
+          <FileIcon kind="pdf" size={18} /> Linear models.pdf <span>original</span>
+        </div>
+        <div class="tree-note">Originals kept.<br />Markdown alongside.</div>
+      </fieldset>
+      <div class="source-view">
+        {
+          files.map((file) => (
+            <section class="source-file" id={`source-${file.id}`} aria-label={file.name}>
+              <div class="source-toolbar">
+                <>
+                  <span>{file.folder}</span>
+                  <span class="md-label">MD</span>
+                </>
+              </div>
+              <div class="source-lines">
+                {file.lines.map((line, i) => (
+                  <div
+                    class:list={[
+                      'source-line',
+                      {
+                        'is-heading': line.startsWith('#'),
+                        'is-subheading': line.startsWith('##'),
+                      },
+                    ]}
+                    data-line={i + 1}
+                    tabindex={file.id === 'linear' && i === 3 ? -1 : undefined}
+                  >
+                    <span class="line-number" aria-hidden="true">
+                      {i + 1}
+                    </span>
+                    <code>{line || ' '}</code>
+                  </div>
+                ))}
+              </div>
+              <div class="source-footer">
+                <>
+                  <FileIcon kind={file.id} size={15} />
+                  <span>{file.name}</span>
+                  <span>{file.id === 'index' ? 'Course index' : 'Markdown twin'}</span>
+                </>
+              </div>
+            </section>
+          ))
+        }
+      </div>
+      <aside class="citation-example" aria-label="Example of an agent citing a source">
+        <div class="example-label">A QUESTION FOR YOUR AGENT</div>
+        <p class="example-question">“What makes a solution feasible?”</p>
+        <div class="answer-label"><Mark size={20} /><span>From your course material</span></div>
+        <p class="example-answer">
+          A solution is feasible when it satisfies every constraint in the model.
+        </p>
+        <button type="button" class="citation-link" data-open-citation
+          ><Icon name="file" size={16} /><span>Linear models.md:4</span><Icon
+            name="arrow"
+            size={16}
+          /></button
+        >
+        <p class="citation-hint" role="status">Click the citation. Read the source.</p>
+      </aside>
+    </div>
+  </div>
+  <figcaption id="vault-caption">
+    <span>Ordinary files. A source you can open.</span><span
+      >Interactive example · synthetic course material</span
+    >
+  </figcaption>
+</figure>
+
+<script>
+  const trigger = document.querySelector<HTMLButtonElement>('[data-open-citation]');
+  trigger?.addEventListener('click', () => {
+    const choice = document.querySelector<HTMLInputElement>('#choose-linear');
+    const source = document.querySelector<HTMLElement>('#source-linear');
+    if (!choice || !source) return;
+    choice.checked = true;
+    source.classList.add('citation-active');
+    const line = source.querySelector<HTMLElement>('[data-line="4"]');
+    line?.focus({ preventScroll: true });
+    // On a small screen, following a citation should reveal the source even if
+    // it is above the current viewport. Keep scrolling immediate and predictable.
+    const position = line?.getBoundingClientRect();
+    if (position && (position.top < 0 || position.bottom > window.innerHeight)) {
+      line?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+    const hint = document.querySelector('.citation-hint');
+    if (hint) hint.textContent = 'Lines 4–5 highlighted in the source.';
+  });
+</script>

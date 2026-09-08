@@ -1,0 +1,53 @@
+---
+title: Study with sources
+description: Find course material, assemble a grounding pack, and follow citations.
+---
+
+The point of the vault is to make course-specific context easy to read and inspect. Start with a question about your material:
+
+> Explain this model using my lecture notes. Cite the lines you use, and tell me if the vault is missing anything you need.
+
+An agent with the study skill starts at the course `INDEX.md`, resolves sources through `_meta/content_map.json`, and reads the available Markdown twins.
+
+## Find material yourself
+
+```bash
+a2l where "linear models"
+a2l open "DEMO 101"
+```
+
+`where` searches local content maps across terms. `open` reveals a resolved course folder in your system's file manager. `DEMO 101` is a synthetic example; substitute a course selector from `a2l courses`.
+
+## Gather sources for an assignment
+
+```bash
+a2l ground "DEMO 101" "Problem Set 1"
+```
+
+This writes `GROUNDING.md` beside the assignment. It lists source-backed material to read, with source and Markdown digests checked when the pack was written. An assignment can be selected by its title, Dropbox ID, or folder name. If a title is ambiguous, use the ID identified by the command.
+
+Ask your agent to **read every listed file before answering**. The pack gathers sources; it contains no generated answer.
+
+## Why a source appears in a pack
+
+The manifest and course content map must agree on its LEARN source identity. Both the archived original and its Markdown twin must still match their recorded hashes.
+
+Your draft, untracked neighboring files, and generated reports cannot qualify simply because their names or words look relevant. Retrieval ranks eligible material by lexical overlap, so a relevant idea can still be missed when wording differs.
+
+## Follow the citation
+
+A course citation looks like:
+
+```text
+content/Week 3/Linear models.md:4
+```
+
+Open that file and read line 4 in context. This is an illustrative path; actual citations use your vault's paths. Hash checks establish which captured source is being cited. They do not establish that an explanation is correct.
+
+If you need a diagram, equation layout, or other detail that the Markdown did not preserve, inspect the adjacent original file.
+
+## For graded work
+
+Read the assignment instructions and course AI policy before asking for help. If a restriction is recorded, the coursework skill surfaces it once with its citation. An unavailable outline means the policy was not locally checked. It is never permission to proceed.
+
+Keep help within the course's permitted forms. Use [the evidence scan](/docs/evidence-scan/) only as a reason to inspect sources, not as a correctness or academic-integrity verdict.

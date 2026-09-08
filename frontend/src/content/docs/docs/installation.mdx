@@ -1,0 +1,61 @@
+---
+title: Installation
+description: Install the engine, then create your first local course vault.
+---
+
+import ReleaseNote from '../../../components/ReleaseNote.astro';
+import InstallCommands from '../../../components/InstallCommands.astro';
+
+One small command-line tool. Your course files stay in a folder you choose.
+
+<ReleaseNote />
+
+## Install Agent2Learn
+
+Choose one of the three supported methods. Run it in your own terminal; no administrator permissions are required for the Agent2Learn install.
+
+<InstallCommands />
+
+The engine targets Windows, macOS, and Linux with Python 3.11–3.14. uv installs it in an isolated tool environment. **Node.js is not needed to use Agent2Learn.**
+
+If a platform installer runs without an interactive terminal, it installs and verifies the engine, then prints the next command. Open a terminal and run `a2l init` yourself.
+
+## Create your vault
+
+```bash
+a2l init
+```
+
+Setup walks you through:
+
+1. **Your folder.** Preview and approve the vault location. Keep it outside a public Git repository or shared folder.
+2. **Your agent.** Choose whether to install the four Agent2Learn skills. You see the destinations before anything is written.
+3. **Your sign-in.** Complete WatIAM and Duo yourself in the dedicated Chrome or Edge window.
+4. **Your courses.** Choose a term and courses from your own enrolment.
+5. **Your first sync.** See course metadata and deadlines, then choose full documents, a smaller priority selection, or files later.
+
+Grades and discussions are off by default. If setup is interrupted, rerun `a2l init` to resume.
+
+## Check the installation
+
+```bash
+a2l --version
+a2l doctor
+```
+
+`doctor` explains the local checks and gives you one next command if something needs attention. If your terminal cannot find `a2l`, open a new terminal first; an existing one may still have the old PATH.
+
+## Start using it
+
+```bash
+a2l today
+a2l sync
+```
+
+`today` reads local deadlines and changes. `sync` refreshes the courses you selected. Continue with [your first sync](/docs/sync/) or [studying with sources](/docs/study/).
+
+## Optional conversion support
+
+PDF conversion is included. Scanned pages need an external **Tesseract** installation; `a2l doctor` tells you whether it is available. A missing converter is recorded as a coverage gap.
+
+The Python package also offers `office` and `notebook` extras. The Office extra currently requires Python 3.11–3.13 because of a dependency's wheel support. See the [repository package configuration](https://github.com/ManagementMO/agent2learn/blob/main/pyproject.toml) for those optional dependencies.

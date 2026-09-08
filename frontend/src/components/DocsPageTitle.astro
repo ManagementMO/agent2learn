@@ -1,0 +1,15 @@
+---
+import DefaultPageTitle from '@astrojs/starlight/components/PageTitle.astro';
+import CopyButton from './CopyButton.astro';
+import { copyPageText } from '../lib/copyPage';
+const { entry } = Astro.locals.starlightRoute;
+---
+
+<DefaultPageTitle><slot /></DefaultPageTitle>
+{
+  entry.id.startsWith('docs/') && (
+    <div class="docs-page-actions">
+      <CopyButton text={copyPageText(entry.data.title, entry.body ?? '')} label="Copy page" />
+    </div>
+  )
+}

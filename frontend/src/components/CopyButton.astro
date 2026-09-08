@@ -1,0 +1,52 @@
+---
+import Icon from './Icon.astro';
+import { cn } from '../lib/utils';
+interface Props {
+  text: string;
+  label?: string;
+  compact?: boolean;
+}
+const { text, label = 'Copy command', compact = false } = Astro.props;
+---
+
+<a2l-copy class={cn('copy-control', compact && 'is-compact')}>
+  <button class="copy-button" type="button" data-copy={text} data-label={label} aria-label={label}>
+    <span class="copy-glyph"><Icon name="copy" size={16} /></span><span class="copied-glyph"
+      ><Icon name="check" size={16} /></span
+    ><span class="copy-label">{label}</span>
+  </button>
+  <span class="copy-feedback" role="status" aria-live="polite"></span>
+</a2l-copy>
+
+<script>
+  class CopyControl extends HTMLElement {
+    connectedCallback() {
+      const button = this.querySelector<HTMLButtonElement>('button');
+      const label = this.querySelector<HTMLElement>('.copy-label');
+      const feedback = this.querySelector<HTMLElement>('.copy-feedback');
+      if (!button || !label || !feedback) return;
+      let reset: ReturnType<typeof setTimeout>;
+      button.addEventListener('click', async () => {
+        clearTimeout(reset);
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy ?? '');
+          button.dataset.copied = '';
+          label.textContent = 'Copied';
+          feedback.textContent = 'Copied to clipboard.';
+          feedback.classList.remove('copy-error');
+          reset = setTimeout(() => {
+            label.textContent = button.dataset.label ?? 'Copy';
+            delete button.dataset.copied;
+            feedback.textContent = '';
+          }, 2400);
+        } catch {
+          delete button.dataset.copied;
+          label.textContent = button.dataset.label ?? 'Copy';
+          feedback.textContent = 'Clipboard unavailable. Select and copy the text directly.';
+          feedback.classList.add('copy-error');
+        }
+      });
+    }
+  }
+  if (!customElements.get('a2l-copy')) customElements.define('a2l-copy', CopyControl);
+</script>

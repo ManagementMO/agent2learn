@@ -1,0 +1,183 @@
+---
+import '../styles/home.css';
+import Mark from '../components/Mark.astro';
+import Icon from '../components/Icon.astro';
+import CopyButton from '../components/CopyButton.astro';
+import AgentPrompt from '../components/AgentPrompt.astro';
+import VaultDemo from '../components/VaultDemo.astro';
+import FeatureIcon from '../components/FeatureIcon.astro';
+import ThemeInit from '../components/ThemeInit.astro';
+import ThemeToggle from '../components/ThemeToggle.astro';
+import ThemeColor from '../components/ThemeColor.astro';
+import { release, repository, installCommands } from '../lib/site';
+import { socialHead } from '../lib/social';
+const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <ThemeInit />
+    <title>Agent2Learn — Your courses. Ready for your agent.</title>
+    <meta
+      name="description"
+      content="Turn your Waterloo LEARN courses into a local vault of original files and readable Markdown. Give your coding agent course context it can read and cite."
+    />
+    <ThemeColor dark="#18181b" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Agent2Learn — Your courses. Ready for your agent." />
+    <meta
+      property="og:description"
+      content="Your own course material, on your own machine, with sources your agent can cite."
+    />
+    {socialHead(Astro.site).map(({ attrs }) => <meta {...attrs} />)}
+    {
+      canonical && (
+        <>
+          <>
+            <link rel="canonical" href={canonical} />
+            <meta property="og:url" content={canonical} />
+          </>
+        </>
+      )
+    }
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="Documentation for agents" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a href="/" class="brand" aria-label="Agent2Learn home"><Mark /><span>Agent2Learn</span></a>
+        <nav aria-label="Main navigation">
+          <a href="/docs/introduction/"
+            ><span class="nav-docs-long">Documentation</span><span class="nav-docs-short">Docs</span
+            ></a
+          >
+          <a href="#for-agents">For agents</a>
+          <a href={repository} class="github-link" aria-label="Agent2Learn on GitHub"
+            ><Icon name="github" size={18} /><span>GitHub</span><Icon
+              name="external"
+              size={12}
+            /></a
+          >
+          <ThemeToggle />
+        </nav>
+      </div>
+    </header>
+    <main id="main">
+      <section class="hero page-width" aria-labelledby="hero-title">
+        <a class="release-pill" href="/docs/installation/"
+          ><span class="status-dot"></span>{
+            release.published ? `v${release.version} is here` : 'Open source. Built for Waterloo.'
+          }<Icon name="arrow" size={13} /></a
+        >
+        <h1 id="hero-title">
+          Your courses.<br /><span>Ready for your agent<span class="hero-period">.</span></span>
+        </h1>
+        <p class="hero-description">
+          Turn your LEARN courses into local files your coding agent can read and cite. Your
+          lectures, assignments, and sources. All in one place.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="/docs/installation/"
+            >Get started<Icon name="arrow" size={17} /></a
+          ><a class="button button-text" href="#for-agents"
+            >Set up with your agent<Icon name="chevron" size={15} /></a
+          >
+        </div>
+        <div class="quick-install">
+          <span class="shell-prompt" aria-hidden="true">$</span><code>{installCommands.uv}</code
+          ><CopyButton text={installCommands.uv} compact />
+        </div>
+        <p class="install-caption">
+          {
+            release.published
+              ? 'Then run a2l init. Your terminal will guide you.'
+              : 'PyPI release coming soon. One command when it lands.'
+          }
+        </p>
+      </section>
+
+      <section class="page-width demo-section" aria-label="Explore an example course vault">
+        <VaultDemo />
+      </section>
+
+      <section class="principles page-width" aria-label="What makes the vault useful">
+        <article>
+          <div class="principle-icon"><FeatureIcon name="files" /></div><h2>
+            Your files, on your terms.
+          </h2><p>
+            Originals beside readable Markdown. Open them in your editor, Obsidian, or any agent
+            that reads files.
+          </p>
+        </article>
+        <article>
+          <div class="principle-icon"><FeatureIcon name="citation" /></div><h2>
+            Follow every citation.
+          </h2><p>
+            Find the lecture behind an explanation. Grounding packs point to source files and lines
+            you can inspect.
+          </p>
+        </article>
+        <article>
+          <div class="principle-icon"><FeatureIcon name="history" /></div><h2>
+            Keep what you learn.
+          </h2><p>
+            Sync preserves captured material and earlier revisions. Missing files and conversion
+            gaps stay visible.
+          </p>
+        </article>
+      </section>
+
+      <section class="setup-section page-width" id="for-agents" aria-labelledby="setup-title">
+        <div class="setup-copy">
+          <span class="section-eyebrow"
+            ><Icon name="terminal" size={16} /> BUILT FOR YOUR WORKFLOW</span
+          ><h2 id="setup-title">Bring your agent.<br />Agent2Learn brings the context.</h2><p>
+            Give your agent the setup prompt. You finish sign-in in your own browser; four focused
+            skills help it navigate, sync, and study from your vault.
+          </p><a class="inline-link" href="/docs/for-agents/"
+            >Read the agent guide<Icon name="arrow" size={16} /></a
+          ><p class="compatibility">
+            Claude Code <span>·</span> Codex <span>·</span> Cursor <span>·</span> Agent Skills
+          </p>
+        </div>
+        <div class="setup-prompt-card">
+          <div class="prompt-intro"><Mark size={38} /><h3>A good place to start.</h3></div><p>
+            “Help me set up Agent2Learn. Use my own course sources, cite what you read, and tell me
+            when something is missing.”
+          </p><AgentPrompt /><div class="setup-note">
+            <span class="status-dot"></span>{
+              release.published
+                ? 'Installation is for your agent. Sign-in stays with you.'
+                : 'The prompt knows the PyPI release is still coming.'
+            }
+          </div>
+        </div>
+      </section>
+      <div class="closing-note page-width">
+        <p>
+          Local course storage. No Agent2Learn telemetry.<br class="mobile-break" /> Grades and discussions
+          off by default.
+        </p><a href="/docs/privacy/">Privacy, explained<Icon name="arrow" size={14} /></a>
+      </div>
+    </main>
+    <footer class="site-footer page-width">
+      <div class="footer-top">
+        <a class="brand footer-brand" href="/"><Mark size={24} /><span>Agent2Learn</span></a><div
+          class="footer-links"
+        >
+          <a href="/docs/introduction/">Docs</a><a href="/llms.txt">llms.txt</a><a href={repository}
+            >GitHub</a
+          ><a href={`${repository}/blob/main/LICENSE`}>Apache-2.0</a>
+        </div>
+      </div><p>
+        An independent student project. Not affiliated with the University of Waterloo or D2L
+        Corporation.
+      </p>
+    </footer>
+  </body>
+</html>

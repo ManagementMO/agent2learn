@@ -1,0 +1,26 @@
+---
+interface Props {
+  light?: string;
+  dark?: string;
+}
+const { light = '#ffffff', dark = '#09090b' } = Astro.props;
+---
+
+<meta name="theme-color" content={light} />
+<script is:inline define:vars={{ light, dark }}>
+  (() => {
+    const root = document.documentElement;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const update = () => {
+      meta.setAttribute('content', root.dataset.theme === 'dark' ? dark : light);
+    };
+    update();
+    // Both theme controls resolve their preference onto this attribute. Watching
+    // it also covers automatic system changes and Starlight's early theme setup.
+    new MutationObserver(update).observe(root, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+  })();
+</script>
