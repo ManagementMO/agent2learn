@@ -5,14 +5,14 @@
 }
 :root {
   color-scheme: light;
-  --hero-secondary: #626a78;
-  --border-emphasis: #d3d9e3;
-  --vault-shadow: 0 12px 32px -16px #1d29463b, 0 2px 6px #1d29460a;
+  --hero-secondary: #686e64;
+  --border-emphasis: #d4d9d0;
+  --vault-shadow: 0 12px 32px -16px #20271e30, 0 2px 6px #20271e0a;
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --hero-secondary: #b7c0d1;
-  --border-emphasis: #374151;
+  --hero-secondary: #b9c1b3;
+  --border-emphasis: #414a3c;
   --vault-shadow: 0 16px 40px -16px #00000080, 0 2px 6px #00000030;
 }
 html {
@@ -175,7 +175,7 @@ h3 {
   white-space: nowrap;
 }
 .hero-period {
-  color: var(--accent);
+  color: inherit;
 }
 .hero-description {
   max-width: 565px;
@@ -208,14 +208,14 @@ h3 {
     border-color 160ms ease;
 }
 .button-primary {
-  background: var(--accent);
-  color: var(--accent-on);
-  border: 1px solid var(--accent);
+  background: var(--button-bg);
+  color: var(--button-ink);
+  border: 1px solid var(--button-bg);
   box-shadow: 0 1px 2px #00000012;
 }
 .button-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: var(--button-hover);
+  border-color: var(--button-hover);
 }
 .button-text:hover {
   background: var(--surface);
@@ -666,7 +666,7 @@ a2l-vault[data-cited] .citation-link {
   border: 1px solid var(--border-emphasis);
   border-radius: 7px;
   background: var(--paper);
-  box-shadow: 0 3px 5px -4px #1d294642;
+  box-shadow: 0 3px 5px -4px #20271e32;
 }
 .story-document > span {
   width: 100%;
@@ -696,7 +696,7 @@ a2l-vault[data-cited] .citation-link {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--paper);
-  box-shadow: 0 3px 5px -4px #1d294642;
+  box-shadow: 0 3px 5px -4px #20271e32;
 }
 .story-quote-text {
   display: block;
@@ -737,7 +737,7 @@ a2l-vault[data-cited] .citation-link {
   right: 0;
   bottom: 0;
   border-color: var(--border-emphasis);
-  box-shadow: 0 4px 7px -4px #1d29463b;
+  box-shadow: 0 4px 7px -4px #20271e30;
 }
 .story-revision i {
   display: block;
@@ -768,23 +768,26 @@ a2l-vault[data-cited] .citation-link {
   background: currentColor;
 }
 .setup-section {
-  --ink: #edf0f6;
-  --muted: #b1bacb;
-  --subtle: #9da9bd;
-  --line: #343e50;
-  --paper: #1c2433;
-  --surface: #151c28;
-  --accent: #a8bdff;
-  --accent-soft: #263450;
-  --accent-line: #536897;
+  --ink: #e9ece7;
+  --muted: #b8c0b4;
+  --subtle: #a7b1a3;
+  --line: #424b3f;
+  --paper: #282e28;
+  --surface: #1b201b;
+  --accent: #c1cebc;
+  --accent-soft: #303e2d;
+  --accent-line: #5b6b54;
+  --button-bg: #e1e6dc;
+  --button-hover: #ffffff;
+  --button-ink: #20241e;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 48px;
   align-items: start;
   padding: 38px 40px;
-  border: 1px solid #2c3545;
+  border: 1px solid #394234;
   border-radius: 16px;
-  background: #171e2b;
+  background: #202520;
   color: var(--ink);
   scroll-margin-top: 30px;
 }
@@ -877,15 +880,15 @@ a2l-vault[data-cited] .citation-link {
 }
 .agent-prompt-featured .copy-button {
   min-height: 44px;
-  border-color: #526fe0;
-  background: #4163db;
-  color: #fff;
+  border-color: var(--button-bg);
+  background: var(--button-bg);
+  color: var(--button-ink);
   font-size: 14px;
   box-shadow: inset 0 1px #ffffff17;
 }
 .agent-prompt-featured .copy-button:hover {
-  background: #3658cf;
-  border-color: #7189e9;
+  background: var(--button-hover);
+  border-color: var(--button-hover);
 }
 .agent-prompt-featured details {
   border: 0;

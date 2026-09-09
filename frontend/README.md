@@ -46,7 +46,7 @@ Pagefind indexes the production HTML during the build. Search is entirely local 
 | `src/lib/social.ts`                 | Shared Open Graph and large-image card metadata for the homepage and docs.          |
 | `scripts/verify-build.mjs`          | Internal link, anchor, asset, and agent-export checks over the built output.        |
 
-The site uses Astro, Starlight, shared paper/graphite/cobalt color tokens, DM Sans, and IBM Plex Mono. Dependencies are pinned in `package-lock.json`. Fonts are served locally; their license notices are included under `public/licenses/`. No analytics, remote font calls, or background network integrations are added.
+The site uses Astro, Starlight, shared paper/charcoal/evergreen color tokens, DM Sans, and IBM Plex Mono. Dependencies are pinned in `package-lock.json`. Fonts are served locally; their license notices are included under `public/licenses/`. No analytics, remote font calls, or background network integrations are added.
 
 The logo is the approved, image-generated editorial **A2L** wordmark from the launch film. The master is preserved byte-for-byte; the export script trims transparent padding and resizes it for web use without redrawing the lettering. The SVG files embed raster artwork and are not claimed to be vector masters. Interface and feature icons remain editable vectors and are not brand marks.
 
@@ -60,7 +60,7 @@ The landing page starts with the system preference and has an explicit light/dar
 
 `ThemeColor.astro` keeps the browser's toolbar colour aligned with each page's header. It follows the resolved theme on both the homepage and documentation, including saved choices and automatic system changes. `DocsHead.astro` adds it alongside Starlight's default head metadata.
 
-The layout uses white paper, cool gray surfaces, and graphite backgrounds. Cobalt identifies primary actions, source citations, focus rings, and the current documentation page. The palette lives in `shared.css`; dark mode has its own contrast-adjusted blue rather than an inverted light palette. The charcoal agent section keeps a consistent treatment in both themes.
+The layout uses white paper, soft neutral gray surfaces, and charcoal backgrounds. Primary actions use charcoal or soft white. A restrained evergreen accent identifies source citations, focus rings, links, and the current documentation page. The palette lives in `shared.css`; dark mode uses a lighter sage accent chosen for readable contrast. The charcoal agent section keeps a consistent treatment in both themes.
 
 File selection uses native radio inputs, prompt and mobile vault expansion use native disclosure controls, and the documentation uses Starlight's accessible search, tabs, navigation, and theme selector. Scrollable code examples have distinct accessible names. Copy failures show a local recovery message. Reduced-motion preferences are respected.
 
