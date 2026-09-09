@@ -1,7 +1,7 @@
 // Run with Playwright CLI's `run-code --filename` against the local production
 // preview. The image reuses the actual synthetic vault HTML and bundled fonts.
 async function renderSocialCard(page) {
-  const origin = 'http://127.0.0.1:4321';
+  const origin = await page.evaluate(() => location.origin);
   await page.setViewportSize({ width: 1200, height: 630 });
   await page.goto(origin);
   const { styles, vault } = await page.evaluate(() => ({
@@ -26,7 +26,7 @@ async function renderSocialCard(page) {
             font: 650 25px/1.2 var(--font-sans);
           }
           .social-copy { position: absolute; left: 52px; top: 174px; width: 422px; }
-          .social-title { font: 650 54px/1.08 var(--font-sans); text-wrap: initial; }
+          .social-title { font: 650 54px/1.08 var(--font-sans); letter-spacing: -0.04em; text-wrap: initial; }
           .social-title span { display: block; color: var(--hero-secondary); }
           .social-description {
             margin-top: 27px; max-width: 370px;
@@ -37,7 +37,8 @@ async function renderSocialCard(page) {
             font: 11px/1.5 var(--font-mono); color: var(--muted);
           }
           .social-preview { position: absolute; left: 520px; top: 126px; width: 628px; }
-          .social-preview .vault-body { grid-template-columns: 174px minmax(0, 1fr); min-height: 374px; }
+          .social-preview .vault-body { grid-template-columns: minmax(0, 1fr); min-height: 374px; }
+          .social-preview .explorer-content { grid-template-columns: 174px minmax(0, 1fr); }
           .social-preview .citation-example { display: none; }
           .social-preview .file-tree { padding: 17px 8px; }
           .social-preview .file-option label { padding-left: 8px; font-size: 10px; }
@@ -58,16 +59,17 @@ async function renderSocialCard(page) {
         <main class="social-card">
           <div class="social-brand"><img src="${origin}/brand/mark.svg" width="88" height="34" alt="">Agent2Learn</div>
           <div class="social-copy">
-            <h1 class="social-title">Your courses.<span>Ready for your<br>agent.</span></h1>
+            <h1 class="social-title">Your courses.<span>Ready for<br>your agent.</span></h1>
             <p class="social-description">Local course files your coding agent can read and cite.</p>
           </div>
-          <div class="social-preview">${vault}<p class="social-caption">Synthetic course example · Sources you can open.</p></div>
+          <div class="social-preview"><a2l-vault data-cited>${vault}</a2l-vault><p class="social-caption">Synthetic course example · Sources you can open.</p></div>
           <div class="social-footer">OPEN SOURCE · BUILT FOR WATERLOO</div>
         </main>
       </body>
     </html>`);
   await page.evaluate(async () => {
     document.querySelector('#choose-linear').checked = true;
+    document.querySelector('.vault-explorer').open = true;
     document.querySelector('#source-linear').classList.add('citation-active');
     await document.fonts.ready;
     await Promise.all([...document.images].map((img) => img.decode()));

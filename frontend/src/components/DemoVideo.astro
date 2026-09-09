@@ -1,0 +1,224 @@
+---
+import Icon from './Icon.astro';
+
+// The approved export is configured at build time. An unset URL renders no
+// invitation or player, and opening the dialog is the first media request.
+const videoUrl = import.meta.env.PUBLIC_DEMO_VIDEO_URL?.trim();
+if (videoUrl) {
+  const base = 'https://example.invalid';
+  const parsed = new URL(videoUrl, base);
+  const local = videoUrl.startsWith('/') && !videoUrl.startsWith('//') && parsed.origin === base;
+  if (
+    (!local && !videoUrl.startsWith('https://')) ||
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error(
+      'PUBLIC_DEMO_VIDEO_URL must be an HTTPS URL or a path starting with a single /.',
+    );
+  }
+}
+---
+
+{
+  videoUrl && (
+    <a2l-demo-video data-video-url={videoUrl}>
+      <button type="button" class="watch-demo" aria-haspopup="dialog" data-open-demo>
+        <Icon name="play" size={15} />
+        Watch the demo
+      </button>
+      <dialog aria-labelledby="demo-video-title" aria-describedby="demo-video-description">
+        <div class="video-heading">
+          <div>
+            <>
+              <h2 id="demo-video-title">Agent2Learn, in action.</h2>
+              <p id="demo-video-description">Your courses. Ready for your agent.</p>
+            </>
+          </div>
+          <button
+            type="button"
+            class="close-demo"
+            aria-label="Close demo"
+            data-close-demo
+            autofocus
+          >
+            <Icon name="close" size={20} />
+          </button>
+        </div>
+        <video controls playsinline preload="none" aria-label="Agent2Learn demo" />
+        <p class="video-error" role="status" hidden>
+          The video could not load. <a href={videoUrl}>Open the video directly</a>.
+        </p>
+      </dialog>
+    </a2l-demo-video>
+  )
+}
+
+<script>
+  class DemoVideo extends HTMLElement {
+    private events?: AbortController;
+    connectedCallback() {
+      this.events?.abort();
+      this.events = new AbortController();
+      const { signal } = this.events;
+      const dialog = this.querySelector<HTMLDialogElement>('dialog');
+      const trigger = this.querySelector<HTMLButtonElement>('[data-open-demo]');
+      const video = this.querySelector<HTMLVideoElement>('video');
+      const error = this.querySelector<HTMLElement>('.video-error');
+      if (!dialog || !trigger || !video || !error || !this.dataset.videoUrl) return;
+
+      trigger.addEventListener(
+        'click',
+        () => {
+          error.hidden = true;
+          dialog.showModal();
+          video.poster = '/brand/demo-poster.png';
+          video.src = this.dataset.videoUrl!;
+          // Playback starts only in direct response to the user's Watch action.
+          // If a browser declines play(), its native controls remain available.
+          void video.play().catch(() => {});
+        },
+        { signal },
+      );
+      this.querySelector('[data-close-demo]')?.addEventListener('click', () => dialog.close(), {
+        signal,
+      });
+      dialog.addEventListener(
+        'click',
+        (event) => {
+          if (event.target !== dialog) return;
+          const bounds = dialog.getBoundingClientRect();
+          if (
+            event.clientX < bounds.left ||
+            event.clientX > bounds.right ||
+            event.clientY < bounds.top ||
+            event.clientY > bounds.bottom
+          )
+            dialog.close();
+        },
+        { signal },
+      );
+      dialog.addEventListener(
+        'close',
+        () => {
+          video.pause();
+          video.removeAttribute('src');
+          video.removeAttribute('poster');
+          video.load();
+          trigger.focus({ preventScroll: true });
+        },
+        { signal },
+      );
+      video.addEventListener(
+        'error',
+        () => {
+          if (dialog.open) error.hidden = false;
+        },
+        { signal },
+      );
+    }
+    disconnectedCallback() {
+      this.events?.abort();
+    }
+  }
+  if (!customElements.get('a2l-demo-video')) customElements.define('a2l-demo-video', DemoVideo);
+</script>
+
+<style>
+  .watch-demo {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 40px;
+    padding: 5px 0 5px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+  .watch-demo:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  dialog {
+    width: min(960px, calc(100% - 32px));
+    max-height: calc(100dvh - 40px);
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--border-emphasis);
+    border-radius: 14px;
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: 0 24px 80px #00000050;
+  }
+  dialog::backdrop {
+    background: #09090bb8;
+  }
+  .video-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 20px 24px;
+  }
+  .video-heading h2 {
+    font-size: 18px;
+    font-weight: 550;
+  }
+  .video-heading p {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .close-demo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--muted);
+    background: var(--canvas);
+  }
+  .close-demo:hover {
+    color: var(--ink);
+    border-color: var(--accent);
+  }
+  video {
+    display: block;
+    width: 100%;
+    max-height: calc(100dvh - 150px);
+    aspect-ratio: 16 / 9;
+    background: #09090b;
+  }
+  .video-error {
+    padding: 16px 24px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .video-error a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  @media (max-width: 380px) {
+    .watch-demo {
+      font-size: 11px;
+      gap: 5px;
+    }
+    .video-heading {
+      padding: 16px;
+    }
+    .video-heading h2 {
+      font-size: 16px;
+    }
+    .video-heading p {
+      font-size: 11px;
+    }
+  }
+</style>

@@ -2,6 +2,7 @@
 // Exercises the real built site. Catches square squeezing, missing dark-mode
 // treatment, broken image loads and mobile header collisions after a rebrand.
 async function verifyBrandBrowser(page) {
+  const origin = await page.evaluate(() => location.origin);
   const rows = [];
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -13,7 +14,7 @@ async function verifyBrandBrowser(page) {
         // Set the preference before navigation so the actual theme initializer
         // and docs selector agree, instead of merely repainting the DOM.
         await page.evaluate((theme) => localStorage.setItem('starlight-theme', theme), theme);
-        await page.goto(`http://127.0.0.1:4321${route}`);
+        await page.goto(`${origin}${route}`);
         await page.evaluate(async () => {
           await document.fonts.ready;
           await Promise.all([...document.images].map((image) => image.decode()));
@@ -31,6 +32,7 @@ async function verifyBrandBrowser(page) {
                 width: box.width,
                 loaded: mark.complete && mark.naturalWidth > 0,
                 filter: getComputedStyle(mark).filter,
+                onCharcoal: Boolean(mark.closest('.setup-section')),
               };
             }),
             overflow: document.documentElement.scrollWidth > innerWidth,
@@ -44,7 +46,7 @@ async function verifyBrandBrowser(page) {
         for (const mark of result.marks) {
           if (!mark.loaded || !Number.isFinite(mark.ratio) || mark.ratio < 2.45 || mark.ratio > 2.8)
             throw new Error(`${label}: missing or squeezed artwork ${JSON.stringify(mark)}`);
-          if (mark.filter !== (theme === 'dark' ? 'invert(1)' : 'none'))
+          if (mark.filter !== (theme === 'dark' || mark.onCharcoal ? 'invert(1)' : 'none'))
             throw new Error(`${label}: invisible/wrong-theme mark`);
         }
         if (

@@ -9,6 +9,7 @@
 :root {
   --font-sans: 'DM Sans Variable', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
+  --canvas: var(--color-zinc-50);
   --ink: var(--color-zinc-900);
   --muted: var(--color-zinc-600);
   --subtle: var(--color-zinc-500);
@@ -16,6 +17,27 @@
   --paper: var(--color-white);
   --surface: var(--color-zinc-50);
   --accent: var(--ink);
+  --accent-soft: var(--color-zinc-200);
+  --accent-line: var(--color-zinc-300);
+  --button-bg: var(--color-zinc-900);
+  --button-hover: var(--color-zinc-800);
+  --button-ink: var(--color-white);
+}
+
+:root[data-theme='dark'] {
+  --canvas: var(--color-zinc-950);
+  --ink: var(--color-zinc-100);
+  --muted: var(--color-zinc-400);
+  --subtle: var(--color-zinc-400);
+  --line: var(--color-zinc-800);
+  --paper: var(--color-zinc-900);
+  --surface: var(--color-zinc-950);
+  --accent: var(--ink);
+  --accent-soft: var(--color-zinc-700);
+  --accent-line: var(--color-zinc-600);
+  --button-bg: var(--color-zinc-100);
+  --button-hover: var(--color-white);
+  --button-ink: var(--color-zinc-900);
 }
 
 h1,
@@ -33,8 +55,12 @@ input {
   -webkit-tap-highlight-color: transparent;
 }
 :where(a, button, summary, input, [tabindex]):focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid var(--accent);
   outline-offset: 5px;
+}
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 button,
 summary {
@@ -82,21 +108,25 @@ pre {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 36px;
+  min-height: 40px;
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--paper);
   color: var(--muted);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
   white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
 }
 .copy-button:hover {
   background: var(--surface);
   color: var(--ink);
-  border-color: var(--color-zinc-400);
+  border-color: var(--accent-line);
 }
 .copy-feedback {
   position: absolute;
