@@ -9,35 +9,35 @@
 :root {
   --font-sans: 'DM Sans Variable', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
-  --canvas: #f8f8f6;
-  --ink: #20231f;
-  --muted: #656a63;
-  --subtle: #636961;
-  --line: #e1e4dd;
-  --paper: #ffffff;
-  --surface: #f0f1ed;
-  --accent: #4c6453;
-  --accent-soft: #edf2e9;
-  --accent-line: #ccd7c7;
-  --button-bg: #282c27;
-  --button-hover: #3a4038;
-  --button-ink: #ffffff;
+  --canvas: var(--color-zinc-50);
+  --ink: var(--color-zinc-900);
+  --muted: var(--color-zinc-600);
+  --subtle: var(--color-zinc-500);
+  --line: var(--color-zinc-200);
+  --paper: var(--color-white);
+  --surface: var(--color-zinc-50);
+  --accent: var(--ink);
+  --accent-soft: var(--color-zinc-200);
+  --accent-line: var(--color-zinc-300);
+  --button-bg: var(--color-zinc-900);
+  --button-hover: var(--color-zinc-800);
+  --button-ink: var(--color-white);
 }
 
 :root[data-theme='dark'] {
-  --canvas: #121412;
-  --ink: #e9ece7;
-  --muted: #b2b8b0;
-  --subtle: #a2aaa0;
-  --line: #343a33;
-  --paper: #1c1f1c;
-  --surface: #171a17;
-  --accent: #adc0a8;
-  --accent-soft: #293328;
-  --accent-line: #485945;
-  --button-bg: #e1e6dc;
-  --button-hover: #ffffff;
-  --button-ink: #20241e;
+  --canvas: var(--color-zinc-950);
+  --ink: var(--color-zinc-100);
+  --muted: var(--color-zinc-400);
+  --subtle: var(--color-zinc-400);
+  --line: var(--color-zinc-800);
+  --paper: var(--color-zinc-900);
+  --surface: var(--color-zinc-950);
+  --accent: var(--ink);
+  --accent-soft: var(--color-zinc-700);
+  --accent-line: var(--color-zinc-600);
+  --button-bg: var(--color-zinc-100);
+  --button-hover: var(--color-white);
+  --button-ink: var(--color-zinc-900);
 }
 
 h1,

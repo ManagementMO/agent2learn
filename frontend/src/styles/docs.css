@@ -1,38 +1,54 @@
 @import './shared.css';
 
-:root {
+:root,
+:root[data-theme='dark'] {
   --sl-font: var(--font-sans);
   --sl-font-mono: var(--font-mono);
   --sl-content-width: 42rem;
   --sl-sidebar-width: 17rem;
-  --sl-color-accent-low: var(--accent-soft);
-  --sl-color-accent: var(--accent);
-  --sl-color-accent-high: #c9d8c3;
-  --sl-color-white: var(--ink);
-  --sl-color-gray-1: #dbe1d6;
-  --sl-color-gray-2: #bdc5b7;
-  --sl-color-gray-3: #a2aaa0;
-  --sl-color-gray-4: #63705d;
-  --sl-color-gray-5: #343a33;
-  --sl-color-gray-6: #1c1f1c;
-  --sl-color-black: var(--canvas);
+  --sl-color-accent-low: var(--color-zinc-800);
+  --sl-color-accent: var(--color-zinc-300);
+  --sl-color-accent-high: var(--color-zinc-100);
+  --sl-color-white: var(--color-zinc-50);
+  --sl-color-gray-1: var(--color-zinc-200);
+  --sl-color-gray-2: var(--color-zinc-300);
+  --sl-color-gray-3: var(--color-zinc-400);
+  --sl-color-gray-4: var(--color-zinc-600);
+  --sl-color-gray-5: var(--color-zinc-800);
+  --sl-color-gray-6: var(--color-zinc-900);
+  --sl-color-black: var(--color-zinc-950);
   --sl-color-bg: var(--paper);
   --sl-color-bg-nav: var(--paper);
   --sl-color-bg-sidebar: var(--canvas);
   --sl-color-hairline-light: var(--line);
   --sl-color-hairline: var(--line);
+  --paper: var(--color-zinc-950);
+  --surface: var(--color-zinc-900);
+  --ink: var(--color-zinc-100);
+  --muted: var(--color-zinc-300);
+  --subtle: var(--color-zinc-400);
+  --line: var(--color-zinc-800);
 }
 
 :root[data-theme='light'] {
-  --sl-color-accent-high: #364b3c;
-  --sl-color-gray-1: #33392f;
-  --sl-color-gray-2: #4f5849;
-  --sl-color-gray-3: #656a63;
-  --sl-color-gray-4: #959e8e;
-  --sl-color-gray-5: #e1e4dd;
-  --sl-color-gray-6: #f0f1ed;
-  --sl-color-gray-7: #f8f8f6;
+  --sl-color-accent-low: var(--color-zinc-100);
+  --sl-color-accent: var(--color-zinc-700);
+  --sl-color-accent-high: var(--color-zinc-900);
+  --sl-color-white: var(--color-zinc-900);
+  --sl-color-gray-1: var(--color-zinc-800);
+  --sl-color-gray-2: var(--color-zinc-700);
+  --sl-color-gray-3: var(--color-zinc-500);
+  --sl-color-gray-4: var(--color-zinc-400);
+  --sl-color-gray-5: var(--color-zinc-200);
+  --sl-color-gray-6: var(--color-zinc-100);
+  --sl-color-gray-7: var(--color-zinc-50);
   --sl-color-black: var(--paper);
+  --paper: var(--color-white);
+  --surface: var(--color-zinc-50);
+  --ink: var(--color-zinc-900);
+  --muted: var(--color-zinc-600);
+  --subtle: var(--color-zinc-500);
+  --line: var(--color-zinc-200);
 }
 
 body {
@@ -107,8 +123,8 @@ h1#_top {
   font-size: 13px;
 }
 .sidebar-content a[aria-current='page'] {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--sl-color-gray-6);
+  color: var(--ink);
   font-weight: 600;
   box-shadow: inset 2px 0 var(--accent);
 }

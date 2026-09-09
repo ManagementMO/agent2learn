@@ -15,7 +15,7 @@ async function renderSocialCard(page) {
         <link rel="icon" href="${origin}/favicon.svg" type="image/svg+xml">
         ${styles.map((href) => `<link rel="stylesheet" href="${href}">`).join('')}
         <style>
-          body { margin: 0; background: #f8f8f6; }
+          body { margin: 0; background: #fafafa; }
           .social-card {
             width: 1200px; height: 630px; position: relative; overflow: hidden;
             background: var(--canvas); color: var(--ink);
