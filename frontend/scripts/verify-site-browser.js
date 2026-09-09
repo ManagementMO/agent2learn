@@ -54,6 +54,12 @@ async function verifySiteBrowser(page) {
         (await page.locator('.vault-explorer').evaluate((el) => el.open)) === width > 760,
         `${label}: incorrect initial vault disclosure`,
       );
+      if (width <= 760) {
+        assert(
+          await page.locator('.mobile-source-excerpt').isVisible(),
+          `${label}: collapsed answer lost its source excerpt`,
+        );
+      }
       await page.getByRole('button', { name: 'Linear models.md:4–5' }).click();
       assert(
         await page.locator('#choose-linear').isChecked(),
@@ -68,6 +74,10 @@ async function verifySiteBrowser(page) {
       assert(
         await page.locator('#source-linear').isVisible(),
         `${label}: citation source is hidden`,
+      );
+      assert(
+        await page.locator('.mobile-source-excerpt').isHidden(),
+        `${label}: expanded source duplicates its compact excerpt`,
       );
       assert(
         (await page.locator('.citation-hint').textContent()) ===
@@ -101,6 +111,10 @@ async function verifySiteBrowser(page) {
             .evaluate((el) => el === document.activeElement),
           `${label}: return lost keyboard focus`,
         );
+        assert(
+          await page.locator('.mobile-source-excerpt').isVisible(),
+          `${label}: return did not restore the source excerpt`,
+        );
       }
       await audit(label);
       cases.push(label);
@@ -118,6 +132,10 @@ async function verifySiteBrowser(page) {
     await page.locator('.vault-explorer').evaluate((el) => el.open),
     'Resize lost the expanded mobile file view',
   );
+  assert(
+    await page.locator('.mobile-source-excerpt').isHidden(),
+    'Resize duplicated the source excerpt in the open explorer',
+  );
   await page.getByRole('button', { name: 'Back to answer' }).click();
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -125,6 +143,10 @@ async function verifySiteBrowser(page) {
   assert(
     !(await page.locator('.vault-explorer').evaluate((el) => el.open)),
     'Resize reopened the collapsed mobile file view',
+  );
+  assert(
+    await page.locator('.mobile-source-excerpt').isVisible(),
+    'Resize hid the collapsed source excerpt',
   );
   cases.push('mobile disclosure survives resize');
 
@@ -205,13 +227,20 @@ async function verifySiteBrowser(page) {
           `${label}: Copy page lost its complete readable content`,
         );
         if (slug === 'installation') {
-          for (const tab of ['macOS / Linux', 'Windows', 'With uv']) {
+          for (const tab of ['macOS / Linux', 'Windows', 'Already have uv']) {
             await page.getByRole('tab', { name: tab, exact: true }).click();
             assert(
               (await page
                 .getByRole('tab', { name: tab, exact: true })
                 .getAttribute('aria-selected')) === 'true',
               `${label}: install method tab did not change`,
+            );
+            const panel = page.getByRole('tabpanel', { name: tab, exact: true });
+            const command = await panel.locator('pre').innerText();
+            await panel.getByRole('button', { name: 'Copy to clipboard', exact: true }).click();
+            assert(
+              (await page.evaluate(() => window.__copiedText)).trim() === command.trim(),
+              `${label}: ${tab} copied a different installation command`,
             );
           }
         }
@@ -224,11 +253,21 @@ async function verifySiteBrowser(page) {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`${origin}/docs/introduction/`);
   await page.getByRole('button', { name: 'Search', exact: false }).click();
-  await page.getByRole('textbox', { name: 'Search docs', exact: true }).fill('ground');
+  await page.getByRole('textbox', { name: 'Search docs', exact: true }).fill('authentication');
   await page.locator('.pagefind-ui__result-link').first().waitFor();
   assert(
     (await page.locator('.pagefind-ui__result-link').count()) > 0,
     'Production documentation search returned no results',
+  );
+  const firstResult = page.locator('.pagefind-ui__result').first();
+  assert(
+    (await firstResult.locator('.pagefind-ui__result-link').first().textContent()).trim() ===
+      'Authentication',
+    'Search did not find the authentication guide',
+  );
+  assert(
+    !(await firstResult.textContent()).includes('Copy page'),
+    'Search indexed the Copy page action as article content',
   );
   await page.keyboard.press('Escape');
   cases.push('production documentation search');

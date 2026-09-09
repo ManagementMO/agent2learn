@@ -19,8 +19,8 @@ export const installCommands = {
 // Shared by the visible install tabs and the text copied with a documentation page.
 export const installMethods = [
   {
-    label: 'With uv',
-    description: 'Already have uv? Install the engine, then start guided setup:',
+    label: 'Already have uv',
+    description: 'Install Agent2Learn with uv, then start guided setup:',
     command: installCommands.uv + '\na2l init',
     language: 'bash',
   },

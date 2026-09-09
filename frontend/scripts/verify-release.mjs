@@ -16,7 +16,14 @@ const astroPackage = JSON.parse(
 const astroBin = join(candidate, 'node_modules/astro', astroPackage.bin.astro);
 
 try {
-  for (const path of ['src', 'public', 'astro.config.mjs', 'tsconfig.json', 'package.json']) {
+  for (const path of [
+    'src',
+    'public',
+    'astro.config.mjs',
+    'ec.config.mjs',
+    'tsconfig.json',
+    'package.json',
+  ]) {
     await cp(join(source, path), join(candidate, path), { recursive: true });
   }
   // Vite must resolve Astro components inside the candidate root. A symlink to

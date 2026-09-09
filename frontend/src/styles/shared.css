@@ -221,27 +221,6 @@ pre {
 .release-note strong {
   display: block;
 }
-.docs-command {
-  position: relative;
-  margin-block: 16px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-}
-.docs-command pre {
-  margin: 0 0 12px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  overflow-x: auto;
-  font-size: 13px;
-}
-.docs-command pre code {
-  padding: 0;
-  background: transparent;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

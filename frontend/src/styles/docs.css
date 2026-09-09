@@ -107,10 +107,8 @@ h1#_top {
   font-size: 14px;
   line-height: 1.7;
 }
-.sl-markdown-content code {
-  font-size: 0.85em;
-}
 .sl-markdown-content :not(pre) > code {
+  font-size: 0.85em;
   /* Keep short commands together, but let a long path fit a narrow column.
      This preserves normal spaces when the reader copies a command. */
   display: inline-block;
@@ -140,11 +138,22 @@ h1#_top {
 .sl-markdown-content .agent-prompt summary {
   display: list-item;
 }
-.sl-markdown-content .docs-command .copy-control {
-  margin-top: 0;
+/* Installation commands and fenced examples share the same code renderer.
+   Keep the copy action discoverable without hover and reserve room for it. */
+.expressive-code .frame .copy button {
+  opacity: 1;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 6px;
 }
-.sl-markdown-content .docs-command pre code {
-  font-size: 13px;
+.expressive-code .ec-line .code {
+  padding-inline-end: 4rem;
+}
+.expressive-code .frame .copy button::after {
+  margin: 0.7rem;
+}
+starlight-tabs .tablist-wrapper a[role='tab'] {
+  min-height: 40px;
 }
 .pagination-links a {
   border-radius: 8px;
@@ -158,6 +167,10 @@ h1#_top {
 }
 
 @media (max-width: 400px) {
+  starlight-tabs .tablist-wrapper a[role='tab'] {
+    padding-inline: 10px;
+    font-size: 13px;
+  }
   .docs-brand .brand-mark {
     width: 44px;
     height: auto;
@@ -169,5 +182,11 @@ h1#_top {
   .docs-brand-label {
     font-size: 10px;
     padding-left: 8px;
+  }
+}
+
+@media (max-width: 360px) {
+  starlight-tabs .tablist-wrapper a[role='tab'] {
+    padding-inline: 6px;
   }
 }

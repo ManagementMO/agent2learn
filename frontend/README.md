@@ -42,6 +42,7 @@ Pagefind indexes the production HTML during the build. Search is entirely local 
 | `src/styles/shared.css`             | Typography, common controls, and shared tokens.                                     |
 | `src/styles/home.css`               | Responsive landing-page composition and both themes.                                |
 | `src/styles/docs.css`               | The Starlight documentation theme.                                                  |
+| `ec.config.mjs`                     | Shared code rendering, accessible labels, and neutral code-panel styling.           |
 | `src/lib/site.ts`                   | Release status, install commands, repository URL, and the copied agent prompt.      |
 | `src/lib/social.ts`                 | Shared Open Graph and large-image card metadata for the homepage and docs.          |
 | `scripts/verify-build.mjs`          | Internal link, anchor, asset, and agent-export checks over the built output.        |
@@ -62,11 +63,11 @@ The landing page starts with the system preference and has an explicit light/dar
 
 The layout uses black, white, and layered zinc grays. Primary actions, source citations, focus rings, links, and the current documentation page use the same monochrome palette. The shared tokens live in `shared.css`, with light and dark variants. The charcoal agent section keeps a consistent treatment in both themes.
 
-File selection uses native radio inputs, prompt and mobile vault expansion use native disclosure controls, and the documentation uses Starlight's accessible search, tabs, navigation, and theme selector. Scrollable code examples have distinct accessible names. Copy failures show a local recovery message. Reduced-motion preferences are respected.
+File selection uses native radio inputs, prompt and mobile vault expansion use native disclosure controls, and the documentation uses Starlight's accessible search, tabs, navigation, and theme selector. Installation commands and fenced examples share Expressive Code's neutral panels and always-visible copy controls. Scrollable examples have distinct accessible names. Page and agent-prompt copy failures show a local recovery message. Reduced-motion preferences are respected.
 
 The desktop vault starts on the assignment instructions. Following its citation selects the lecture, focuses line 4, and highlights the source lines and corresponding file over 180ms. Choosing another file clears the citation state. Reduced-motion mode shows the result immediately.
 
-On phones, the question, answer, and a source excerpt come first. The excerpt is generated from the same source lines as the full viewer. Following the citation expands the vault and focuses the source; **Back to answer** collapses the viewer and returns keyboard focus to the citation. The reader can also expand the vault independently. That disclosure choice survives viewport changes, and all three files remain available with compact mobile labels. Without JavaScript, the full vault stays expanded and native file selection remains usable.
+On phones, the question, answer, and a source excerpt come first. The excerpt is generated from the same source lines as the full viewer and hides while that viewer is open. Following the citation expands the vault and focuses the source; **Back to answer** collapses the viewer, restores the excerpt, and returns keyboard focus to the citation. The reader can also expand the vault independently. That disclosure choice survives viewport changes, and all three files remain available with compact mobile labels. Without JavaScript, the full vault stays expanded and native file selection remains usable.
 
 ## Optional demo video
 
