@@ -3,13 +3,17 @@ import CopyButton from './CopyButton.astro';
 import { agentPrompt } from '../lib/site';
 interface Props {
   expanded?: boolean;
+  featured?: boolean;
 }
-const { expanded = false } = Astro.props;
+const { expanded = false, featured = false } = Astro.props;
 ---
 
-<div class="agent-prompt">
+<div class:list={['agent-prompt', { 'agent-prompt-featured': featured }]}>
   <div class="agent-prompt-toolbar">
-    <span>AGENT INSTRUCTIONS</span><CopyButton text={agentPrompt} label="Copy prompt" />
+    <span>AGENT INSTRUCTIONS</span><CopyButton
+      text={agentPrompt}
+      label={featured ? 'Copy agent prompt' : 'Copy prompt'}
+    />
   </div>
   <details open={expanded}>
     <summary>Read the full prompt</summary>

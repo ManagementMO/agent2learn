@@ -1,0 +1,73 @@
+---
+import FileIcon from './FileIcon.astro';
+import Icon from './Icon.astro';
+interface Props {
+  kind: 'files' | 'citation' | 'history';
+}
+const { kind } = Astro.props;
+---
+
+<!-- The adjacent heading and paragraph explain these decorative examples. -->
+<div class:list={['feature-story', `story-${kind}`]} aria-hidden="true">
+  {
+    kind === 'files' && (
+      <>
+        <div class="story-document">
+          <>
+            <FileIcon kind="pdf" size={25} />
+            <span>Lecture.pdf</span>
+            <i />
+            <i />
+          </>
+        </div>
+        <span class="story-connection">
+          <Icon name="arrow" size={18} />
+        </span>
+        <div class="story-document story-document-accent">
+          <>
+            <FileIcon kind="linear" size={25} />
+            <span>Lecture.md</span>
+            <i />
+            <i />
+          </>
+        </div>
+      </>
+    )
+  }
+  {
+    kind === 'citation' && (
+      <div class="story-quote">
+        <span class="story-quote-text">“Every constraint in the model.”</span>
+        <span class="story-source">
+          <FileIcon kind="linear" size={14} /> Linear models.md:4 <Icon name="arrow" size={12} />
+        </span>
+      </div>
+    )
+  }
+  {
+    kind === 'history' && (
+      <div class="story-revisions">
+        <div class="story-revision story-revision-earlier">
+          <>
+            <span>Earlier revision</span>
+            <i />
+            <i />
+            <span class="revision-kept">
+              <Icon name="check" size={12} /> Kept
+            </span>
+          </>
+        </div>
+        <div class="story-revision story-revision-current">
+          <>
+            <span>Current revision</span>
+            <i />
+            <i />
+            <span class="revision-current">
+              <span /> Up to date
+            </span>
+          </>
+        </div>
+      </div>
+    )
+  }
+</div>
