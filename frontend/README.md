@@ -69,7 +69,7 @@ File selection uses native radio inputs, prompt and mobile vault expansion use n
 
 Documentation titles and Copy page share a compact row on wider screens and stack on phones. The study guide explains a citation with the exact synthetic source lines used in the homepage vault. Copy page expands that component into readable text from the same data; there is no second guide to maintain. Agent-prompt copying displays a next step in a reserved feedback area.
 
-The three homepage principle headings link to the relevant guide sections. File-twin and revision illustrations move briefly once when they enter view. They remain visible without JavaScript, skip motion when reduced motion is requested, and wait while the tab is hidden.
+The three homepage principle headings link to the relevant guide sections. Their file, citation, and revision illustrations are static and require no JavaScript.
 
 The desktop vault starts on the assignment instructions. Following its citation selects the lecture, focuses line 4, and highlights the source lines and corresponding file over 180ms. Choosing another file clears the citation state. Reduced-motion mode shows the result immediately.
 
@@ -150,7 +150,7 @@ the homepage and documentation at 320, 375, 768 and 1440px in both themes, inclu
 image decoding, aspect ratio, theme treatment and mobile header spacing. Screenshots
 are saved under `output/playwright/`.
 
-In the same session, run `run-code --filename scripts/verify-site-browser.js` for the interaction and accessibility checks. It exercises citation focus, native keyboard file selection, mobile return and viewport changes, install/prompt/page copying, clipboard refusal, installation tabs, production search, the demo placeholder, one-time/reduced motion, and footer navigation. It runs axe checks over the homepage at five widths in both themes, five representative guides at phone and desktop widths in both themes, and the open placeholder dialog at phone and desktop widths in both themes. Both scripts use the origin of the open preview, so independent worktrees can use different ports.
+In the same session, run `run-code --filename scripts/verify-site-browser.js` for the interaction and accessibility checks. It exercises citation focus, native keyboard file selection, mobile return and viewport changes, install/prompt/page copying, clipboard refusal, installation tabs, production search, the demo placeholder, and footer navigation. It runs axe checks over the homepage at five widths in both themes, five representative guides at phone and desktop widths in both themes, and the open placeholder dialog at phone and desktop widths in both themes. Both scripts use the origin of the open preview, so independent worktrees can use different ports.
 
 The build runs Astro/TypeScript checks, freshly renders all static pages, creates the search index, verifies internal navigation and anchors, and checks the agent index, setup prompt, and code-example labels. `astro build --force` clears the content cache so changes to rendering hooks cannot leave stale documentation HTML. Browser checks should cover both themes, phone and desktop widths, file selection, citation focus, copy success/failure, docs search, tabs, and the mobile menu. Keep temporary screenshots and browser reports under the ignored `output/playwright/` folder.
 

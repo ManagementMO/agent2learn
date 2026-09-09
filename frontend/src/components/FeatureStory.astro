@@ -8,11 +8,7 @@ const { kind } = Astro.props;
 ---
 
 <!-- The adjacent heading and paragraph explain these decorative examples. -->
-<a2l-feature-story
-  class:list={['feature-story', `story-${kind}`]}
-  aria-hidden="true"
-  data-kind={kind}
->
+<div class:list={['feature-story', `story-${kind}`]} aria-hidden="true">
   {
     kind === 'files' && (
       <>
@@ -74,52 +70,4 @@ const { kind } = Astro.props;
       </div>
     )
   }
-</a2l-feature-story>
-
-<script>
-  class FeatureStory extends HTMLElement {
-    private observer?: IntersectionObserver;
-    private events?: AbortController;
-
-    connectedCallback() {
-      if (this.dataset.revealed || this.dataset.kind === 'citation') return;
-      const motion = matchMedia('(prefers-reduced-motion: reduce)');
-      if (motion.matches) return;
-      this.events = new AbortController();
-      const { signal } = this.events;
-      let inView = false;
-      const reveal = () => {
-        if (!inView || document.hidden) return;
-        this.dataset.revealed = 'true';
-        this.observer?.disconnect();
-        this.events?.abort();
-      };
-      this.observer = new IntersectionObserver(
-        (entries) => {
-          inView = entries.some((entry) => entry.isIntersecting);
-          reveal();
-        },
-        { threshold: 0.65 },
-      );
-      this.observer.observe(this);
-      document.addEventListener('visibilitychange', reveal, { signal });
-      motion.addEventListener(
-        'change',
-        () => {
-          if (motion.matches) {
-            this.observer?.disconnect();
-            this.events?.abort();
-          }
-        },
-        { signal },
-      );
-    }
-
-    disconnectedCallback() {
-      this.observer?.disconnect();
-      this.events?.abort();
-    }
-  }
-  if (!customElements.get('a2l-feature-story'))
-    customElements.define('a2l-feature-story', FeatureStory);
-</script>
+</div>

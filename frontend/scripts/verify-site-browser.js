@@ -323,42 +323,6 @@ async function verifySiteBrowser(page) {
     }
   }
 
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.goto(origin);
-  await page.evaluate(() => {
-    window.__storyMotions = 0;
-    document.addEventListener('animationstart', (event) => {
-      if (event.target.closest('a2l-feature-story')) window.__storyMotions++;
-    });
-  });
-  await page.locator('.principles').scrollIntoViewIfNeeded();
-  await page.waitForFunction(() => window.__storyMotions === 2);
-  await page.evaluate(() =>
-    Promise.all(document.getAnimations().map((animation) => animation.finished)),
-  );
-  await page.locator('#hero-title').scrollIntoViewIfNeeded();
-  await page.locator('.principles').scrollIntoViewIfNeeded();
-  assert(
-    (await page.evaluate(() => window.__storyMotions)) === 2,
-    'Illustration motion repeated on reentry',
-  );
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto(origin);
-  await page.locator('.principles').scrollIntoViewIfNeeded();
-  assert(
-    await page
-      .locator('.story-document-accent, .story-revision-current')
-      .evaluateAll((elements) =>
-        elements.every(
-          (el) =>
-            getComputedStyle(el).animationName === 'none' && getComputedStyle(el).opacity === '1',
-        ),
-      ),
-    'Reduced motion must show the final illustrations without animation',
-  );
-  cases.push('illustration motion plays once and respects reduced motion');
-
   await page.locator('.footer-links').getByRole('link', { name: 'Docs', exact: true }).click();
   assert(
     (await page.locator('h1').textContent()).trim() === 'A course vault your agent can read.',

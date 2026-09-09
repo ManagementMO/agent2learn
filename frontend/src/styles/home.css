@@ -636,14 +636,10 @@ a2l-vault[data-cited] .citation-link {
 }
 .principles h2 a svg {
   color: var(--subtle);
-  transition: transform 160ms ease;
 }
 .principles h2 a:hover {
   text-decoration: underline;
   text-underline-offset: 4px;
-}
-.principles h2 a:hover svg {
-  transform: translateX(2px);
 }
 .principles p {
   margin-top: 9px;
@@ -766,36 +762,6 @@ a2l-vault[data-cited] .citation-link {
   height: 4px;
   border-radius: 50%;
   background: currentColor;
-}
-/* A single, small motion explains the twin and preserved revision. The
-   artwork is fully visible without JavaScript or when motion is reduced. */
-@media (prefers-reduced-motion: no-preference) {
-  .story-files[data-revealed] .story-document-accent {
-    animation: twin-arrives 420ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
-  }
-  .story-history[data-revealed] .story-revision-current {
-    animation: revision-arrives 480ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
-  }
-}
-@keyframes twin-arrives {
-  from {
-    opacity: 0.45;
-    transform: translateX(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-@keyframes revision-arrives {
-  from {
-    opacity: 0.45;
-    transform: translate(-10px, -6px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(0, 0);
-  }
 }
 .setup-section {
   --ink: var(--color-zinc-100);
