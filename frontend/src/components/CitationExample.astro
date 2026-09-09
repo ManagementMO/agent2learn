@@ -1,0 +1,128 @@
+---
+import FileIcon from './FileIcon.astro';
+import { demoCitation } from '../lib/demo';
+---
+
+<figure class="citation-guide not-content" aria-label="Anatomy of a course citation">
+  <div class="citation-guide-source">
+    <div class="citation-guide-heading">
+      <FileIcon kind="linear" size={18} /><span>{demoCitation.file}</span>
+      <span class="citation-guide-label">SOURCE EXCERPT</span>
+    </div>
+    <div class="citation-guide-lines" aria-label={`Lines ${demoCitation.range}`}>
+      {
+        demoCitation.lines.map((line, i) => (
+          <div>
+            <>
+              <span aria-hidden="true">{demoCitation.start + i}</span>
+              <code>{line}</code>
+            </>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+  <figcaption>
+    <code class="citation-guide-path">{demoCitation.path}<span>:{demoCitation.range}</span></code>
+    <dl>
+      <div><dt>File path</dt><dd>Open this Markdown twin in your course folder.</dd></div>
+      <div>
+        <dt>Line range</dt><dd>Read lines {demoCitation.range}, then the surrounding context.</dd>
+      </div>
+    </dl>
+    <p>Synthetic material from the homepage example.</p>
+  </figcaption>
+</figure>
+
+<style>
+  .citation-guide {
+    margin-block: 24px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    font: 13px/1.65 var(--font-sans);
+    background: var(--paper);
+  }
+  .citation-guide-heading {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font: 12px/1.5 var(--font-mono);
+  }
+  .citation-guide-label {
+    margin-left: auto;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+  .citation-guide-lines {
+    padding-block: 18px;
+  }
+  .citation-guide-lines > div {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    padding: 5px 18px 5px 0;
+    background: var(--surface);
+    border-left: 2px solid var(--accent-line);
+  }
+  .citation-guide-lines > div > span {
+    color: var(--subtle);
+    font: 12px/1.8 var(--font-mono);
+    text-align: center;
+  }
+  .citation-guide code {
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--ink);
+    font: 12px/1.8 var(--font-mono);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .citation-guide figcaption {
+    padding: 18px;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .citation-guide-lines code {
+    font-size: 13px;
+  }
+  .citation-guide .citation-guide-path {
+    display: block;
+    color: var(--muted);
+  }
+  .citation-guide-path span {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .citation-guide dl {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 16px 0 0;
+  }
+  .citation-guide dt {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .citation-guide dd {
+    margin: 3px 0 0;
+    color: var(--muted);
+  }
+  .citation-guide figcaption > p {
+    margin: 16px 0 0;
+    color: var(--subtle);
+    font-size: 11px;
+  }
+  @media (max-width: 480px) {
+    .citation-guide-label {
+      display: none;
+    }
+    .citation-guide dl {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+  }
+</style>

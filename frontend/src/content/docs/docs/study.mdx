@@ -3,6 +3,8 @@ title: Study with sources
 description: Find course material, assemble a grounding pack, and follow citations.
 ---
 
+import CitationExample from '../../../components/CitationExample.astro';
+
 The point of the vault is to make course-specific context easy to read and inspect. Start with a question about your material:
 
 > Explain this model using my lecture notes. Cite the lines you use, and tell me if the vault is missing anything you need.
@@ -36,13 +38,11 @@ Your draft, untracked neighboring files, and generated reports cannot qualify si
 
 ## Follow the citation
 
-A course citation looks like:
+A citation names a file and the lines to inspect. Here is the same example used on the homepage:
 
-```text
-content/Week 3/Linear models.md:4
-```
+<CitationExample />
 
-Open that file and read line 4 in context. This is an illustrative path; actual citations use your vault's paths. Hash checks establish which captured source is being cited. They do not establish that an explanation is correct.
+Open the file and read the cited lines in context. This is an illustrative path; actual citations use your vault's paths. Hash checks establish which captured source is being cited. They do not establish that an explanation is correct.
 
 If you need a diagram, equation layout, or other detail that the Markdown did not preserve, inspect the adjacent original file.
 

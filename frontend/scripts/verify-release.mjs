@@ -75,7 +75,12 @@ try {
       'summary_large_image',
     );
   }
-  assert.match(home.querySelector('.release-pill').textContent, /v[\d.]+ is here/);
+  assert.equal(home.querySelector('.release-pill'), null, 'The hero has no release badge.');
+  assert.equal(
+    home.querySelector('.video-placeholder'),
+    null,
+    'A configured video replaces the placeholder.',
+  );
   assert.equal(
     home.querySelector('a2l-demo-video').getAttribute('data-video-url'),
     'https://demo.example.invalid/agent2learn.mp4',

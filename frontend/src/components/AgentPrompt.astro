@@ -13,6 +13,7 @@ const { expanded = false, featured = false } = Astro.props;
     <span>AGENT INSTRUCTIONS</span><CopyButton
       text={agentPrompt}
       label={featured ? 'Copy agent prompt' : 'Copy prompt'}
+      guidance="Paste it into your coding agent to get started."
     />
   </div>
   <details open={expanded}>

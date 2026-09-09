@@ -2,63 +2,7 @@
 import Icon from './Icon.astro';
 import FileIcon from './FileIcon.astro';
 import Mark from './Mark.astro';
-const files = [
-  {
-    id: 'index',
-    name: 'INDEX.md',
-    shortName: 'Index',
-    folder: 'DEMO 101',
-    lines: [
-      '# DEMO 101',
-      'Foundations of modelling',
-      '',
-      '## Course material',
-      '- Week 3 / Linear models',
-      '',
-      '## Assignments',
-      '- Problem Set 1',
-      '',
-      'Start here. Follow the source files.',
-    ],
-  },
-  {
-    id: 'linear',
-    name: 'Linear models.md',
-    shortName: 'Lecture',
-    folder: 'content / Week 3',
-    lines: [
-      '# Linear models',
-      '',
-      '## Feasible solutions',
-      'A feasible solution satisfies every',
-      'constraint in the model.',
-      '',
-      'The objective selects the best feasible',
-      'solution for the quantity being modelled.',
-      '',
-      '## Next: the graphical method',
-    ],
-  },
-  {
-    id: 'prompt',
-    name: 'instructions.md',
-    shortName: 'Assignment',
-    folder: 'assignments / Problem Set 1',
-    lines: [
-      '# Problem Set 1',
-      '',
-      '## Before you begin',
-      'Read the linear models lecture.',
-      '',
-      '## Your task',
-      'Identify the decision variables.',
-      'Write each constraint in your model.',
-      'Explain what makes a solution feasible.',
-      '',
-      'Cite the course material you use.',
-    ],
-  },
-] as const;
+import { demoFiles as files, demoCitation } from '../lib/demo';
 ---
 
 <a2l-vault>
@@ -85,7 +29,7 @@ const files = [
               data-open-citation
               aria-controls="source-linear"
             >
-              <FileIcon kind="linear" size={16} /><span>Linear models.md:4–5</span><Icon
+              <FileIcon kind="linear" size={16} /><span>{demoCitation.label}</span><Icon
                 name="arrow"
                 size={16}
               />
@@ -95,10 +39,10 @@ const files = [
               aria-label="Excerpt from Linear models.md, lines 4 and 5"
             >
               {
-                files[1].lines.slice(3, 5).map((line, i) => (
+                demoCitation.lines.map((line, i) => (
                   <div>
                     <>
-                      <span aria-hidden="true">{i + 4}</span>
+                      <span aria-hidden="true">{i + demoCitation.start}</span>
                       <code>{line}</code>
                     </>
                   </div>
