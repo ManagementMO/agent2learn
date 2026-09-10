@@ -261,3 +261,10 @@ html,body,#root{color:#272725;background:#faf9f6}
 [data-brand-variant="editorial"] .ingest-brand{width:52px;height:26px;flex-shrink:0}
 [data-brand-variant="editorial"] .footer-mark{width:40px;height:20px;flex-shrink:0}
 [data-brand-variant="editorial"] #brand-mark{left:750px;top:185px;width:420px;height:210px;filter:none}
+
+/* Native outlines, one shared identity. Dark placements use white ink rather
+   than inversion, which would turn the signature gold underline blue. */
+[data-brand-variant="waterloo-gold"] .corner-monogram{width:84px;height:33.6px;margin:7px 1px 8px 0}
+[data-brand-variant="waterloo-gold"] .ingest-brand{width:52px;height:20.8px;flex-shrink:0;filter:none}
+[data-brand-variant="waterloo-gold"] .footer-mark{width:40px;height:16px;flex-shrink:0;filter:none}
+[data-brand-variant="waterloo-gold"] #brand-mark{left:750px;top:206px;width:420px;height:168px;filter:none}

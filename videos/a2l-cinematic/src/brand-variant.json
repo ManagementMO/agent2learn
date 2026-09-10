@@ -1,6 +1,13 @@
 {
-  "active": "editorial",
+  "active": "waterloo-gold",
   "variants": {
+    "waterloo-gold": {
+      "src": "assets/brand/a2l-waterloo-gold.svg",
+      "darkSrc": "assets/brand/a2l-waterloo-gold-dark.svg",
+      "alt": "A2L — Agent2Learn",
+      "sha256": "e9312c3b282d36918d75c8b7c5a57ddf81176a9ba396abb8e820484faebb2bb2",
+      "darkSha256": "c328a353a8b67a4e08c11e6ca809b00bb520d8b43f2385440b1af3a42cb12159"
+    },
     "editorial": {
       "src": "assets/brand/a2l-editorial-experiment.png",
       "alt": "A2L editorial logo experiment",

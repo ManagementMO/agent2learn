@@ -26,7 +26,7 @@ try{
   assert.equal(await page.locator('.demo-note').count(),0,'The removed footer must not return to the film');
   assert.ok(!(await page.locator('#film').textContent()).includes('SETUP & RESPONSES TIME-COMPRESSED'),'The removed disclaimer cannot be moved elsewhere');
   // This is the preserved pre-rebrand option, not a live frontend dependency.
-  // The website now adopts the editorial A2L artwork separately.
+  // The website and active film share outlined A2L / Waterloo-gold artwork.
   const logo=await readFile('assets/brand/frontend-mark.svg');
   assert.equal(createHash('sha256').update(logo).digest('hex'),'ea3b7fdb9152b63cfadc7f0bd163ced1519d5562316b95c239f6955db9461483'); // pragma: allowlist secret -- preserved book-mark SHA-256
   const brands=JSON.parse(await readFile('src/brand-variant.json','utf8'));
@@ -37,9 +37,18 @@ try{
   const src=await page.locator('#brand-mark').getAttribute('src');
   assert.ok(src===active.src||src===`data:image/${active.src.endsWith('.png')?'png':'svg+xml'};base64,${bytes.toString('base64')}`);
   for(const [slot,selector]of [['header','.corner-monogram'],['context','.ingest-brand'],['footer','.footer-mark']]){
-    const path=active.src.replace(/(\.[^.]+)$/,`.${slot}$1`);
-    assert.deepEqual(await readFile(path),bytes,'Placement copies contain exactly the generated artwork bytes');
-    assert.ok(await page.locator(selector).evaluate((el,path)=>getComputedStyle(el).backgroundImage.includes(path.split('/').at(-1)),path),'Every brand placement uses the selected variant');
+    const source=slot==='header'?active.src:(active.darkSrc??active.src);
+    const path=source.replace(/(\.[^.]+)$/,`.${slot}$1`);
+    assert.deepEqual(await readFile(path),await readFile(source),'Placement copies contain exactly the selected light/dark artwork bytes');
+    const background=await page.locator(selector).evaluate(el=>getComputedStyle(el).backgroundImage);
+    const inline=background.match(/data:image\/svg\+xml;base64,([^"]+)/);
+    if(inline)assert.deepEqual(Buffer.from(inline[1],'base64'),await readFile(source),'Compiled SVG placements retain the exact selected artwork');
+    else assert.ok(background.includes(path.split('/').at(-1)),'Every brand placement uses the selected variant');
+  }
+  if(variant==='waterloo-gold'){
+    assert.equal(createHash('sha256').update(await readFile(active.darkSrc)).digest('hex'),active.darkSha256);
+    for(const path of [active.src,active.darkSrc])assert.match(await readFile(path,'utf8'),/data-brand-accent="waterloo-gold" fill="#FFD54F"/);
+    for(const selector of ['.corner-monogram','.ingest-brand','.footer-mark','#brand-mark'])assert.equal(await page.locator(selector).evaluate(el=>getComputedStyle(el).filter),'none','Keep the gold accent unchanged in every placement');
   }
   report.brandVariant=variant;
   assert.equal(await page.locator('#codex-banner strong').textContent(),'›_ Codex');
