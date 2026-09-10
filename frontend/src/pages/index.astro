@@ -1,6 +1,7 @@
 ---
 import '../styles/home.css';
 import Mark from '../components/Mark.astro';
+import MarkerStroke from '../components/MarkerStroke.astro';
 import Icon from '../components/Icon.astro';
 import CopyButton from '../components/CopyButton.astro';
 import AgentPrompt from '../components/AgentPrompt.astro';
@@ -21,6 +22,13 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <ThemeInit />
+    <noscript
+      ><style is:inline>
+        .hero-marker {
+          animation: none !important;
+        }
+      </style></noscript
+    >
     <title>Agent2Learn — Your courses. Ready for your agent.</title>
     <meta
       name="description"
@@ -72,7 +80,10 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
       <section class="hero page-width" aria-labelledby="hero-title">
         <h1 id="hero-title">
           Your courses.<br /><span
-            >Ready for <span class="hero-phrase">your agent<span class="hero-period">.</span></span
+            >Ready for <span class="hero-phrase"
+              ><span class="hero-marked-word">your<MarkerStroke /></span> agent<span
+                class="hero-period">.</span
+              ></span
             ></span
           >
         </h1>

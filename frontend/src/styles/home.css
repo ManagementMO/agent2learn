@@ -158,6 +158,10 @@ h3 {
 .hero-phrase {
   white-space: nowrap;
 }
+.hero-marked-word {
+  position: relative;
+  display: inline-block;
+}
 .hero-period {
   color: var(--ink);
 }
@@ -381,7 +385,7 @@ a2l-vault {
     inset 0 0 0 1px var(--line);
 }
 .file-option input:focus-visible + label {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 .file-dot {
@@ -392,12 +396,12 @@ a2l-vault {
   background: var(--subtle);
 }
 a2l-vault[data-cited] #choose-linear + label {
-  background: var(--accent-soft);
-  color: var(--accent);
-  box-shadow: inset 2px 0 var(--accent);
+  background: var(--gold-wash);
+  color: var(--ink);
+  box-shadow: inset 2px 0 var(--gold);
 }
 a2l-vault[data-cited] .file-dot {
-  background: var(--accent);
+  background: var(--gold-ink);
 }
 .original-file {
   display: flex;
@@ -504,8 +508,8 @@ a2l-vault[data-cited] .file-dot {
   position: absolute;
   z-index: -1;
   inset: 0;
-  background: var(--accent-soft);
-  border-left: 2px solid var(--accent);
+  background: var(--gold-wash);
+  border-left: 2px solid var(--gold);
   opacity: 0;
   transition: opacity 180ms ease-out;
 }
@@ -519,7 +523,7 @@ a2l-vault[data-cited] .file-dot {
 }
 .citation-active [data-line='4'] .line-number,
 .citation-active [data-line='5'] .line-number {
-  color: var(--accent);
+  color: var(--gold-ink);
 }
 .source-footer {
   display: flex;
@@ -574,7 +578,7 @@ a2l-vault[data-cited] .file-dot {
   margin-top: 16px;
   min-height: 44px;
   padding: 9px 10px;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--gold-line);
   border-radius: 6px;
   background: var(--paper);
   color: var(--accent);
@@ -585,12 +589,13 @@ a2l-vault[data-cited] .file-dot {
 }
 .citation-link svg:last-child {
   margin-left: auto;
+  color: var(--gold-ink);
   transition: transform 180ms ease;
 }
 .citation-link:hover,
 a2l-vault[data-cited] .citation-link {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--gold-wash);
+  border-color: var(--gold-ink);
 }
 .citation-link:hover svg:last-child {
   transform: translateX(2px);
@@ -773,9 +778,9 @@ a2l-vault[data-cited] .citation-link {
   --accent: var(--ink);
   --accent-soft: var(--color-zinc-800);
   --accent-line: var(--color-zinc-600);
-  --button-bg: var(--color-zinc-100);
-  --button-hover: var(--color-white);
-  --button-ink: var(--color-zinc-900);
+  --gold-ink: var(--gold);
+  --gold-wash: #282416;
+  --focus-ring: var(--gold);
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 48px;
@@ -843,7 +848,7 @@ a2l-vault[data-cited] .citation-link {
   gap: 12px;
 }
 .setup-section .brand-mark {
-  filter: invert(1);
+  color: #fff;
 }
 .prompt-intro h3 {
   font-weight: 550;
@@ -916,6 +921,7 @@ a2l-vault[data-cited] .citation-link {
   width: 4px;
   height: 4px;
   flex-basis: 4px;
+  background: var(--gold);
 }
 .closing-note {
   display: flex;
@@ -1157,10 +1163,10 @@ a2l-vault[data-cited] .citation-link {
   .mobile-source-excerpt {
     display: block;
     margin-top: 12px;
-    border-left: 2px solid var(--accent);
+    border-left: 2px solid var(--gold);
     padding: 9px 11px;
     border-radius: 0 5px 5px 0;
-    background: var(--accent-soft);
+    background: var(--gold-wash);
   }
   .vault-body:has(.vault-explorer[open]) .mobile-source-excerpt {
     display: none;
@@ -1173,7 +1179,7 @@ a2l-vault[data-cited] .citation-link {
   }
   .mobile-source-excerpt > div > span {
     flex: 0 0 9px;
-    color: var(--accent);
+    color: var(--gold-ink);
     user-select: none;
   }
   .mobile-source-excerpt code {

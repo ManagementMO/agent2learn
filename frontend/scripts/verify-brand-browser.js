@@ -20,7 +20,7 @@ async function verifyBrandBrowser(page) {
           await Promise.all([...document.images].map((image) => image.decode()));
         });
         const result = await page.evaluate(() => {
-          const marks = [...document.querySelectorAll('img.brand-mark')];
+          const marks = [...document.querySelectorAll('svg.brand-mark')];
           const brand = document.querySelector('.site-header .brand, .docs-brand');
           const b = brand.getBoundingClientRect();
           const nav = document.querySelector('.site-header nav');
@@ -30,7 +30,9 @@ async function verifyBrandBrowser(page) {
               return {
                 ratio: box.width / box.height,
                 width: box.width,
-                loaded: mark.complete && mark.naturalWidth > 0,
+                outlined: mark.querySelectorAll('[data-brand-letters] path').length === 3,
+                ink: getComputedStyle(mark.querySelector('[data-brand-letters]')).fill,
+                gold: getComputedStyle(mark.querySelector('[data-brand-accent]')).fill,
                 filter: getComputedStyle(mark).filter,
                 onCharcoal: Boolean(mark.closest('.setup-section')),
               };
@@ -44,10 +46,16 @@ async function verifyBrandBrowser(page) {
         if (result.marks.length !== (route === '/' ? 4 : 1))
           throw new Error(`${label}: missing mark`);
         for (const mark of result.marks) {
-          if (!mark.loaded || !Number.isFinite(mark.ratio) || mark.ratio < 2.45 || mark.ratio > 2.8)
+          if (!mark.outlined || !Number.isFinite(mark.ratio) || Math.abs(mark.ratio - 2.5) > 0.02)
             throw new Error(`${label}: missing or squeezed artwork ${JSON.stringify(mark)}`);
-          if (mark.filter !== (theme === 'dark' || mark.onCharcoal ? 'invert(1)' : 'none'))
+          if (
+            mark.ink !==
+              (theme === 'dark' || mark.onCharcoal ? 'rgb(255, 255, 255)' : 'rgb(22, 22, 22)') ||
+            mark.filter !== 'none'
+          )
             throw new Error(`${label}: invisible/wrong-theme mark`);
+          if (mark.gold !== 'rgb(255, 213, 79)')
+            throw new Error(`${label}: Waterloo gold must never be inverted or desaturated`);
         }
         if (
           result.overflow ||

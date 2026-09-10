@@ -55,14 +55,18 @@ for (const [file, document] of documents) {
   const codeLabels = new Set();
   // A wide wordmark in the old square slot is visibly compressed. Check the
   // emitted component on every route, not just its source or the home page.
-  const marks = document.querySelectorAll('img.brand-mark');
+  const marks = document.querySelectorAll('svg.brand-mark');
   if (!marks.length) failures.push(`${path}: missing shared brand mark`);
   for (const mark of marks) {
     const ratio = Number(mark.getAttribute('width')) / Number(mark.getAttribute('height'));
-    if (!Number.isFinite(ratio) || ratio < 2.45 || ratio > 2.8)
+    if (!Number.isFinite(ratio) || Math.abs(ratio - 2.5) > 0.01)
       failures.push(`${path}: A2L wordmark must retain its wide optical proportions`);
-    if (mark.getAttribute('alt') !== '' || mark.getAttribute('aria-hidden') !== 'true')
+    if (mark.getAttribute('aria-hidden') !== 'true' || mark.getAttribute('focusable') !== 'false')
       failures.push(`${path}: adjacent brand name already labels this decorative mark`);
+    if (mark.querySelector('[data-brand-accent]')?.getAttribute('fill') !== '#FFD54F')
+      failures.push(`${path}: the A2L underline must retain Waterloo gold`);
+    if (mark.querySelector('image, text') || !mark.querySelector('[data-brand-letters="A2L"]'))
+      failures.push(`${path}: use the outlined A2L vector master`);
   }
   for (const block of document.querySelectorAll('.expressive-code pre')) {
     const label = block.getAttribute('aria-label');

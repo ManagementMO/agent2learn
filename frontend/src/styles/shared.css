@@ -19,9 +19,15 @@
   --accent: var(--ink);
   --accent-soft: var(--color-zinc-200);
   --accent-line: var(--color-zinc-300);
-  --button-bg: var(--color-zinc-900);
-  --button-hover: var(--color-zinc-800);
-  --button-ink: var(--color-white);
+  /* The logo and marker share one gold. Text uses a darker ink on light paper. */
+  --gold: #ffd54f;
+  --gold-ink: #765800;
+  --gold-wash: #fff8df;
+  --gold-line: #d2b650;
+  --focus-ring: var(--gold-ink);
+  --button-bg: var(--gold);
+  --button-hover: #ffdf78;
+  --button-ink: #161616;
 }
 
 :root[data-theme='dark'] {
@@ -35,9 +41,10 @@
   --accent: var(--ink);
   --accent-soft: var(--color-zinc-700);
   --accent-line: var(--color-zinc-600);
-  --button-bg: var(--color-zinc-100);
-  --button-hover: var(--color-white);
-  --button-ink: var(--color-zinc-900);
+  --gold-ink: var(--gold);
+  --gold-wash: #282416;
+  --gold-line: #79672c;
+  --focus-ring: var(--gold);
 }
 
 h1,
@@ -54,12 +61,12 @@ summary,
 input {
   -webkit-tap-highlight-color: transparent;
 }
-:where(a, button, summary, input, [tabindex]):focus-visible {
-  outline: 2px solid var(--accent);
+:where(a, button, summary, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: 5px;
 }
 ::selection {
-  background: var(--accent-soft);
+  background: var(--gold-wash);
   color: var(--ink);
 }
 button,
@@ -74,9 +81,10 @@ pre {
   display: block;
   flex-shrink: 0;
   object-fit: contain;
+  color: #161616;
 }
 [data-theme='dark'] .brand-mark {
-  filter: invert(1);
+  color: #fff;
 }
 .sr-only {
   position: absolute;

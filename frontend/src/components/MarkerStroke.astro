@@ -1,0 +1,80 @@
+<svg
+  class="hero-marker"
+  viewBox="0 0 160 14"
+  preserveAspectRatio="none"
+  aria-hidden="true"
+  focusable="false"
+>
+  <path
+    fill="currentColor"
+    d="m4.8 4.9 16.6-.8 22.1.2 22.8-.6 24 .1 22.8-.5 23.5.2 22.8-.6-.3 6.4-4.3 2.1-23.3-.2-22.3.5-22.8-.2-23.5.5-21.3-.2-23.1.5L.7 12l.4-3.3Z"
+  ></path>
+  <path
+    fill="currentColor"
+    opacity=".42"
+    d="m5.2 3.9 25.6-.7 28.5.3 26.9-.7 29.3.1 25.6-.5 16.3.2.3 1.5-26.1.5-26.4-.2-24.9.5-27.5-.1-25.9.5-23.1.3Z"
+  ></path>
+</svg>
+
+<style>
+  .hero-marker {
+    position: absolute;
+    inset-inline-start: 19%;
+    bottom: -0.065em;
+    width: 83%;
+    height: 0.15em;
+    overflow: visible;
+    color: var(--gold);
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-marker:not([data-drawn]) {
+      /* Reveal the finished ink, rather than stretching its irregular edges.
+         The slanted leading edge follows the cut of a chisel-tip marker. */
+      animation: marker-draw 720ms cubic-bezier(0.4, 0.05, 0.2, 1) 180ms both paused;
+    }
+  }
+
+  @keyframes marker-draw {
+    from {
+      clip-path: polygon(-3% -20%, -3% -20%, -7% 120%, -7% 120%);
+    }
+    to {
+      clip-path: polygon(-3% -20%, 107% -20%, 103% 120%, -7% 120%);
+    }
+  }
+</style>
+
+<script>
+  const marker = document.querySelector<SVGElement>('.hero-marker');
+
+  if (marker) {
+    const draw = marker.getAnimations()[0];
+    if (!draw) {
+      // Reduced motion starts with the complete stroke and never replays it.
+      marker.dataset.drawn = '';
+    } else {
+      const syncVisibility = () => {
+        if (document.hidden) draw.pause();
+        else draw.play();
+      };
+      const finish = () => {
+        marker.dataset.drawn = '';
+        document.removeEventListener('visibilitychange', syncVisibility);
+      };
+
+      // Start after the headline's font has settled. A background tab holds
+      // its place; the stroke draws once, with no scroll or hover replay.
+      void document.fonts.ready.then(() => {
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches || draw.playState === 'idle') {
+          finish();
+          return;
+        }
+        document.addEventListener('visibilitychange', syncVisibility);
+        syncVisibility();
+        void draw.finished.then(finish, finish);
+      });
+    }
+  }
+</script>

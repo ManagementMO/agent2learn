@@ -3,30 +3,32 @@ import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
-// The approved film artwork is the master, not a font approximation or a new
-// drawing. Only transparent padding and export resolution change here.
-const source = await readFile('src/assets/brand/a2l-source.png');
-const sourceHash = 'ddbd02a881678ea3e1abb9fc9476d6253a1ebfb06fed788cc59f9acaf1b63f0d'; // pragma: allowlist secret -- public artwork SHA-256
-assert.equal(
-  createHash('sha256').update(source).digest('hex'),
-  sourceHash,
-  'The approved A2L master changed; review a new identity before replacing it.',
+// One editable, font-independent vector master serves both the site and film.
+// Explicit dark artwork keeps the gold gold: CSS inversion would turn it blue.
+const source = await readFile('src/assets/brand/a2l-waterloo-gold.svg', 'utf8');
+assert.match(source, /viewBox="0 0 360 144"/);
+assert.match(source, /data-brand-accent="waterloo-gold" fill="#FFD54F"/);
+assert.ok(
+  !/<(?:image|text|script|foreignObject)\b/.test(source),
+  'Use only outlined vector artwork.',
 );
-const artwork = await sharp(source)
-  .extract({ left: 149, top: 164, width: 1450, height: 561 })
-  .resize({ width: 768 })
-  .png({ compressionLevel: 9 })
-  .toBuffer();
-const image = `data:image/png;base64,${artwork.toString('base64')}`;
-// Self-contained SVGs work as native images and browser favicons. They embed
-// the approved raster artwork; these are not represented as vector drawings.
-const mark = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1450 561" data-source-sha256="${sourceHash}"><image width="1450" height="561" href="${image}"/></svg>\n`;
-const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" data-source-sha256="${sourceHash}"><rect x=".5" y=".5" width="63" height="63" rx="14" fill="#fff" stroke="#e4e4e7"/><image x="4" y="21.167" width="56" height="21.666" href="${image}"/></svg>\n`;
+const sourceHash = createHash('sha256').update(source).digest('hex');
+const geometry = source.slice(source.indexOf('>') + 1, source.lastIndexOf('</svg>')).trim();
+const variant = (ink) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 144" data-source-sha256="${sourceHash}">${geometry.replace('fill="currentColor"', `fill="${ink}"`)}</svg>\n`;
+const mark = variant('#161616');
+const dark = variant('#FFFFFF');
+const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" data-source-sha256="${sourceHash}"><rect x=".5" y=".5" width="63" height="63" rx="14" fill="#fff" stroke="#e4e4e7"/><g transform="translate(4 20.8) scale(.155555556)">${geometry.replace('fill="currentColor"', 'fill="#161616"')}</g></svg>\n`;
 const icon = await sharp(Buffer.from(favicon)).resize(512, 512).png().toBuffer();
 const outputs = new Map([
   ['public/brand/mark.svg', Buffer.from(mark)],
+  ['public/brand/mark-dark.svg', Buffer.from(dark)],
+  ['public/brand/mark.png', await sharp(Buffer.from(mark)).resize(1440).png().toBuffer()],
+  ['public/brand/mark-dark.png', await sharp(Buffer.from(dark)).resize(1440).png().toBuffer()],
   ['public/favicon.svg', Buffer.from(favicon)],
   ['public/brand/icon.png', icon],
+  ['../videos/a2l-cinematic/assets/brand/a2l-waterloo-gold.svg', Buffer.from(mark)],
+  ['../videos/a2l-cinematic/assets/brand/a2l-waterloo-gold-dark.svg', Buffer.from(dark)],
 ]);
 const check = process.argv.includes('--check');
 for (const [path, bytes] of outputs) {
@@ -35,5 +37,5 @@ for (const [path, bytes] of outputs) {
   else await writeFile(path, bytes);
 }
 console.log(
-  `${check ? 'Verified' : 'Exported'} A2L wordmark, favicon and 512px icon from the pinned approved master.`,
+  `${check ? 'Verified' : 'Exported'} A2L vector marks, gold-preserving dark variant, favicon, icon and identical film artwork.`,
 );
