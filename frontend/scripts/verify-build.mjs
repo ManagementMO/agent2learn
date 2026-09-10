@@ -94,11 +94,45 @@ for (const file of ['llms.txt', 'agent-prompt.txt']) {
   if (!content.trim()) failures.push(`${file}: empty agent resource`);
 }
 
+const home = documents.get(join(root, 'index.html'));
+const footerLinks = [...home.querySelectorAll('.footer-links a')].map((link) => [
+  link.textContent.trim(),
+  link.getAttribute('href'),
+]);
+const expectedFooter = [
+  ['Docs', '/docs/introduction/'],
+  ['llms.txt', '/llms.txt'],
+  ['GitHub', 'https://github.com/ManagementMO/agent2learn'],
+  ['Apache-2.0', 'https://github.com/ManagementMO/agent2learn/blob/main/LICENSE'],
+];
+if (JSON.stringify(footerLinks) !== JSON.stringify(expectedFooter))
+  failures.push(
+    'Homepage footer: expected the documentation, agent index, repository, and license destinations',
+  );
+
+// Every guide must be discoverable through the agent index, and every local
+// index link must resolve to real generated content, not a fallback page.
+const llms = await readFile(join(root, 'llms.txt'), 'utf8');
+const indexedGuides = new Set();
+for (const [, href] of llms.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+  const url = new URL(href, origin);
+  if (url.origin !== origin) continue;
+  const target = await existingTarget(url.pathname);
+  if (!target) failures.push(`llms.txt: missing ${href}`);
+  else if (url.pathname.startsWith('/docs/')) indexedGuides.add(target);
+}
+for (const file of documents.keys()) {
+  if (file.startsWith(join(root, 'docs') + '/') && !indexedGuides.has(file))
+    failures.push(`llms.txt: guide absent from index: ${relative(root, file)}`);
+}
+if (!llms.startsWith('# Agent2Learn\n') || !indexedGuides.size)
+  failures.push('llms.txt: expected a project description and a populated documentation index');
+
 if (failures.length) {
   console.error(failures.join('\n'));
   process.exitCode = 1;
 } else {
   console.log(
-    `Verified ${documents.size} HTML pages, ${checked} internal links/assets, the agent index, and setup prompt.`,
+    `Verified ${documents.size} HTML pages, ${checked} internal links/assets, all four footer destinations, ${indexedGuides.size} indexed guides, and the setup prompt.`,
   );
 }

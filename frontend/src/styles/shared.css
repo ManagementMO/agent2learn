@@ -170,13 +170,33 @@ pre {
   overflow: visible;
 }
 .agent-prompt-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px 12px;
   padding: 12px 14px;
   font: 10px var(--font-mono);
   color: var(--muted);
+}
+.agent-prompt-toolbar .has-guidance {
+  display: contents;
+}
+.agent-prompt-toolbar .copy-feedback {
+  position: static;
+  grid-column: 1 / -1;
+  width: auto;
+  min-height: 3em;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 12px/1.5 var(--font-sans);
+  clip-path: none;
+}
+.agent-prompt-toolbar .copy-feedback.copy-error {
+  color: var(--ink);
 }
 .agent-prompt details {
   border-top: 1px solid var(--line);
@@ -221,27 +241,6 @@ pre {
 .release-note strong {
   display: block;
 }
-.docs-command {
-  position: relative;
-  margin-block: 16px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-}
-.docs-command pre {
-  margin: 0 0 12px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  overflow-x: auto;
-  font-size: 13px;
-}
-.docs-command pre code {
-  padding: 0;
-  background: transparent;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

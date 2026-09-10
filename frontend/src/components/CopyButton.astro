@@ -5,17 +5,21 @@ interface Props {
   text: string;
   label?: string;
   compact?: boolean;
+  guidance?: string;
 }
-const { text, label = 'Copy command', compact = false } = Astro.props;
+const { text, label = 'Copy command', compact = false, guidance } = Astro.props;
 ---
 
-<a2l-copy class={cn('copy-control', compact && 'is-compact')}>
+<a2l-copy
+  class={cn('copy-control', compact && 'is-compact', guidance && 'has-guidance')}
+  data-guidance={guidance}
+>
   <button class="copy-button" type="button" data-copy={text} data-label={label} aria-label={label}>
     <span class="copy-glyph"><Icon name="copy" size={16} /></span><span class="copied-glyph"
       ><Icon name="check" size={16} /></span
     ><span class="copy-label">{label}</span>
   </button>
-  <span class="copy-feedback" role="status" aria-live="polite"></span>
+  <span class="copy-feedback" role="status" aria-live="polite">{guidance}</span>
 </a2l-copy>
 
 <script>
@@ -32,13 +36,18 @@ const { text, label = 'Copy command', compact = false } = Astro.props;
           await navigator.clipboard.writeText(button.dataset.copy ?? '');
           button.dataset.copied = '';
           label.textContent = 'Copied';
-          feedback.textContent = 'Copied to clipboard.';
+          feedback.textContent = this.dataset.guidance
+            ? `Prompt copied. ${this.dataset.guidance}`
+            : 'Copied to clipboard.';
           feedback.classList.remove('copy-error');
-          reset = setTimeout(() => {
-            label.textContent = button.dataset.label ?? 'Copy';
-            delete button.dataset.copied;
-            feedback.textContent = '';
-          }, 2400);
+          reset = setTimeout(
+            () => {
+              label.textContent = button.dataset.label ?? 'Copy';
+              delete button.dataset.copied;
+              feedback.textContent = this.dataset.guidance ?? '';
+            },
+            this.dataset.guidance ? 6000 : 2400,
+          );
         } catch {
           delete button.dataset.copied;
           label.textContent = button.dataset.label ?? 'Copy';

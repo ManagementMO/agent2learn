@@ -137,22 +137,6 @@ h3 {
   padding-block: 46px 40px;
   text-align: center;
 }
-.release-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  border: 1px solid var(--line);
-  border-radius: 100px;
-  padding: 6px 12px;
-  background: var(--paper);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.release-pill:hover {
-  color: var(--accent);
-  border-color: var(--accent-line);
-}
 .status-dot {
   display: inline-block;
   width: 6px;
@@ -162,7 +146,7 @@ h3 {
   background: var(--accent);
 }
 .hero h1 {
-  margin-top: 23px;
+  margin-top: 0;
   font-size: clamp(46px, 5.6vw, 76px);
   font-weight: 650;
   line-height: 1.08;
@@ -377,7 +361,7 @@ a2l-vault {
   padding: 8px 7px 8px 13px;
   border-radius: 6px;
   color: var(--muted);
-  font: 11px var(--font-mono);
+  font: 12px var(--font-mono);
   cursor: pointer;
   transition:
     background-color 180ms ease,
@@ -421,11 +405,13 @@ a2l-vault[data-cited] .file-dot {
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px 0 0 13px;
-  font: 10px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--muted);
 }
 .original-file > span {
-  font: 10px var(--font-sans);
+  flex-basis: 100%;
+  padding-left: 24px;
+  font: 11px var(--font-sans);
   color: var(--subtle);
 }
 .tree-note {
@@ -467,7 +453,7 @@ a2l-vault[data-cited] .file-dot {
   padding-inline: 18px;
   border-bottom: 1px solid var(--line);
   color: var(--subtle);
-  font: 11px var(--font-mono);
+  font: 12px var(--font-mono);
 }
 .md-label {
   border: 1px solid var(--line);
@@ -486,7 +472,7 @@ a2l-vault[data-cited] .file-dot {
   gap: 13px;
   min-height: 25px;
   padding-right: 17px;
-  font: 12px/25px var(--font-mono);
+  font: 13px/25px var(--font-mono);
   color: var(--muted);
   white-space: pre;
 }
@@ -508,7 +494,7 @@ a2l-vault[data-cited] .file-dot {
   flex: 0 0 30px;
   text-align: right;
   color: var(--subtle);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   user-select: none;
@@ -543,11 +529,11 @@ a2l-vault[data-cited] .file-dot {
   padding-inline: 15px;
   border-top: 1px solid var(--line);
   color: var(--subtle);
-  font: 10px var(--font-mono);
+  font: 12px var(--font-mono);
 }
 .source-footer .source-kind {
   margin-left: auto;
-  font: 10px var(--font-sans);
+  font: 12px var(--font-sans);
 }
 .citation-example {
   grid-area: 1 / 2;
@@ -573,7 +559,7 @@ a2l-vault[data-cited] .file-dot {
   align-items: center;
   margin-top: 27px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .example-answer {
   margin-top: 11px;
@@ -586,13 +572,13 @@ a2l-vault[data-cited] .file-dot {
   align-items: center;
   gap: 7px;
   margin-top: 16px;
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 10px;
   border: 1px solid var(--accent-line);
   border-radius: 6px;
   background: var(--paper);
   color: var(--accent);
-  font: 11px var(--font-mono);
+  font: 12px var(--font-mono);
   transition:
     background-color 180ms ease,
     border-color 180ms ease;
@@ -641,6 +627,19 @@ a2l-vault[data-cited] .citation-link {
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.015em;
+}
+.principles h2 a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+.principles h2 a svg {
+  color: var(--subtle);
+}
+.principles h2 a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .principles p {
   margin-top: 9px;
@@ -710,9 +709,6 @@ a2l-vault[data-cited] .citation-link {
   margin-top: 11px;
   color: var(--accent);
   font: 10px var(--font-mono);
-}
-.story-source > svg:last-child {
-  margin-left: auto;
 }
 .story-revisions {
   position: relative;
@@ -831,7 +827,7 @@ a2l-vault[data-cited] .citation-link {
   align-items: center;
   flex-wrap: wrap;
   gap: 9px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--subtle);
   margin-top: 16px;
 }
@@ -865,7 +861,7 @@ a2l-vault[data-cited] .citation-link {
   background: transparent;
 }
 .agent-prompt-featured .agent-prompt-toolbar {
-  flex-direction: column;
+  grid-template-columns: 1fr;
   align-items: stretch;
   gap: 10px;
   padding: 0;
@@ -911,7 +907,7 @@ a2l-vault[data-cited] .citation-link {
   gap: 8px;
   margin-top: 16px;
   color: var(--subtle);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
 }
 .setup-note .status-dot {
@@ -974,6 +970,27 @@ a2l-vault[data-cited] .citation-link {
   margin-top: 13px;
   color: var(--subtle);
   font-size: 11px;
+}
+
+/* Shorter laptops get to the source interaction sooner; taller displays keep
+   the full-size editorial spacing. Phone composition is handled below. */
+@media (min-width: 1021px) and (max-height: 900px) {
+  .hero {
+    padding-block: 34px 24px;
+  }
+  .hero h1 {
+    font-size: clamp(46px, 5.2vw, 68px);
+  }
+  .hero-description {
+    margin-top: 18px;
+    line-height: 1.65;
+  }
+  .hero-actions {
+    margin-top: 20px;
+  }
+  .quick-install {
+    margin-top: 16px;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -1145,11 +1162,14 @@ a2l-vault[data-cited] .citation-link {
     border-radius: 0 5px 5px 0;
     background: var(--accent-soft);
   }
+  .vault-body:has(.vault-explorer[open]) .mobile-source-excerpt {
+    display: none;
+  }
   .mobile-source-excerpt > div {
     display: flex;
     gap: 12px;
     color: var(--ink);
-    font: 11px/1.9 var(--font-mono);
+    font: 12px/1.8 var(--font-mono);
   }
   .mobile-source-excerpt > div > span {
     flex: 0 0 9px;
@@ -1322,7 +1342,6 @@ a2l-vault[data-cited] .citation-link {
     padding-block: 36px 34px;
   }
   .hero h1 {
-    margin-top: 22px;
     font-size: clamp(39px, 9.5vw, 56px);
     line-height: 1.12;
   }
@@ -1381,27 +1400,57 @@ a2l-vault[data-cited] .citation-link {
     gap: 0;
   }
   .principles {
-    gap: 25px;
-    padding-top: 26px;
+    gap: 22px;
+    padding-block: 24px 30px;
   }
   .feature-story {
-    height: 105px;
+    height: 80px;
     min-height: 0;
-    margin-bottom: 14px;
+    margin-bottom: 8px;
     grid-row: auto;
   }
   .story-document {
-    width: 105px;
+    width: 92px;
+    padding: 8px 10px;
+    gap: 7px;
+  }
+  .story-document > svg {
+    width: 21px;
+    height: 21px;
+  }
+  .story-quote {
+    padding: 11px 13px;
+    box-shadow: none;
+  }
+  .story-source {
+    margin-top: 7px;
   }
   .story-revisions {
-    width: 258px;
+    width: 226px;
+    height: 80px;
+  }
+  .story-revision {
+    width: 156px;
+    padding: 8px 10px;
+  }
+  .story-revision i {
+    margin-top: 5px;
+  }
+  .story-revision i + i {
+    display: none;
+  }
+  .revision-kept,
+  .revision-current {
+    margin-top: 6px;
   }
   .principles h2 {
     font-size: 17px;
   }
   .principles p {
     max-width: 420px;
+    margin-top: 6px;
     font-size: 14px;
+    line-height: 1.7;
   }
   .setup-section {
     padding: 26px 23px;
@@ -1415,9 +1464,6 @@ a2l-vault[data-cited] .citation-link {
   }
   .setup-prompt-card > p {
     font-size: 13px;
-  }
-  .setup-note {
-    font-size: 11px;
   }
   .closing-note {
     flex-direction: column;

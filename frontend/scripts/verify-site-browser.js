@@ -47,6 +47,10 @@ async function verifySiteBrowser(page) {
       await page.goto(origin);
       await ready();
       assert(
+        (await page.locator('.release-pill').count()) === 0,
+        `${label}: release badge returned`,
+      );
+      assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         `${label}: horizontal overflow`,
       );
@@ -54,6 +58,12 @@ async function verifySiteBrowser(page) {
         (await page.locator('.vault-explorer').evaluate((el) => el.open)) === width > 760,
         `${label}: incorrect initial vault disclosure`,
       );
+      if (width <= 760) {
+        assert(
+          await page.locator('.mobile-source-excerpt').isVisible(),
+          `${label}: collapsed answer lost its source excerpt`,
+        );
+      }
       await page.getByRole('button', { name: 'Linear models.md:4–5' }).click();
       assert(
         await page.locator('#choose-linear').isChecked(),
@@ -68,6 +78,10 @@ async function verifySiteBrowser(page) {
       assert(
         await page.locator('#source-linear').isVisible(),
         `${label}: citation source is hidden`,
+      );
+      assert(
+        await page.locator('.mobile-source-excerpt').isHidden(),
+        `${label}: expanded source duplicates its compact excerpt`,
       );
       assert(
         (await page.locator('.citation-hint').textContent()) ===
@@ -101,6 +115,10 @@ async function verifySiteBrowser(page) {
             .evaluate((el) => el === document.activeElement),
           `${label}: return lost keyboard focus`,
         );
+        assert(
+          await page.locator('.mobile-source-excerpt').isVisible(),
+          `${label}: return did not restore the source excerpt`,
+        );
       }
       await audit(label);
       cases.push(label);
@@ -118,6 +136,10 @@ async function verifySiteBrowser(page) {
     await page.locator('.vault-explorer').evaluate((el) => el.open),
     'Resize lost the expanded mobile file view',
   );
+  assert(
+    await page.locator('.mobile-source-excerpt').isHidden(),
+    'Resize duplicated the source excerpt in the open explorer',
+  );
   await page.getByRole('button', { name: 'Back to answer' }).click();
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -125,6 +147,10 @@ async function verifySiteBrowser(page) {
   assert(
     !(await page.locator('.vault-explorer').evaluate((el) => el.open)),
     'Resize reopened the collapsed mobile file view',
+  );
+  assert(
+    await page.locator('.mobile-source-excerpt').isVisible(),
+    'Resize hid the collapsed source excerpt',
   );
   cases.push('mobile disclosure survives resize');
 
@@ -150,6 +176,11 @@ async function verifySiteBrowser(page) {
   );
   await page.getByRole('button', { name: 'Copy agent prompt', exact: true }).click();
   assert(
+    (await page.locator('.agent-prompt .copy-feedback').textContent()) ===
+      'Prompt copied. Paste it into your coding agent to get started.',
+    'Prompt copy did not explain the next step',
+  );
+  assert(
     await page.evaluate(
       async () =>
         window.__copiedText.trim() === (await (await fetch('/agent-prompt.txt')).text()).trim(),
@@ -172,7 +203,7 @@ async function verifySiteBrowser(page) {
     for (const theme of ['light', 'dark']) {
       await page.setViewportSize({ width, height: 960 });
       await setTheme(theme);
-      for (const slug of ['introduction', 'installation', 'for-agents', 'commands']) {
+      for (const slug of ['introduction', 'installation', 'for-agents', 'commands', 'study']) {
         const label = `docs/${slug} ${width}px ${theme}`;
         await page.goto(`${origin}/docs/${slug}/`);
         await ready();
@@ -200,18 +231,42 @@ async function verifySiteBrowser(page) {
             () =>
               window.__copiedText.startsWith('# ') &&
               window.__copiedText.length > 500 &&
-              !window.__copiedText.includes('<CopyButton'),
+              !/<(?:CopyButton|CitationExample)|import CitationExample/.test(window.__copiedText),
           ),
           `${label}: Copy page lost its complete readable content`,
         );
+        if (slug === 'study') {
+          const lines = await page.locator('.citation-guide-lines code').allTextContents();
+          assert(
+            lines.join(' ') === 'A feasible solution satisfies every constraint in the model.',
+            `${label}: source excerpt differs from the homepage example`,
+          );
+          assert(
+            await page.evaluate(
+              () =>
+                window.__copiedText.includes('content/Week 3/Linear models.md:4–5') &&
+                window.__copiedText.includes('4  A feasible solution satisfies every') &&
+                window.__copiedText.includes('5  constraint in the model.') &&
+                window.__copiedText.includes('**Line range:**'),
+            ),
+            `${label}: Copy page lost the citation example or its explanation`,
+          );
+        }
         if (slug === 'installation') {
-          for (const tab of ['macOS / Linux', 'Windows', 'With uv']) {
+          for (const tab of ['macOS / Linux', 'Windows', 'Already have uv']) {
             await page.getByRole('tab', { name: tab, exact: true }).click();
             assert(
               (await page
                 .getByRole('tab', { name: tab, exact: true })
                 .getAttribute('aria-selected')) === 'true',
               `${label}: install method tab did not change`,
+            );
+            const panel = page.getByRole('tabpanel', { name: tab, exact: true });
+            const command = await panel.locator('pre').innerText();
+            await panel.getByRole('button', { name: 'Copy to clipboard', exact: true }).click();
+            assert(
+              (await page.evaluate(() => window.__copiedText)).trim() === command.trim(),
+              `${label}: ${tab} copied a different installation command`,
             );
           }
         }
@@ -221,14 +276,91 @@ async function verifySiteBrowser(page) {
     }
   }
 
+  for (const width of [320, 1440]) {
+    for (const theme of ['light', 'dark']) {
+      const label = `demo placeholder ${width}px ${theme}`;
+      await page.setViewportSize({ width, height: 900 });
+      await setTheme(theme);
+      const mediaRequests = [];
+      const onRequest = (request) => {
+        if (request.url() === `${origin}/brand/demo-poster.png`) mediaRequests.push(request.url());
+      };
+      page.on('request', onRequest);
+      await page.goto(origin);
+      await ready();
+      assert(mediaRequests.length === 0, `${label}: poster loaded before opening the dialog`);
+      await page.getByRole('button', { name: 'Preview the demo', exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      assert(await dialog.isVisible(), `${label}: dialog did not open`);
+      await dialog.locator('img').evaluate((image) => image.decode());
+      assert(
+        await dialog.getByText('Demo placeholder', { exact: true }).isVisible(),
+        `${label}: placeholder is not labeled`,
+      );
+      assert(
+        (await dialog.locator('video').count()) === 0,
+        `${label}: placeholder pretends to play a video`,
+      );
+      assert(mediaRequests.length === 1, `${label}: poster was not loaded on demand`);
+      assert(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `${label}: horizontal overflow`,
+      );
+      await audit(label);
+      await page.keyboard.press('Escape');
+      assert(await dialog.isHidden(), `${label}: Escape did not close the dialog`);
+      assert(
+        await page.locator('[data-open-demo]').evaluate((el) => el === document.activeElement),
+        `${label}: closing lost keyboard focus`,
+      );
+      // Native dialog close events are queued after the open attribute clears.
+      await page.waitForFunction(() => !document.querySelector('.video-placeholder-art img'));
+      await page.getByRole('button', { name: 'Preview the demo', exact: true }).click();
+      await page.getByRole('button', { name: 'Close demo', exact: true }).click();
+      assert(await dialog.isHidden(), `${label}: close button did not work`);
+      page.off('request', onRequest);
+      cases.push(label);
+    }
+  }
+
+  await page.locator('.footer-links').getByRole('link', { name: 'Docs', exact: true }).click();
+  assert(
+    (await page.locator('h1').textContent()).trim() === 'A course vault your agent can read.',
+    'Footer Docs did not open the actual guide',
+  );
+  await page.goto(origin);
+  const llmsResponse = page.waitForResponse((response) => response.url() === `${origin}/llms.txt`);
+  await page.locator('.footer-links').getByRole('link', { name: 'llms.txt', exact: true }).click();
+  const response = await llmsResponse;
+  assert(
+    response.status() === 200 && response.headers()['content-type'].includes('text/plain'),
+    'Footer llms.txt is not a text resource',
+  );
+  const index = await response.text();
+  assert(
+    index.startsWith('# Agent2Learn') && (index.match(/\]\(\/docs\//g) ?? []).length === 11,
+    'Footer llms.txt is missing its project or guides',
+  );
+  cases.push('footer Docs and llms.txt open populated resources');
+
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`${origin}/docs/introduction/`);
   await page.getByRole('button', { name: 'Search', exact: false }).click();
-  await page.getByRole('textbox', { name: 'Search docs', exact: true }).fill('ground');
+  await page.getByRole('textbox', { name: 'Search docs', exact: true }).fill('authentication');
   await page.locator('.pagefind-ui__result-link').first().waitFor();
   assert(
     (await page.locator('.pagefind-ui__result-link').count()) > 0,
     'Production documentation search returned no results',
+  );
+  const firstResult = page.locator('.pagefind-ui__result').first();
+  assert(
+    (await firstResult.locator('.pagefind-ui__result-link').first().textContent()).trim() ===
+      'Authentication',
+    'Search did not find the authentication guide',
+  );
+  assert(
+    !(await firstResult.textContent()).includes('Copy page'),
+    'Search indexed the Copy page action as article content',
   );
   await page.keyboard.press('Escape');
   cases.push('production documentation search');

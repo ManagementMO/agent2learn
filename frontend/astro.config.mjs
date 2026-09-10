@@ -29,30 +29,6 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/ManagementMO/agent2learn/edit/main/frontend/',
       },
-      expressiveCode: {
-        themes: ['github-light', 'github-dark'],
-        styleOverrides: { borderRadius: '0.625rem' },
-        plugins: [
-          {
-            name: 'Accessible code example labels',
-            hooks: {
-              postprocessRenderedBlock: ({ codeBlock, renderData }) => {
-                // Expressive Code makes overflowing examples keyboard-scrollable.
-                // Give those regions distinct names, already present in static HTML.
-                const index = codeBlock.parentDocument?.positionInDocument?.groupIndex ?? 0;
-                const label = `Code example ${index + 1}`;
-                const namePre = (node) => {
-                  if (node.type === 'element' && node.tagName === 'pre') {
-                    node.properties.ariaLabel = label;
-                  }
-                  for (const child of node.children ?? []) namePre(child);
-                };
-                namePre(renderData.blockAst);
-              },
-            },
-          },
-        ],
-      },
       sidebar: [
         {
           label: 'Start here',

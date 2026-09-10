@@ -70,11 +70,6 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
     </header>
     <main id="main">
       <section class="hero page-width" aria-labelledby="hero-title">
-        <a class="release-pill" href="/docs/installation/"
-          ><span class="status-dot"></span>{
-            release.published ? `v${release.version} is here` : 'Open source. Built for Waterloo.'
-          }<Icon name="arrow" size={13} /></a
-        >
         <h1 id="hero-title">
           Your courses.<br /><span
             >Ready for <span class="hero-phrase">your agent<span class="hero-period">.</span></span
@@ -112,19 +107,31 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
 
       <section class="principles page-width" aria-label="What makes the vault useful">
         <article>
-          <FeatureStory kind="files" /><h2>Your files, on your terms.</h2><p>
+          <FeatureStory kind="files" /><h2>
+            <a href="/docs/vault/#originals-and-twins"
+              >Your files, on your terms.<Icon name="arrow" size={14} /></a
+            >
+          </h2><p>
             Originals beside readable Markdown. Open them in your editor, Obsidian, or any agent
             that reads files.
           </p>
         </article>
         <article>
-          <FeatureStory kind="citation" /><h2>Follow every citation.</h2><p>
+          <FeatureStory kind="citation" /><h2>
+            <a href="/docs/study/#follow-the-citation"
+              >Follow every citation.<Icon name="arrow" size={14} /></a
+            >
+          </h2><p>
             Find the lecture behind an explanation. Grounding packs point to source files and lines
             you can inspect.
           </p>
         </article>
         <article>
-          <FeatureStory kind="history" /><h2>Keep what you learn.</h2><p>
+          <FeatureStory kind="history" /><h2>
+            <a href="/docs/vault/#revisions-and-your-own-work"
+              >Keep what you learn.<Icon name="arrow" size={14} /></a
+            >
+          </h2><p>
             Sync preserves captured material and earlier revisions. Missing files and conversion
             gaps stay visible.
           </p>
