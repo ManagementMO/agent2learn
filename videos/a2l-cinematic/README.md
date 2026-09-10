@@ -3,14 +3,32 @@
 The active revision is a **17.5-second product-demo launch film**, 1920×1080,
 with a native 120fps master and a 60fps sharing version.
 
+## Current Studio branding — Waterloo gold (2026-09-09)
+
+The active `waterloo-gold` variant replaces the editorial raster logo with a
+native outlined **A2L** wordmark: upright raised **2**, chamfered underline in Waterloo
+**#FFD54F**, black lettering on light surfaces and white lettering in the terminal.
+Gold is never inverted. The header, context receipt, terminal footer and closing
+frame all use it. Timing, choreography, demo content and audio are unchanged.
+
+The numeral now has a more upright bowl, a firmer horizontal foot and a vertical
+right terminal. The A, L and gold underline are unchanged. This refinement is
+based on main `204c97e` and preserves the website's merged gold-marker design.
+
+The website uses the same vector master:
+`frontend/src/assets/brand/a2l-waterloo-gold.svg`. From `frontend/`, run
+`npm run brand:build` to generate both site and film assets. The manifest pins
+the film's light and dark hashes. The current picture is available in Studio;
+the preserved MP4s below have **not** been replaced with this identity.
+
 ## Current Studio soundtrack — Launchbeat (2026-09-08)
 
 Studio now previews a punchier house/disco instrumental with a 4% pitch-preserving
 tempo lift, stronger information-transfer accents, quiet context/logo chimes, and
 a deliberate music dip at the source click. The subsequent visual cleanup removes
 the long bottom disclaimer and replaces the Content tab's inset shadow with a
-bottom-only blue underline. Other visuals, the logo, 17.5s timing and recorded
-input Foley are unchanged. The previous MP4s below still use
+bottom-only blue underline. That edit kept the 17.5s timing and recorded
+input Foley unchanged. The previous MP4s below still use
 the previous soundtrack; **no new final movie export has been approved or replaced
 them**.
 
@@ -145,9 +163,9 @@ preceding approved MP4 and `.archive/signalflow-polish17.5/` cue snapshot. It is
 not a general fresh-clone build step. It preserves the previous AAC without
 re-encoding; see `VERIFICATION-AGENT.md` for the already-verified final hashes.
 
-## Logo experiment and revert
+## Preserved logo options and revert
 
-The new transparent image is assets/brand/a2l-editorial-experiment.png.
+The previous transparent image is assets/brand/a2l-editorial-experiment.png.
 Its exact generation prompt is assets/brand/a2l-editorial-experiment.prompt.md.
 It borrows only the idea of confident editorial lettering from D2L; no D2L
 artwork is included in the composition. The owner approved this artwork for
@@ -158,6 +176,8 @@ the website too; this does not claim D2L affiliation or trademark clearance.
 npm run build -- --brand=frontend
 # Restore this experiment:
 npm run build -- --brand=editorial
+# Restore the current shared A2L / Waterloo-gold identity:
+npm run build -- --brand=waterloo-gold
 ```
 
 The default is selected by active in src/brand-variant.json. Change that field

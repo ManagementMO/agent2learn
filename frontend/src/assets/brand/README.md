@@ -5,6 +5,10 @@ It contains original, hand-drawn serif outlines for **A2L**, a raised **2**, and
 a short chamfered gold underline. No font, raster image, network request or D2L
 artwork is embedded in it.
 
+The raised **2** uses an upright bowl, a substantial horizontal foot and a
+vertical right terminal. It has no italic/skew transform. The **A**, **L**,
+wordmark proportions and gold underline are unchanged by this refinement.
+
 The visual reference is [D2L's preferred logo](https://www.d2l.com/newsroom/logo-guidelines/).
 The gold is **#FFD54F**, Waterloo's primary web yellow/gold in the
 [University palette](https://uwaterloo.ca/conrad-school-entrepreneurship-business/sites/default/files/uploads/files/c015596-conrad-logoguidelines-june2019-pr12.pdf),

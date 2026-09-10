@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" data-source-sha256="fad125919f7dc06f6d0afdc8a9ffb852a7464d2b0305b26d766badff97feeaf8"><rect x=".5" y=".5" width="63" height="63" rx="14" fill="#fff" stroke="#e4e4e7"/><g transform="translate(4 20.8) scale(.155555556)"><g fill="#161616" data-brand-letters="A2L">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" data-source-sha256="c9a8ef250ac4a4b981ec92e2cd8fe052149a083bfcfa16511483d7193ed337b8"><rect x=".5" y=".5" width="63" height="63" rx="14" fill="#fff" stroke="#e4e4e7"/><g transform="translate(4 20.8) scale(.155555556)"><g fill="#161616" data-brand-letters="A2L">
     <path fill-rule="evenodd" d="M4 136v-8h13L58 20l-4-4H43V8h39l46 120h13v8H76v-8h16L80 98H38l-11 30h17v8Zm38-49h34L59 42Z"/>
-    <path d="M150 49c-3-26 13-43 41-43 27 0 45 15 45 36 0 19-12 30-30 44l-25 20h39l15-14h4l-6 23h-86v-10l35-34c15-15 25-29 25-44 0-10-5-15-13-15-11 0-17 12-17 29v8Z"/>
+    <path data-brand-glyph="2" d="M149 47C147 23 164 6 191 6C218 6 235 20 235 41C235 62 221 76 201 90L193 96H218L231 83H236V115H147V102L177 74C195 57 205 44 205 29C205 18 200 12 192 12C180 12 174 24 174 40V47Z"/>
     <path d="M246 8h66v8h-15l-6 8v104h29l29-28h7l-9 36H246v-8h13l6-8V24l-6-8h-13Z"/>
   </g>
   <path data-brand-accent="waterloo-gold" fill="#FFD54F" d="M151 124h85v7l-5 5h-85v-7Z"/></g></svg>

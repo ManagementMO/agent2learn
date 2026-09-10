@@ -15,21 +15,23 @@ const motion=await readFile('src/launchflow-motion.js','utf8');
 // bundle omits standalone development comments, as a normal build artifact.
 const compiledMotion=motion.replace(/^\s*\/\/[^\n]*\n/gm,'');
 const cues=JSON.parse(await readFile('src/launchflow-cues.json','utf8'));
-// A local film variant, never a mutation of the real frontend identity. One
-// build flag restores the book mark while preserving all motion refinements.
+// The active vector identity is shared with the website. Historical variants
+// remain available explicitly without changing timing or the current master.
 const brands=JSON.parse(await readFile('src/brand-variant.json','utf8'));
 const variant=process.argv.find(x=>x.startsWith('--brand='))?.slice(8)??brands.active;
 const brand=brands.variants[variant];
 if(!brand)throw new Error(`Unknown brand variant: ${variant}`);
 if(createHash('sha256').update(await readFile(brand.src)).digest('hex')!==brand.sha256)throw new Error('Brand asset drift');
+if(brand.darkSrc&&createHash('sha256').update(await readFile(brand.darkSrc)).digest('hex')!==brand.darkSha256)throw new Error('Dark brand asset drift');
 // Byte-identical placement copies isolate Chromium's resized-image cache.
 // Sharing the closing raster with the tiny header changed 1,084 edge pixels
 // after a backwards seek. Separate resources preserve the original PNG while
 // keeping each placement's decode stable. No image resampling or redrawing.
 const brandPlacements={};
 for(const slot of ['header','context','footer']){
-  brandPlacements[slot]=brand.src.replace(/(\.[^.]+)$/,`.${slot}$1`);
-  await cp(brand.src,brandPlacements[slot]);
+  const source=slot==='header'?brand.src:(brand.darkSrc??brand.src);
+  brandPlacements[slot]=source.replace(/(\.[^.]+)$/,`.${slot}$1`);
+  await cp(source,brandPlacements[slot]);
 }
 // A single baked schedule drives pixels AND Foley. Human input has word-level
 // pauses, a pasted install command, and non-repeating key intervals; model

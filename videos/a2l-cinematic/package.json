@@ -12,10 +12,10 @@
     "test:export": "node tools/verify-export.mjs",
     "test:audio": "uv run --no-project --python 3.12 --with numpy==2.2.6 python tools/verify-codex-audio.py",
     "review:export": "node tools/review-launchflow-export.mjs",
-    "dev": "npx --yes hyperframes@0.8.31 preview",
-    "check": "npx --yes hyperframes@0.8.31 check",
-    "render": "npx --yes hyperframes@0.8.31 render",
-    "publish": "npx --yes hyperframes@0.8.31 publish"
+    "dev": "npx --yes hyperframes@0.8.33 preview",
+    "check": "npx --yes hyperframes@0.8.33 check",
+    "render": "npx --yes hyperframes@0.8.33 render",
+    "publish": "npx --yes hyperframes@0.8.33 publish"
   },
   "dependencies": {
     "@fontsource-variable/geist": "5.3.0",
