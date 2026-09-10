@@ -23,39 +23,40 @@ Pagefind indexes the production HTML during the build. Search is entirely local 
 
 ## Where things live
 
-| Path                                   | Responsibility                                                                      |
-| -------------------------------------- | ----------------------------------------------------------------------------------- |
-| `src/pages/index.astro`                | The concise landing page.                                                           |
-| `src/content/docs/docs/`               | Eleven user guides and reference pages, written in Markdown/MDX.                    |
-| `src/components/VaultDemo.astro`       | The interactive, explicitly synthetic course example.                               |
-| `src/components/FeatureStory.astro`    | Small product illustrations for original files, citations, and preserved revisions. |
-| `src/components/DemoVideo.astro`       | Video dialog with an explicit image placeholder; media loads only when opened.      |
-| `src/components/CitationExample.astro` | Annotated source excerpt in the study guide.                                        |
-| `src/lib/demo.ts`                      | Synthetic files and cited lines shared by the homepage, guide, and Copy page.       |
-| `src/components/FileIcon.astro`        | Distinct icons for the index, Markdown, assignment instructions, and original PDF.  |
-| `src/components/Mark.astro`            | Shared, lightweight logo rendering at each display size.                            |
-| `src/assets/brand/a2l-source.png`      | Unchanged, approved A2L master from the launch film, pinned by SHA-256.             |
-| `public/brand/mark.svg`                | Self-contained SVG wrapper around the cropped, web-sized A2L raster artwork.        |
-| `public/brand/icon.png`                | A 512px logo export; the UI uses the SVG.                                           |
-| `public/brand/social-card.png`         | The 1200 by 630 sharing image, composed with the real synthetic vault.              |
-| `scripts/render-social-card.js`        | Reproduce the sharing image from the local production preview with Playwright CLI.  |
-| `public/favicon.svg`                   | The A2L wordmark on a light tile, readable in light and dark browser chrome.        |
-| `scripts/build-brand.mjs`              | Reproducible wordmark, favicon and icon exports; the build checks for drift.        |
-| `src/styles/shared.css`                | Typography, common controls, and shared tokens.                                     |
-| `src/styles/home.css`                  | Responsive landing-page composition and both themes.                                |
-| `src/styles/docs.css`                  | The Starlight documentation theme.                                                  |
-| `ec.config.mjs`                        | Shared code rendering, accessible labels, and neutral code-panel styling.           |
-| `src/lib/site.ts`                      | Release status, install commands, repository URL, and the copied agent prompt.      |
-| `src/lib/social.ts`                    | Shared Open Graph and large-image card metadata for the homepage and docs.          |
-| `scripts/verify-build.mjs`             | Internal link, anchor, asset, and agent-export checks over the built output.        |
+| Path                                     | Responsibility                                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/pages/index.astro`                  | The concise landing page.                                                           |
+| `src/content/docs/docs/`                 | Eleven user guides and reference pages, written in Markdown/MDX.                    |
+| `src/components/VaultDemo.astro`         | The interactive, explicitly synthetic course example.                               |
+| `src/components/FeatureStory.astro`      | Small product illustrations for original files, citations, and preserved revisions. |
+| `src/components/DemoVideo.astro`         | Video dialog with an explicit image placeholder; media loads only when opened.      |
+| `src/components/CitationExample.astro`   | Annotated source excerpt in the study guide.                                        |
+| `src/lib/demo.ts`                        | Synthetic files and cited lines shared by the homepage, guide, and Copy page.       |
+| `src/components/FileIcon.astro`          | Distinct icons for the index, Markdown, assignment instructions, and original PDF.  |
+| `src/components/Mark.astro`              | Shared, lightweight logo rendering at each display size.                            |
+| `src/components/MarkerStroke.astro`      | The short, once-only marker draw beneath “your” in the hero.                        |
+| `src/assets/brand/a2l-waterloo-gold.svg` | Editable, outlined A2L master shared with the launch film.                          |
+| `public/brand/mark.svg`                  | Native vector wordmark; `mark-dark.svg` keeps the gold on dark backgrounds.         |
+| `public/brand/icon.png`                  | A 512px logo export; the UI uses the SVG.                                           |
+| `public/brand/social-card.png`           | The 1200 by 630 sharing image, composed with the real synthetic vault.              |
+| `scripts/render-social-card.js`          | Reproduce the sharing image from the local production preview with Playwright CLI.  |
+| `public/favicon.svg`                     | The A2L wordmark on a light tile, readable in light and dark browser chrome.        |
+| `scripts/build-brand.mjs`                | Reproducible wordmark, favicon and icon exports; the build checks for drift.        |
+| `src/styles/shared.css`                  | Typography, common controls, and shared tokens.                                     |
+| `src/styles/home.css`                    | Responsive landing-page composition and both themes.                                |
+| `src/styles/docs.css`                    | The Starlight documentation theme.                                                  |
+| `ec.config.mjs`                          | Shared code rendering, accessible labels, and neutral code-panel styling.           |
+| `src/lib/site.ts`                        | Release status, install commands, repository URL, and the copied agent prompt.      |
+| `src/lib/social.ts`                      | Shared Open Graph and large-image card metadata for the homepage and docs.          |
+| `scripts/verify-build.mjs`               | Internal link, anchor, asset, and agent-export checks over the built output.        |
 
 The site uses Astro, Starlight, Tailwind's neutral zinc color tokens, DM Sans, and IBM Plex Mono. Dependencies are pinned in `package-lock.json`. Fonts are served locally; their license notices are included under `public/licenses/`. No analytics, remote font calls, or background network integrations are added.
 
-The logo is the approved, image-generated editorial **A2L** wordmark from the launch film. The master is preserved byte-for-byte; the export script trims transparent padding and resizes it for web use without redrawing the lettering. The SVG files embed raster artwork and are not claimed to be vector masters. Interface and feature icons remain editable vectors and are not brand marks.
+The logo is an outlined serif **A2L** wordmark with a raised 2 and a Waterloo-gold underline (**#FFD54F**). It is native vector artwork, with no font or raster dependency. The same master generates the film assets, light/dark SVG and PNG exports, favicon and app icon. See [brand source and provenance](src/assets/brand/README.md). Interface and feature icons remain separate from the brand mark.
 
-`Mark.astro` supplies the homepage header/footer, setup prompt, citation demo, and all documentation headers (including the 404 page). It reserves the wordmark's wide proportions and displays a white version via CSS inversion in dark mode and on the charcoal setup section. Mobile headers use a smaller optical size to preserve navigation space. The browser favicon and 512px icon use a light tile for a consistent silhouette in either browser theme.
+`Mark.astro` supplies the homepage header/footer, setup prompt, citation demo, and all documentation headers (including the 404 page). It reserves the wordmark's 2.5:1 proportions and changes only the lettering to white in dark mode and on the charcoal setup section. The underline stays gold: do not use CSS inversion. Mobile headers use a smaller optical size to preserve navigation space. The browser favicon and 512px icon use a light tile for a consistent silhouette in either browser theme.
 
-After an approved master change, review its source hash in `scripts/build-brand.mjs`, run `npm run brand:build`, then rebuild and regenerate the sharing image below. `npm run brand:check` verifies that the checked-in exports still match the approved master; the normal build includes this gate. Do not edit generated SVGs or PNGs independently.
+After an approved master change, run `npm run brand:build`, review the film asset hashes in `videos/a2l-cinematic/src/brand-variant.json`, then rebuild the film and site and regenerate the sharing image below. `npm run brand:check` verifies that all exports, including the film assets, still match the master; the normal build includes this gate. Do not edit generated SVGs or PNGs independently.
 
 ## Light and dark themes
 
@@ -63,7 +64,9 @@ The landing page starts with the system preference and has an explicit light/dar
 
 `ThemeColor.astro` keeps the browser's toolbar colour aligned with each page's header. It follows the resolved theme on both the homepage and documentation, including saved choices and automatic system changes. `DocsHead.astro` adds it alongside Starlight's default head metadata.
 
-The layout uses black, white, and layered zinc grays. Primary actions, source citations, focus rings, links, and the current documentation page use the same monochrome palette. The shared tokens live in `shared.css`, with light and dark variants. The charcoal agent section keeps a consistent treatment in both themes.
+The layout uses black, white, and layered zinc grays, with the logo's **#FFD54F** gold reserved for primary actions, the hero marker, and source/navigation indicators. Neutral text stays readable over faint gold citation and active-page backgrounds. Links use a quiet gold underline; small gold text and focus rings use darker `--gold-ink` in the light theme for contrast. The shared tokens live in `shared.css`, with light and dark variants. The charcoal agent section keeps a consistent treatment in both themes.
+
+The hero's marker is a small native SVG with uneven ink edges and chisel-cut ends. Its reveal draws left to right once, in 720ms after a brief pause and font readiness. The artwork stays the same size throughout, so drawing neither stretches its texture nor shifts the headline. A hidden tab pauses the draw; returning resumes it. Once complete, it stays still, including after scrolling, hovering, or changing the theme. Reduced motion and JavaScript-disabled pages show the complete stroke immediately. Documentation uses simple gold rules and source highlights, without replaying the decorative marker.
 
 File selection uses native radio inputs, prompt and mobile vault expansion use native disclosure controls, and the documentation uses Starlight's accessible search, tabs, navigation, and theme selector. Installation commands and fenced examples share Expressive Code's neutral panels and always-visible copy controls. Scrollable examples have distinct accessible names. Page and agent-prompt copy failures show a local recovery message. Reduced-motion preferences are respected.
 
@@ -79,7 +82,7 @@ On phones, the question, answer, and a source excerpt come first. The excerpt is
 
 Set `PUBLIC_DEMO_VIDEO_URL` to the final approved HTTPS video URL, or an origin-relative file path such as `/demo.mp4`, in the hosting build environment. `.env.example` documents both build settings. An unset value shows **Preview the demo**, opening a clearly labeled, picture-only placeholder so the placement and dialog can be reviewed. The placeholder uses the existing poster in grayscale and has no pretend playback controls. Setting the URL replaces it with the actual player and **Watch the demo** action.
 
-The native dialog loads media only after the viewer opens it. It provides Escape and close-button dismissal and returns focus to its trigger. The configured player also provides native playback controls and a direct-video link if playback fails. Closing the dialog unloads the image or pauses and unloads the video. The poster is a byte-identical copy of the tracked synthetic launch-film still at `videos/a2l-cinematic/renders/signalflow-agent-poster.png`. No video or soundtrack has been published or newly approved by this website change. The final export, its captions and transcript can replace the placeholder when approved.
+The native dialog loads media only after the viewer opens it. It provides Escape and close-button dismissal and returns focus to its trigger. The configured player also provides native playback controls and a direct-video link if playback fails. Closing the dialog unloads the image or pauses and unloads the video. The website keeps its own static export of the synthetic launch-film artwork at `public/brand/demo-poster.png`, including the shared A2L wordmark. Updating that poster does not rebuild or publish the film. The final export, its captions and transcript can replace the placeholder when approved.
 
 ## Sharing image
 
@@ -151,6 +154,8 @@ image decoding, aspect ratio, theme treatment and mobile header spacing. Screens
 are saved under `output/playwright/`.
 
 In the same session, run `run-code --filename scripts/verify-site-browser.js` for the interaction and accessibility checks. It exercises citation focus, native keyboard file selection, mobile return and viewport changes, install/prompt/page copying, clipboard refusal, installation tabs, production search, the demo placeholder, and footer navigation. It runs axe checks over the homepage at five widths in both themes, five representative guides at phone and desktop widths in both themes, and the open placeholder dialog at phone and desktop widths in both themes. Both scripts use the origin of the open preview, so independent worktrees can use different ports.
+
+Run `run-code --filename scripts/verify-marker-browser.js` to inspect the actual opening draw in both themes. It captures intermediate frames, checks left-to-right ink progression and stable headline geometry, exercises hidden-tab pause/resume, and confirms that the marker finishes without replay and the feature illustrations remain static. It also checks the reduced-motion and JavaScript-disabled fallbacks. Frames are saved under `output/playwright/`.
 
 The build runs Astro/TypeScript checks, freshly renders all static pages, creates the search index, verifies internal navigation and anchors, and checks the agent index, setup prompt, and code-example labels. `astro build --force` clears the content cache so changes to rendering hooks cannot leave stale documentation HTML. Browser checks should cover both themes, phone and desktop widths, file selection, citation focus, copy success/failure, docs search, tabs, and the mobile menu. Keep temporary screenshots and browser reports under the ignored `output/playwright/` folder.
 

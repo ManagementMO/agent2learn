@@ -4,9 +4,10 @@ async function renderSocialCard(page) {
   const origin = await page.evaluate(() => location.origin);
   await page.setViewportSize({ width: 1200, height: 630 });
   await page.goto(origin);
-  const { styles, vault } = await page.evaluate(() => ({
+  const { styles, vault, markedWord } = await page.evaluate(() => ({
     styles: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
     vault: document.querySelector('.vault-window').outerHTML,
+    markedWord: document.querySelector('.hero-marked-word').outerHTML,
   }));
   await page.setContent(`<!doctype html>
     <html lang="en" data-theme="light">
@@ -27,7 +28,8 @@ async function renderSocialCard(page) {
           }
           .social-copy { position: absolute; left: 52px; top: 174px; width: 422px; }
           .social-title { font: 650 54px/1.08 var(--font-sans); letter-spacing: -0.04em; text-wrap: initial; }
-          .social-title span { display: block; color: var(--hero-secondary); }
+          .social-title > span { display: block; color: var(--hero-secondary); }
+          .social-title .hero-marker { animation: none !important; }
           .social-description {
             margin-top: 27px; max-width: 370px;
             font: 18px/1.65 var(--font-sans); color: var(--muted);
@@ -57,9 +59,9 @@ async function renderSocialCard(page) {
       </head>
       <body>
         <main class="social-card">
-          <div class="social-brand"><img src="${origin}/brand/mark.svg" width="88" height="34" alt="">Agent2Learn</div>
+          <div class="social-brand"><img src="${origin}/brand/mark.svg" width="88" height="35.2" alt="">Agent2Learn</div>
           <div class="social-copy">
-            <h1 class="social-title">Your courses.<span>Ready for<br>your agent.</span></h1>
+            <h1 class="social-title">Your courses.<span>Ready for<br>${markedWord} agent.</span></h1>
             <p class="social-description">Local course files your coding agent can read and cite.</p>
           </div>
           <div class="social-preview"><a2l-vault data-cited>${vault}</a2l-vault><p class="social-caption">Synthetic course example · Sources you can open.</p></div>
