@@ -7,11 +7,6 @@ a durable local vault: original files beside Markdown twins, a stable index, and
 resolve to ordinary paths and line numbers. Your agent stops guessing about your course and starts
 quoting it.
 
-> **Walkthrough recording:** not yet attached. It is a release artifact, recorded against the
-> synthetic fixture course in `tests/fixtures/` — never against a real account — so no course,
-> student, grade, or session data appears in it. Recording it is a launch gate in
-> [docs/LAUNCH.md](docs/LAUNCH.md); this README will not link a file that does not exist.
-
 ## Install
 
 Three supported options. Pick one.
@@ -37,9 +32,9 @@ a2l init
 
 These commands install the published package from PyPI, not an unreleased repository checkout.
 Python 3.11–3.14 is supported. If uv selects an older system Python or your shell cannot find
-`a2l`, see [setup troubleshooting](docs/FAQ.md#setup-and-path).
+`a2l`, see [setup troubleshooting](https://github.com/ManagementMO/agent2learn/blob/main/docs/FAQ.md#setup-and-path).
 
-`install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.2), verify that `a2l`
+`install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.3), verify that `a2l`
 runs, and then **continue straight into interactive `a2l init`** in the same command. If they are
 run without a terminal on both ends — in CI, or through a pipe — they stop after verifying and
 print the exact next step instead of setting anything up. Neither script needs administrator
@@ -56,7 +51,7 @@ Separately, `npx skills add ManagementMO/agent2learn` is an optional skills-only
 skills ecosystem. It **does not install** the `a2l` engine — only the skill documents — so the
 commands they describe will not exist until you install Agent2Learn itself with one of the three
 options above. That route also runs a third-party CLI with its own network behaviour; see
-[docs/PRIVACY.md](docs/PRIVACY.md).
+[docs/PRIVACY.md](https://github.com/ManagementMO/agent2learn/blob/main/docs/PRIVACY.md).
 
 ## Then just ask
 
@@ -119,7 +114,7 @@ a2l submit COURSE ITEM FILE      preview an upload, then require your typed conf
 
 Agent2Learn is **not affiliated with, endorsed by, or supported by the University of Waterloo or
 D2L Corporation**. You are responsible for using it within your course rules and your institution's
-policies. See [DISCLAIMER.md](DISCLAIMER.md).
+policies. See [DISCLAIMER.md](https://github.com/ManagementMO/agent2learn/blob/main/DISCLAIMER.md).
 
 ## Privacy defaults
 
@@ -134,28 +129,28 @@ policies. See [DISCLAIMER.md](DISCLAIMER.md).
 
 Turning collection off does not delete what is already on disk; `a2l privacy purge` does that, and
 it previews the exact targets and requires a typed phrase first. Full detail, including every
-external request Agent2Learn can make, is in [docs/PRIVACY.md](docs/PRIVACY.md).
+external request Agent2Learn can make, is in [docs/PRIVACY.md](https://github.com/ManagementMO/agent2learn/blob/main/docs/PRIVACY.md).
 
 ## Documentation
 
-- [Install guide for agents](docs/install.md) — point your agent here and let it handle setup.
-- [Authentication](docs/AUTHENTICATION.md) — the dedicated profile, Duo, expiry, and recovery.
-- [Privacy](docs/PRIVACY.md) — what is stored, where, every network action, and how to delete it.
-- [FAQ](docs/FAQ.md) — the things that actually go wrong.
-- [Porting to another school](docs/PORTING.md) — the `School` protocol and a worked reference.
-- [What is deferred, and why](docs/FUTURE.md)
-- [Security policy](SECURITY.md) · [Disclaimer](DISCLAIMER.md) · [Licence](LICENSE) ·
-  [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Install guide for agents](https://github.com/ManagementMO/agent2learn/blob/main/docs/install.md) — point your agent here and let it handle setup.
+- [Authentication](https://github.com/ManagementMO/agent2learn/blob/main/docs/AUTHENTICATION.md) — the dedicated profile, Duo, expiry, and recovery.
+- [Privacy](https://github.com/ManagementMO/agent2learn/blob/main/docs/PRIVACY.md) — what is stored, where, every network action, and how to delete it.
+- [FAQ](https://github.com/ManagementMO/agent2learn/blob/main/docs/FAQ.md) — the things that actually go wrong.
+- [Porting to another school](https://github.com/ManagementMO/agent2learn/blob/main/docs/PORTING.md) — the `School` protocol and a worked reference.
+- [What is deferred, and why](https://github.com/ManagementMO/agent2learn/blob/main/docs/FUTURE.md)
+- [Security policy](https://github.com/ManagementMO/agent2learn/blob/main/SECURITY.md) · [Disclaimer](https://github.com/ManagementMO/agent2learn/blob/main/DISCLAIMER.md) · [Licence](https://github.com/ManagementMO/agent2learn/blob/main/LICENSE) ·
+  [Third-party notices](https://github.com/ManagementMO/agent2learn/blob/main/THIRD_PARTY_NOTICES.md)
 
 ## Status
 
-Agent2Learn **0.1.2 is available on [PyPI](https://pypi.org/project/agent2learn/0.1.2/)**.
-The [GitHub release](https://github.com/ManagementMO/agent2learn/releases/tag/v0.1.2) carries the
+Agent2Learn is available on [PyPI](https://pypi.org/project/agent2learn/).
+The latest [GitHub release](https://github.com/ManagementMO/agent2learn/releases/latest) carries the
 same verified wheel and source distribution. Install with `uv tool install agent2learn`, then
 run `a2l init` in your terminal.
 
 The project remains in active development. Release checks are documented in
-[docs/LAUNCH.md](docs/LAUNCH.md), including same-device authentication and a fresh supervised upload
-test before submission capability can be enabled. **LEARN uploads remain disabled in 0.1.2.**
+[docs/LAUNCH.md](https://github.com/ManagementMO/agent2learn/blob/main/docs/LAUNCH.md), including same-device authentication and a fresh supervised upload
+test before submission capability can be enabled. **LEARN uploads remain disabled in this build.**
 
-Licensed under [Apache-2.0](LICENSE).
+Licensed under [Apache-2.0](https://github.com/ManagementMO/agent2learn/blob/main/LICENSE).

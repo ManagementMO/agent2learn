@@ -449,7 +449,6 @@ outside the local remediation and still needs its own evidence:
 - The exact release candidate must pass the supervised non-graded upload/read-back gate before
   `SUBMISSION_AVAILABLE` can be enabled.
 - PyPI Trusted Publishing environments and TestPyPI/PyPI approvals remain publication setup work.
-- The README walkthrough recording remains outstanding and deliberately unlinked.
 - The remediation has been committed and pushed to `main` as `77fafbe`; nothing from this audit is
   left unshipped.
 
