@@ -3,13 +3,21 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-// The approved upright-gold-logo picture, immediately before this audio edit.
+// The pre-Disclosure edit remains available as a historical picture audit.
+// Approved visual revisions must not turn the current soundtrack gate into a
+// permanent failure: default checks sound, timing, provenance and shared brand.
+// --original-picture additionally enforces the original audio-only edit scope.
 const baseline = 'dc83d51369cca5b2bc65c6b8e576a45f3049f0bc';
+const approvedAudio = '1bd497f85d85424550e8fdd4ebf442aaa1f588b9'; // pragma: allowlist secret -- public approved soundtrack commit SHA
+const originalPicture = process.argv.includes('--original-picture');
 const previous = path => execFileSync('git', ['show', `${baseline}:videos/a2l-cinematic/${path}`]);
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cues = await json('src/launchflow-cues.json');
 const oldCues = JSON.parse(previous('src/launchflow-cues.json'));
+const approvedCues = JSON.parse(execFileSync('git', ['show', `${approvedAudio}:videos/a2l-cinematic/src/launchflow-cues.json`]));
+assert.deepEqual(cues.music, approvedCues.music, 'Preserve the exact approved Disclosure edit');
+assert.deepEqual(cues.musicEnvelope, approvedCues.musicEnvelope, 'Preserve the approved listening level and ducking');
 assert.equal(cues.music.label, 'Disclosure — Expressing What Matters');
 assert.equal(cues.music.sourceStart, 0, 'Use the opening the user selected');
 assert.equal(cues.music.playbackRate, 1, 'Keep the original pitch and speed');
@@ -20,14 +28,19 @@ assert.notEqual(cues.exportPrefix, oldCues.exportPrefix, 'Do not target an older
 const audioOnlyKeys = new Set(['music', 'musicEnvelope', 'audioPrefix', 'exportPrefix']);
 const pictureAndFoley = value => Object.fromEntries(Object.entries(value).filter(([key]) => !audioOnlyKeys.has(key)));
 assert.deepEqual(pictureAndFoley(cues), pictureAndFoley(oldCues), 'All picture and Foley timing/parameters stay unchanged');
-for (const path of ['src/launchflow-motion.js', 'src/launchflow.css', 'src/launchflow.html.template', 'src/icons.svg', 'white.css', 'src/brand-variant.json']) {
-  assert.deepEqual(await readFile(path), previous(path), `Approved picture/brand unchanged: ${path}`);
+for (const path of ['src/icons.svg', 'src/brand-variant.json']) {
+  assert.deepEqual(await readFile(path), previous(path), `Approved icon/brand unchanged: ${path}`);
 }
 const pictureOnly = html => html
   .replace(/<audio\b[^>]*>[\s\S]*?<\/audio>/g, '')
   .replace(/<script>window\.__A2L_CUES=[\s\S]*?<\/script>/g, '');
 const html = await readFile('index.html', 'utf8');
-assert.equal(pictureOnly(html), pictureOnly(previous('index.html').toString()), 'Compiled picture is unchanged');
+if (originalPicture) {
+  for (const path of ['src/launchflow-motion.js', 'src/launchflow.css', 'src/launchflow.html.template', 'white.css']) {
+    assert.deepEqual(await readFile(path), previous(path), `Original audio-only edit picture unchanged: ${path}`);
+  }
+  assert.equal(pictureOnly(html), pictureOnly(previous('index.html').toString()), 'Original compiled picture is unchanged');
+}
 const audioTags = [...html.matchAll(/<audio\b[^>]*>/g)].map(match => match[0]);
 assert.equal(audioTags.length, 3, 'One bed and two Foley stems, no doubled music');
 const bedTag = audioTags.find(tag => tag.includes('id="music-bed"'));
@@ -56,10 +69,16 @@ const probe = path => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_
 const sourceDuration = Number(probe(source.path).format.duration);
 assert.ok(sourceDuration >= cues.music.sourceStart + cues.duration * cues.music.playbackRate, 'No source looping or silent padding');
 const stems = [];
+const approvedStemHashes = {
+  bed: '680c849551b2e421d01dfc62ba5275630a9dcf7b9f53dbc1a4b29e0bef333bb0', // pragma: allowlist secret -- approved audio SHA-256
+  typing: 'f85327b175b53762e26698d04de17c86c2f1bc1ce2b875127cdc21818c7a57fe', // pragma: allowlist secret -- approved audio SHA-256
+  interface: '4092f5591e688a9e8d9d86261d7c491b01234a9593fc9654d6617af5eeae0d35', // pragma: allowlist secret -- approved audio SHA-256
+};
 for (const stem of ['bed', 'typing', 'interface']) {
   const path = `assets/audio/${cues.audioPrefix}-${stem}.wav`;
   assert.ok(audioTags.some(tag => tag.includes(`src="${path}"`)), `Active ${stem} path`);
   const local = await readFile(path);
+  assert.equal(hash(local), approvedStemHashes[stem], `Approved ${stem} audio is byte-identical`);
   const info = probe(path);
   assert.equal(Number(info.format.duration), 17.5);
   assert.equal(Number(info.streams[0].sample_rate), 48000);
@@ -73,4 +92,4 @@ for (const stem of ['bed', 'typing', 'interface']) {
 }
 assert.ok(execFileSync('git', ['check-ignore', source.path], {encoding: 'utf8'}).trim());
 assert.ok(meta.reference_peak_dbfs < -1, 'Mix retains sample-peak headroom');
-console.log(JSON.stringify({status: 'passed', baseline, picture: 'unchanged', typingAndInterface: 'byte-identical', sourceDuration, music: cues.music.label, stems, scope: 'Local source, timing, automation and served-byte checks; not human listening or a new MP4 render'}, null, 2));
+console.log(JSON.stringify({status: 'passed', baseline, approvedAudio, picture: originalPicture ? 'original audio-only picture unchanged' : 'separately covered by npm test and npm run test:polish', approvedStems: 'byte-identical', sourceDuration, music: cues.music.label, stems, scope: 'Local source, timing, automation and served-byte checks; not human listening or a new MP4 render'}, null, 2));

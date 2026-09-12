@@ -90,6 +90,7 @@ window.__initA2LAnimation=()=>{
     gsap.set(halo,{opacity:0,scale:.7});
     tl.fromTo(halo,{opacity:0,scale:.7},{opacity:.4,scale:1,duration:.16,ease:'sine.out',immediateRender:false},arrival-.16);
     tl.to(halo,{opacity:0,scale:1.22,duration:.32,ease:'sine.out'},arrival);
+    tl.fromTo(`#receipt-${i}>span:first-child`,{color:'#f8d775'},{color:'#ededeb',duration:.32,ease:'sine.out',immediateRender:false},arrival);
     for(let k=0;k<12;k++){
       const bit=document.createElement('span');bit.className='information-bit';bit.id=`bit-${i}-${k}`;bit.dataset.source=selector;bit.dataset.receipt=`#receipt-${i}`;
       document.querySelector('#information-flow').append(bit);
@@ -106,7 +107,7 @@ window.__initA2LAnimation=()=>{
       tl.fromTo(bit,{scale:size},{scale:.38,duration:end-start-settle,ease:'sine.inOut',immediateRender:false},start);
       tl.fromTo(bit,{scale:.38},{scale:.04,duration:settle,ease:'sine.inOut',immediateRender:false},end-settle);
       tl.fromTo(bit,{opacity:0},{opacity:.92,duration:.2,ease:'sine.out',immediateRender:false},start);
-      tl.fromTo(bit,{backgroundColor:'#4c5148'},{backgroundColor:'#c9c3b3',duration:.32,ease:'sine.inOut',immediateRender:false},6.12+i*.04);
+      tl.fromTo(bit,{backgroundColor:'#d6aa38'},{backgroundColor:'#f2d47e',duration:.32,ease:'sine.inOut',immediateRender:false},6.12+i*.04);
       tl.fromTo(bit,{opacity:.92},{opacity:0,duration:settle,ease:'sine.inOut',immediateRender:false},end-settle);
     }
   });
@@ -147,7 +148,7 @@ window.__initA2LAnimation=()=>{
   tl.fromTo('#workspace-rig',{x:377.6,y:10,scale:1.12},{x:42.85,y:65,scale:.83,duration:.8,ease:'power3.inOut',force3D:false,immediateRender:false},12.92);
   tl.fromTo('#agent-window',{y:0,scale:1},{y:80,scale:.88,duration:.8,ease:'power3.inOut',force3D:false,immediateRender:false},12.92);
   tl.fromTo('#source-window',{x:80,autoAlpha:0,clipPath:'inset(0 100% 0 0 round 26px)'},{x:0,autoAlpha:1,clipPath:'inset(0 0% 0 0 round 26px)',duration:.58,ease:'power2.inOut',immediateRender:false},13.14);
-  tl.fromTo('#source-highlight',{backgroundColor:'#fffefb'},{backgroundColor:'#f8e9c9',duration:.33,immediateRender:false},A.highlight);
+  tl.fromTo('#source-highlight',{'--source-focus':0,'--source-lift':'4px'},{'--source-focus':1,'--source-lift':'0px',duration:.33,immediateRender:false},A.highlight);
   tl.fromTo('#source-keywords',{'--source-emphasis':0},{'--source-emphasis':1,duration:.36,ease:'power2.out',immediateRender:false},A.highlight+.17);
   appear('#source-proof',A.proof,.2,{y:5});
   tl.fromTo('#showcase',{autoAlpha:1},{autoAlpha:0,duration:.24,immediateRender:false},A.outro);

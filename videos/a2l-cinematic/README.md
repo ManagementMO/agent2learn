@@ -3,6 +3,28 @@
 The active revision is a **17.5-second product-demo launch film**, 1920×1080,
 with a native 120fps master and a 60fps sharing version.
 
+## Current Studio picture — Tactile proof (2026-09-11)
+
+The approved citation concept is implemented in the live composition: pearl-white
+editor chrome, optical window edges, a small gold citation target, and a shallow
+honey-glass highlight that settles behind line 42 without moving its text. The
+source-open receipt remains quiet and readable.
+
+The existing ingestion keeps its staging, 36 paths, timing and document endpoints.
+Only small yellow firefly-like points and a brief warm-to-monochrome response on
+the receiving icons were adopted; the larger conceptual re-staging was rejected.
+Demo copy, brand assets, camera moves and the 17.5-second duration are preserved.
+Disclosure and both Foley stems are byte-identical to the approved soundtrack.
+The follow-up removes the citation chip's corner dot and changes the closing
+GitHub URL to the requested `uv tool install agent2learn` placeholder. The opening
+source-install demonstration is unchanged; the closing placeholder does not
+establish package publication or installation availability.
+
+[Review in the existing Studio](http://localhost:3017/#project/a2l-cinematic).
+See [verification and scope](VERIFICATION-TACTILE.md). This revision changes the
+editable composition, not any preserved MP4. `signalflow-tactile` reserves new
+export/review filenames; audio still uses `signalflow-disclosure`.
+
 ## Current Studio branding — Waterloo gold (2026-09-09)
 
 The active `waterloo-gold` variant replaces the editorial raster logo with a
@@ -28,8 +50,9 @@ Matters**, at its original speed. A restrained music bed, gently eased level
 changes around input/citation moments and a closing fade keep the demo in front.
 The automated bed measures **-21.85 LUFS integrated**, approximately 6.5 dB below
 the previous Launchbeat bed. These are measured levels, not a listening review.
-The approved picture, logo, all timings, and both recorded Foley stems are
-unchanged; the typing and interface WAVs are byte-identical to Launchbeat's.
+That audio edit preserved the picture, logo, timings and both recorded Foley
+stems; the later tactile picture revision above retains the same approved audio.
+The typing and interface WAVs are byte-identical to Launchbeat's.
 
 - [Open the updated Studio](http://localhost:3017/#project/a2l-cinematic)
 - [Audition the 17.5s audio-only mix](renders/agent2learn-signalflow-disclosure-audio.m4a)
@@ -85,8 +108,8 @@ checkout. See [Git publication scope](#git-publication-scope).
 
 ## This revision
 
-The following describes the approved picture revision; the newer audio-only
-preview above supersedes its soundtrack description.
+The following describes the earlier picture foundation. The current picture
+and soundtrack sections above supersede its surface styling, logo and music.
 
 A recognizable CS135-inspired Chrome/LEARN course, standard monochrome Lucide
 icons, softer phrase-paced typing, document-to-information streams, chunked
@@ -117,7 +140,8 @@ time-compressed; this work does not run auth, sync, install or live Codex.
 ## Location and preserved cuts
 
 Project: `videos/a2l-cinematic/` in the `agent2learn-cinematic` worktree.
-Branch: `motion/a2l-cinematic`.
+Original film branch: `motion/a2l-cinematic`. The tactile follow-up is on
+`motion/tactile-proof`, based on main after the approved soundtrack merged.
 
 No Python product code was edited. The frontend logo adoption is separately
 scoped to `frontend/` on main. This source checkpoint is prepared for GitHub;
@@ -172,11 +196,13 @@ npm ci
 npm run score
 HYPERFRAMES_NO_TELEMETRY=1 npm run dev -- --background --port 3017
 npm test
+npm run test:polish
+npm run test:soundtrack
 HYPERFRAMES_NO_TELEMETRY=1 npm run check -- --strict --samples 60 --at-transitions
 # Preserve an existing export before choosing to overwrite it.
 # Only after creative approval and any required rights clearance:
-HYPERFRAMES_NO_TELEMETRY=1 npm run render -- --fps 120 --quality high --workers 3 --crf 17 --no-best-effort --strict-all --output renders/agent2learn-signalflow-disclosure-120fps.mp4
-ffmpeg -n -i renders/agent2learn-signalflow-disclosure-120fps.mp4 -vf fps=60 -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a copy -movflags +faststart renders/agent2learn-signalflow-disclosure.mp4
+HYPERFRAMES_NO_TELEMETRY=1 npm run render -- --fps 120 --quality high --workers 3 --crf 17 --no-best-effort --strict-all --output renders/agent2learn-signalflow-tactile-120fps.mp4
+ffmpeg -n -i renders/agent2learn-signalflow-tactile-120fps.mp4 -vf fps=60 -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a copy -movflags +faststart renders/agent2learn-signalflow-tactile.mp4
 npm run test:export
 npm run test:audio
 npm run review:export
@@ -224,9 +250,13 @@ typing changes, final hold and AAC against an independent stem mix.
 These are film checks, not a production ingestion/vault test or subjective
 perfection claim. The active music is Disclosure's recording with a custom
 edit/Foley mix, not an original composition. Confirm distribution rights before
-public release. `npm run test:soundtrack` checks this audio-only change against
-the approved gold-logo picture; the older `verify-soundtrack-edit.mjs` is a
-historical Launchbeat-specific verifier, not the current gate.
+public release. `npm run test:soundtrack` checks the approved Disclosure bytes,
+gain envelope, cue timing, provenance and served assets. The prior audio-only
+picture comparison remains available through `--original-picture` on
+`tools/verify-disclosure-edit.mjs`; it intentionally does not accept the newer
+approved visual revision. `npm test` and `npm run test:polish` validate that picture.
+The older `verify-soundtrack-edit.mjs` is a historical Launchbeat-specific verifier,
+not the current gate.
 
 See BRIEF.md, STORYBOARD.md, RESEARCH.md, CREDITS.md and VERIFICATION-POLISH.md.
 The headline-only follow-up is recorded separately in VERIFICATION-AGENT.md.
