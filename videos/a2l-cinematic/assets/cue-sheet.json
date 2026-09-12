@@ -1,7 +1,7 @@
 {
   "duration": 17.5,
   "audioPrefix": "signalflow-disclosure",
-  "exportPrefix": "signalflow-disclosure",
+  "exportPrefix": "signalflow-tactile",
   "music": {
     "id": "bgm_017",
     "path": ".media/audio/bgm/bgm_017.webm",

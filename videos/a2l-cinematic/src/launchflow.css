@@ -212,8 +212,8 @@ html,body,#root{color:#272725;background:#faf9f6}
 #information-flow{position:absolute;inset:0;z-index:9;pointer-events:none}
 /* Keep the small bounded pool on the shared paint surface. Persistent GPU
    promotion cached a different glow raster when the timeline was reversed. */
-.information-bit{position:absolute;left:0;top:0;width:7px;height:7px;border-radius:50%;background:#4c5148;box-shadow:0 0 5px #efebdf88,0 0 12px #eee6d844;opacity:0}
-.information-bit:after{content:'';position:absolute;inset:-4px;border-radius:50%;background:#e6ded126;z-index:-1}
+.information-bit{position:absolute;left:0;top:0;width:7px;height:7px;border-radius:50%;background-color:#d6aa38;background-image:radial-gradient(circle at 38% 32%,#fff8d9 0 13%,#fff0bd88 28%,transparent 67%);box-shadow:0 0 5px #eec75d88,0 0 10px #e7b93938;opacity:0}
+.information-bit:after{content:'';position:absolute;inset:-3px;border-radius:50%;background:radial-gradient(circle,#f9d67026,transparent 72%);z-index:-1}
 
 .editor-chrome{background:#e9e9e5;color:#34372f}.editor-chrome strong{font-size:18px;font-weight:600}
 .editor-explorer{background:#f1f1ec;color:#454a40}
@@ -245,12 +245,45 @@ html,body,#root{color:#272725;background:#faf9f6}
 /* Finishing pass: destination feedback and one precise source emphasis.
    No persistent layer promotion on particles or scaled terminal text. */
 .ingest-file>span:first-child{position:relative}
-.receipt-energy{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;background:radial-gradient(circle,#f0e4c866 0,#f0e4c81a 48%,transparent 72%);opacity:0}
+.receipt-energy{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;background:radial-gradient(circle,#ffdb7166 0,#f9cf591a 48%,transparent 72%);opacity:0}
 .source-badge{font:500 17px A2LDisplay,sans-serif;padding:5px 11px;letter-spacing:.1px;white-space:nowrap}
 #source-highlight{color:#292315}
 #source-keywords{position:relative;--source-emphasis:0}
 #source-keywords:after{content:'';position:absolute;left:0;right:0;bottom:-5px;height:2px;background:#b08840;transform:scaleX(var(--source-emphasis));transform-origin:0 50%}
 #source-proof{background:#faf1df;box-shadow:inset 0 1px #ffffff70}
+
+/* Approved tactile proof: optical edges around opaque applications. The
+   highlight skin settles independently of the sentence, preserving line boxes.
+   No backdrop blur or persistent GPU promotion on this scaled workbench. */
+#agent-window{background:linear-gradient(145deg,#c1c0ba,#60615e 7%,#31312e 37%,#77746b 100%);box-shadow:0 28px 56px #28241926,0 8px 16px #30291e20,0 1px 3px #19171142,inset 0 0 0 1px #ffffffe6}
+#agent-window:after{inset:3px;border-radius:23px;box-shadow:inset 0 1px 1px #ffffffcc,inset 0 0 0 1px #fff9e747;z-index:8}
+#agent-window .terminal-chrome{background:linear-gradient(180deg,#30312f,#252625);box-shadow:inset 0 1px #ffffff14}
+#agent-window #terminal-footer{background:linear-gradient(180deg,#282926,#232422)}
+#citation-chip{height:44px;gap:10px}
+.citation-target{position:relative;display:flex;align-items:center;gap:10px;height:44px;padding:0 13px;border-radius:10px;background:linear-gradient(145deg,#453b25,#29261e 65%,#37301f);box-shadow:inset 0 0 0 1px #bb8e36,inset 0 2px #ffe7a52b,0 3px 9px #00000024;color:#f5d17e}
+#citation-chip .citation-link{border:0;padding:0}
+#citation-chip .citation-link>span{color:#ffe1a2}
+.citation-target .citation-arrow{width:18px;height:18px;color:#f4cc72;flex-shrink:0}
+#source-window{background:linear-gradient(145deg,#ded9ce,#ffffff 23%,#fcfaf5 64%,#e0d7c5);box-shadow:0 29px 60px #4438211c,0 10px 20px #48351a17,0 2px 5px #3d322018,inset 0 0 0 1px #ffffff}
+#source-window:after{inset:3px;border-radius:23px;box-shadow:inset 0 2px 1px #ffffff,inset 0 0 0 1px #ffffffd9;z-index:8}
+.editor-chrome{background:linear-gradient(180deg,#faf9f6,#eeede9);border-color:#e5e1d8;color:#30322e}
+.editor-activity{background:#f3f2ee;border-color:#e5e2da}
+.editor-explorer{background:linear-gradient(110deg,#f9f8f5,#f3f2ee);border-color:#e6e2d9}
+.editor-tabs{background:linear-gradient(180deg,#f2f1ed,#eeede9);border-color:#e7e3da}
+.editor-active-tab{background:#fffefb;border-top-color:#ba903f}
+.explorer-file.selected{background:#e9ecdf;box-shadow:inset 2px 0 #a6b491}
+#source-view,.source-path{background:#fffefc}
+.source-badge{background:#fbf0d8;color:#79531f;box-shadow:inset 0 1px #ffffffb3}
+.source-code{color:#53584e}
+.source-code>.code-line:first-child{color:#875321}
+#source-highlight{background:transparent;--source-focus:0;--source-lift:4px;color:#2b2416}
+#source-highlight>span{position:relative;z-index:1}
+#source-highlight:after{content:'';position:absolute;inset:0 8px 0 0;border-radius:13px;background:linear-gradient(180deg,#fff9e6 0%,#fcecc7 48%,#fff4d8 100%);box-shadow:inset 0 0 0 1px #e6ba648f,inset 0 2px 1px #ffffffee,0 6px 15px #c5953821;opacity:var(--source-focus);transform:translateY(var(--source-lift));pointer-events:none}
+#source-highlight:before{top:8px;bottom:8px;left:1px;border-radius:2px;background:linear-gradient(#ffd77a,#d59d32);opacity:var(--source-focus);z-index:2}
+#source-keywords:after{background:#d39e35}
+#source-proof{background:linear-gradient(140deg,#fff9ee,#fbf3e4);border-color:transparent;box-shadow:inset 0 0 0 1px #ddbc827a,inset 0 2px #ffffffe6;color:#45351f}
+#source-proof>.mono{color:#785321}.proof-link-icon{color:#9b702c}
+.editor-status{background:linear-gradient(180deg,#f1efea,#eae7df);color:#53524b}
 
 /* A film-only experiment. Switching the build to --brand=frontend returns
    the exact original mark and proportions without undoing the polish. */

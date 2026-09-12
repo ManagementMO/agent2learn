@@ -50,7 +50,7 @@
             <div id="prompt-line"><span class="input-glyph">›</span><span id="question" class="typed"></span><span id="enter-key">↵</span></div>
             <div id="reading"><span class="trace-bullet">•</span><div><strong>Explored</strong><p>└ Read <span>INDEX.md</span>, <span>Week 1.md</span></p></div></div>
             <div id="answer"><span class="answer-dot">•</span><span class="answer-copy"><span id="response-first">Start with prefix notation in Racket.</span><span id="response-second">Then review function definitions.</span></span></div>
-            <div id="citation-chip"><span class="citation-elbow">└</span><span class="citation-link">Week 1.md<span>:42</span></span><span class="citation-arrow">{{icon:arrow-up-right}}</span></div>
+            <div id="citation-chip"><span class="citation-elbow">└</span><span class="citation-target"><span class="citation-link">Week 1.md<span>:42</span></span><span class="citation-arrow">{{icon:arrow-up-right}}</span></span></div>
             <div id="terminal-footer"><span class="footer-mark"></span> Agent2Learn · local course context<span class="footer-path">content / Week 1</span></div>
           </div>
         </article>
@@ -70,7 +70,7 @@
       </div>
     </div>
   </section>
-  <section id="end"><img id="brand-mark" src="{{brandSrc}}" alt="{{brandAlt}}"><h1 id="wordmark">Agent2Learn<span>.</span></h1><p id="end-tagline">Your LEARN courses. Ready for your agent.</p><div id="end-url" class="mono">github.com/ManagementMO/agent2learn <span>{{icon:arrow-up-right}}</span></div></section>
+  <section id="end"><img id="brand-mark" src="{{brandSrc}}" alt="{{brandAlt}}"><h1 id="wordmark">Agent2Learn<span>.</span></h1><p id="end-tagline">Your LEARN courses. Ready for your agent.</p><div id="end-url" class="mono">uv tool install agent2learn</div></section>
 </div>
 <audio id="music-bed" src="assets/audio/{{audioPrefix}}-bed.wav" data-start="0" data-duration="17.5" data-track-index="10" data-timeline-role="music" data-volume="1" data-automation="{{musicAutomation}}"></audio>
 <audio id="typing-sounds" src="assets/audio/{{audioPrefix}}-typing.wav" data-start="0" data-duration="17.5" data-track-index="11" data-timeline-role="sfx" data-volume="1"></audio>
