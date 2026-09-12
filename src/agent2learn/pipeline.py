@@ -137,8 +137,10 @@ def load_sync_preferences(
     term = term_value
 
     offering_value = raw.get("selected_offering_ids")
+    if offering_value is None:
+        raise NotConfigured("saved course selection is incomplete · run: a2l init")
     only = _offering_ids(offering_value)
-    if offering_value is not None and only is None:
+    if only is None:
         raise ValueError("saved sync preferences have invalid offering IDs")
 
     consent_value = raw.get("profile_consent")

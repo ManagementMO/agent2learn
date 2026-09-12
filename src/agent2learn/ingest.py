@@ -255,6 +255,8 @@ def ingest_metadata(
             records, module_tree, toc_valid = _topics_from_toc(
                 toc_payload, course=course, school=school
             )
+            if not toc_valid and toc_error is None:
+                errors.append("toc: invalid response")
             toc_complete = toc_complete and toc_valid
         except SessionExpired:
             raise
@@ -514,7 +516,7 @@ def ingest_files(
         course_dir = _course_directory(vault, school, course)
         content_map = _read_content_map(course_dir)
         rows = [_topic_from_row(row, course=course) for row in _map_topics(content_map)]
-        if not rows:
+        if not paths.long_path(course_dir / "_meta" / "content_map.json").is_file():
             # Keep the public entry point safe when called directly: metadata remains a separate
             # phase, but a missing map is a configuration problem rather than a silent no-op.
             raise A2LError("course metadata is unavailable; run ingest_metadata first")
