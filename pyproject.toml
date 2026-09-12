@@ -20,7 +20,7 @@ dependencies = [
     # relying on an incidental transitive dependency (the strict doctor CLI-contract test
     # imports ``click.Group`` directly).
     "click>=8.2,<9",
-    "rich>=13,<15",
+    "rich>=13,<16",
     "requests>=2.32,<3",
     "platformdirs>=4.2,<5",
     "keyring>=25,<27",
