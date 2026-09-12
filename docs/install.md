@@ -47,7 +47,7 @@ Choose by platform. Report which one you chose and why.
 **macOS or Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.sh | bash
+(installer="$(curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.sh)" && bash -c "$installer")
 ```
 
 **Windows (PowerShell):**
@@ -61,6 +61,10 @@ irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 
 ```bash
 uv tool install agent2learn
 ```
+
+This is the install-only uv form for non-interactive agent tools. The README also provides
+one-paste install-and-setup commands for a human's terminal; do not run their onboarding step
+non-interactively.
 
 If uv reports that the selected Python is too old, `uv python install 3.12` adds a supported
 managed interpreter. With uv's default Python preference, rerunning the same install command then

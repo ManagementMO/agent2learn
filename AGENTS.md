@@ -570,3 +570,11 @@ Submission remains disabled, and publication still requires the existing human r
   metadata; the new release updates the current package page.
 - Runtime behavior, dependency bounds, and submission capability are unchanged. Do not describe
   the candidate as published until registry uploads and public installation are verified.
+- The owner also requested one-paste install-to-setup entry points. Preserve the existing terminal
+  gate by keeping stdin attached when launching the macOS/Linux script, and use uv to run the
+  freshly installed command without relying on the parent shell's PATH. Headless use must remain
+  install-only; login, Duo, and local-write consent remain human steps.
+- Finish the local implementation and self-verification before waiting for one final PR CI/CD
+  pass. Do not stall each incremental change on GitHub checks. The owner requested a real cloud
+  Devin VM/Desktop test and will complete login there when needed; do not substitute local tests
+  or move browser sessions between devices.

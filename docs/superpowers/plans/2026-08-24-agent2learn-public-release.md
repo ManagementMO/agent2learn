@@ -2481,8 +2481,10 @@ Steps:
 - [ ] **Step 1:** `README.md`. Order: one-sentence pitch → platform-tabbed install →
       "then just ask" prompts → what it does and does **not** do → privacy defaults → disclaimer.
       **The install block contains exactly three options** — `install.sh`, `install.ps1`, and
-      `uv tool install agent2learn` followed by `a2l init`. The two scripts also continue directly into
-      interactive `a2l init`; say this explicitly. In a separate "Agent skills" paragraph, explain
+      the uv install-and-setup option. The macOS/Linux launcher must preserve terminal input and
+      refuse failed downloads; the uv command must launch setup through uv so it does not depend
+      on a newly changed shell PATH. Both scripts continue directly into interactive `a2l init`
+      only with a real terminal; headless agent tools remain install-only. In a separate "Agent skills" paragraph, explain
       that `a2l skills install` is built into onboarding and that
       `npx skills add ManagementMO/agent2learn` is an optional skills-only ecosystem route which
       does **not** install the `a2l` engine.
