@@ -26,6 +26,7 @@ cookies.json
 *.session
 
 # Local configuration that may contain machine-specific or secret values
+.vercel/
 .env
 .env.*
 !.env.example
