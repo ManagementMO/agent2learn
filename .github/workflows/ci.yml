@@ -111,6 +111,13 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
           "$BIN/python" tools/smoke_installed_skills.py
 
+      - name: Installed base-wheel core workflow smoke
+        run: |
+          set -euo pipefail
+          SMOKE="$RUNNER_TEMP/a2l-smoke-${{ matrix.os }}-${{ matrix.python }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
+          "$BIN/python" tools/smoke_installed_core.py
+
   installers:
     # Proves the published one-command install path against the candidate wheel, never against
     # PyPI. The local index is configured only in this process, and the installers themselves

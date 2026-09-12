@@ -39,6 +39,7 @@ import heapq
 import json
 import os
 import re
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -244,6 +245,7 @@ class LineIndex:
     def __init__(self, sources: Sequence[ScanSource]) -> None:
         self._lines: list[tuple[ScanSource, int, str, frozenset[str], frozenset[str]]] = []
         self._postings: dict[str, list[int]] = {}
+        self._value_postings: dict[str, set[int]] = {}
         self.vocabulary: dict[str, tuple[str, int]] = {}
         for source in sources:
             text = _read_text(source.path)
@@ -254,7 +256,10 @@ class LineIndex:
                 if not terms:
                     continue
                 position = len(self._lines)
-                self._lines.append((source, number, raw.strip(), terms, frozenset(values(raw))))
+                line_values = values(raw)
+                self._lines.append((source, number, raw.strip(), terms, line_values))
+                for value in line_values:
+                    self._value_postings.setdefault(value, set()).add(position)
                 for term in terms:
                     self._postings.setdefault(term, []).append(position)
                     self.vocabulary.setdefault(term, (source.citation_path, number))
@@ -278,18 +283,28 @@ class LineIndex:
         total_terms = len(claim_terms)
         total_values = len(claim_values)
 
-        matches: dict[int, int] = {}
+        matches: Counter[int] = Counter()
         for term in claim_terms:
-            for position in self._postings.get(term, ()):
-                matches[position] = matches.get(position, 0) + 1
+            matches.update(self._postings.get(term, ()))
         if not matches:
             return []
+        denominator = 5 * total_terms * total_values if total_values else total_terms
+        term_scale = 40_000 * total_values if total_values else 10_000
+        term_numerators = [matched * term_scale for matched in range(total_terms + 1)]
+        value_numerators = [10_000 * total_terms * matched for matched in range(total_values + 1)]
+        value_matches: Counter[int] = Counter()
+        for value in claim_values:
+            positions = self._value_postings.get(value)
+            if positions is not None:
+                value_matches.update(matches.keys() & positions)
 
         def ranked() -> Iterator[tuple[int, str, int, int]]:
             for position, matched in matches.items():
-                source, number, _excerpt, _terms, line_values = self._lines[position]
-                matched_values = len(claim_values & line_values) if total_values else 0
-                points = score_bp(matched, total_terms, matched_values, total_values)
+                source, number, _excerpt, _terms, _line_values = self._lines[position]
+                matched_values = value_matches.get(position, 0)
+                points = (
+                    term_numerators[matched] + value_numerators[matched_values]
+                ) // denominator
                 if points > 0:
                     yield (-points, source.citation_path, number, position)
 

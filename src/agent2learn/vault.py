@@ -190,12 +190,14 @@ class Vault:
             return self._materialized_path(artifact.path)
         if paths.has_link_component(preferred.parent, root=self.root):
             raise A2LError("derived destination is outside the trusted vault")
-        reserved = [
+        return paths.unique_path(preferred, reserved=self.claimed_paths())
+
+    def claimed_paths(self) -> tuple[Path, ...]:
+        return tuple(
             self.root / PurePosixPath(relative)
-            for source in entries.values()
+            for source in self.manifest().values()
             for relative in (source.path, *(value.path for value in source.derived.values()))
-        ]
-        return paths.unique_path(preferred, reserved=reserved)
+        )
 
     def mark(self, key: str, entry: ManifestEntry) -> None:
         """Validate and stage a manifest entry for the next atomic save."""

@@ -25,7 +25,7 @@ If prose here conflicts with the design spec, the spec wins. If implementation e
 the spec, stop, preserve the evidence, and update the spec and plan together before changing the
 architecture.
 
-## Current state — 2026-09-02
+## Historical state — 2026-09-02
 
 - Public Git repository on `main`. **Not** a package release: nothing is published to PyPI.
 - **Tasks 0 through 23 are complete as automated implementations. The v0.1 command surface is
@@ -449,3 +449,41 @@ architecture.
 - Never claim a task is complete without fresh verification. Do not commit unrelated changes, and
   do not weaken privacy, authentication, submission, archival, or licence requirements to make a
   test pass.
+
+## Core review remediation — 2026-09-12 UTC
+
+This supersedes the historical claim that only manual work remained. A fresh audit found 15 core
+issues despite green CI; the `fix/core-review-remediation` branch repairs them with permanent
+regressions. Frontend and video work are outside this change.
+
+- Sources and twins retain exclusive, collision-safe paths even while their files are missing.
+  Unowned sibling files are preserved. Existing owned twins are reused rather than silently moved.
+- Grounding requires agreement with the content map's citable state and manifest provenance;
+  relative paths, symlinks, and hard links cannot make a draft cite itself.
+- Missing course selection refuses sync. Valid empty courses succeed. Malformed TOCs retain their
+  cache but cannot report complete discovery.
+- Conditional fetch verifies local bytes before using validators and again before accepting 304.
+  Encoded HTTP lengths are checked against wire bytes; decoded-byte ceilings remain enforced.
+- Download journals recover installed bytes after a failed manifest commit, including initial
+  installs. Generated prompts and outlines use `transactions.py` to recover source/twin pairs,
+  retain prior revisions, and refuse post-interruption edits instead of overwriting them.
+- Fetch converts only its requested source using the configured OCR threshold; a raw file is not
+  reported as a verified Markdown citation.
+- `locations.py` records stable course ownership in `_meta/course.json` and assignment directory
+  bindings in assignment metadata. Renames retain paths; ambiguous ownership fails closed.
+- `tzdata` is a core dependency using the previously locked 2026.3 release. POSIX bootstrap locates
+  the installed uv binary before using it; both installers request Python 3.11–3.14 explicitly.
+  A real clean-home macOS bootstrap installed the candidate and obtained Python 3.14 successfully.
+- Privacy purge inventories backups inside the selected vault, not unassociated sibling backups.
+- The explained golden change is exactly two added course ownership records and directory fields
+  in the first course's assignment metadata: 55 files, with every source/twin byte hash unchanged.
+- Local full verification: **1031 passed, 4 skipped**, warnings treated as errors, **79.84%**
+  branch-aware coverage; the 77.5% floor is unchanged. The strict retrieval benchmark measured
+  1.70 seconds after exact-scoring optimizations, with independent rational-reference checks.
+- `tools/smoke_installed_core.py` must run from a clean, base-only installed wheel environment,
+  not an editable checkout. It verifies timezone data without the system database, production
+  sync, source preservation, grounding, and checking, with unexpected network requests blocked.
+  CI runs it across the existing OS/Python matrix alongside the skill-source smoke.
+
+Local verification does not replace exact-commit three-OS CI or live same-device authentication.
+Submission remains disabled, and publication still requires the existing human release gates.

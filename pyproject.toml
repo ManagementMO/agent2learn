@@ -29,6 +29,7 @@ dependencies = [
     "pytesseract>=0.3.13,<0.4",
     "pillow>=10,<13",
     "pypdfium2>=5.13,<6",
+    "tzdata>=2026.3,<2027",
 ]
 
 [project.optional-dependencies]

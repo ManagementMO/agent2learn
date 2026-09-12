@@ -29,13 +29,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
-from agent2learn import clock, paths
+from agent2learn import clock, locations, paths
 from agent2learn import index as course_index
 from agent2learn.errors import A2LError
 from agent2learn.vault import ManifestEntry, Vault
@@ -183,7 +184,7 @@ def _assignment_refs(course_dir: Path) -> tuple[_AssignmentRef, ...]:
     except OSError as exc:
         raise A2LError("local assignments are unreadable") from exc
 
-    rows: list[tuple[str, str | None]] = []
+    rows: list[tuple[str, str | None, Path | None]] = []
     for row in _json_rows(course_dir / "_meta" / "assignments.json"):
         title = row.get("title")
         if not isinstance(title, str) or not title.strip():
@@ -192,25 +193,39 @@ def _assignment_refs(course_dir: Path) -> tuple[_AssignmentRef, ...]:
         usable = isinstance(identifier, str) or (
             isinstance(identifier, int) and not isinstance(identifier, bool)
         )
-        rows.append((title, str(identifier) if usable else None))
+        rows.append(
+            (
+                title,
+                str(identifier) if usable else None,
+                locations.assignment_row_directory(course_dir, row),
+            )
+        )
 
     refs: list[_AssignmentRef] = []
     for folder in folders:
         directory = assignments / folder.name
         compact_folder = _compact(folder.name)
-        joined = next(
-            (
-                (title, identifier)
-                for title, identifier in rows
-                if compact_folder
-                in {_compact(f"{title} {identifier}") if identifier else "", _compact(title)}
-            ),
-            None,
-        )
-        if joined is None:
+        joined = [
+            (title, identifier)
+            for title, identifier, bound in rows
+            if (
+                unicodedata.normalize("NFC", bound.name).casefold()
+                == unicodedata.normalize("NFC", folder.name).casefold()
+                if bound is not None
+                else compact_folder
+                in {
+                    _compact(paths.safe_name(f"{title} {identifier}")) if identifier else "",
+                    _compact(paths.safe_name(title)),
+                }
+            )
+        ]
+        if len(joined) > 1:
+            raise A2LError("ambiguous assignment directory ownership; run: a2l sync")
+        if not joined:
             refs.append(_AssignmentRef(title=folder.name, folder_id=None, directory=directory))
         else:
-            refs.append(_AssignmentRef(title=joined[0], folder_id=joined[1], directory=directory))
+            title, identifier = joined[0]
+            refs.append(_AssignmentRef(title=title, folder_id=identifier, directory=directory))
     return tuple(refs)
 
 
@@ -539,6 +554,10 @@ def assignment_title(course_dir: Path, item: str, *, fallback: str) -> str:
 
 
 def _course_identity(course_dir: Path) -> tuple[str, str]:
+    identity = locations.read_course_identity(course_dir)
+    if identity is not None:
+        identity_code = identity.code or course_dir.name
+        return identity_code, identity.name or identity_code
     rows = course_index.read_content_map(course_dir)["topics"]
     if isinstance(rows, list):
         for row in rows:
@@ -630,7 +649,7 @@ def _resolved(path: Path) -> str:
 
 
 def _compact(value: str) -> str:
-    return "".join(_RUN.findall(value.casefold()))
+    return "".join(_RUN.findall(unicodedata.normalize("NFC", value).casefold()))
 
 
 def _validate_selector(value: object, *, label: str) -> None:

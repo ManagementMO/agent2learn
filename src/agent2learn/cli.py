@@ -859,6 +859,7 @@ def fetch(
             topic,
             allow_large=allow_large,
             confirm=confirm_large if allow_large else None,
+            ocr_words_per_page=cfg.ocr_words_per_page,
         )
     except A2LError as exc:
         typer.echo(str(exc), err=True)
@@ -867,9 +868,12 @@ def fetch(
         typer.echo("fetch failed because local filesystem access is unavailable", err=True)
         raise typer.Exit(code=1) from exc
 
-    citation = result.citation_path or result.source_path
-    if citation is None:
-        typer.echo("source fetched, but no verified citation twin is available", err=True)
+    citation = result.citation_path
+    if citation is None or result.availability != "markdown_ready":
+        action = result.next_action or "inspect the recorded gap: a2l doctor"
+        typer.echo(
+            f"source fetched, but no verified citation twin is available; {action}", err=True
+        )
         raise typer.Exit(code=1)
     typer.echo(f"verified citation: {citation}")
 

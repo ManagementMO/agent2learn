@@ -1447,9 +1447,19 @@ Steps:
       identity. Each download uses a unique sibling `.part`,
       compares fingerprints and hashes, calls `Vault.preserve_revision` when bytes changed, then
       `paths.atomic_install_temp`; only after a successful install may it update the manifest.
+      Keep the validated install journal until the manifest commit finishes; recover already-moved
+      parts by verifying destination bytes before retrying a newer remote revision. Generated
+      prompts/outlines use a source-and-twin journal under `.a2l/pending-generated`, retain staged
+      bytes until commitment, and refuse to overwrite post-interruption edits.
       Sort all new sibling identities by canonical source key before allocating paths so reversing a
       paginated API response cannot change which source receives the unsuffixed name. Add the
       reversed-order regression test; existing identities always reuse their recorded paths.
+      Persist course directory ownership in `_meta/course.json` (schema version 1, school,
+      org-unit ID, code, name, term), including empty courses. Persist each assignment row's
+      vault-relative `directory` before writing its prompt or generated hub. Reuse paths proven by
+      existing manifests or unambiguous legacy metadata; refuse conflicting ownership. Cover long
+      names, renames, empty courses, submission-only folders gaining instructions, name collisions,
+      and preservation of user files. These additive metadata records do not move existing sources.
       Before each transfer, enforce the configured free-disk reserve and 2 GiB default per-file
       ceiling. An oversized source remains `metadata_only` with its stable ID and the exact
       `a2l fetch --allow-large <id>` action. Unknown-length sources use the same bounded streaming
@@ -2422,7 +2432,10 @@ Steps:
       `https://astral.sh/uv/0.12.5/install.sh`; define both `UV_VERSION=0.12.5` and the exact
       Agent2Learn release in one reviewed constants block; install the
       exact Agent2Learn release embedded in the script with
-      `uv tool install "agent2learn==${A2L_VERSION}"`; run `uv tool update-shell`; obtain the real
+      `uv tool install "agent2learn==${A2L_VERSION}" --python ">=3.11,<3.15"` so an older system
+      interpreter cannot make first installation fail. After bootstrapping uv, prepend its actual
+      configured executable directory to the installer process before invoking it; do not rely on
+      shell-profile changes taking effect in the parent process. Run `uv tool update-shell`; obtain the real
       executable directory from `uv tool dir --bin` and prepend it to this process's `PATH`; verify
       `a2l --version`. Print a concise preview before any download or PATH change. If stdin/stdout
       are attached to a human terminal, `exec a2l init`; otherwise install and verify only, then

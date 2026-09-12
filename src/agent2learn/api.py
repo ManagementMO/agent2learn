@@ -256,9 +256,11 @@ class Client:
                     raise SessionExpired("session expired · run: a2l auth")
                 if size == 0:
                     raise DownloadError("response body is empty")
-                if advertised_size is not None and size != advertised_size:
+                encoding = response.headers.get("Content-Encoding", "identity").strip().casefold()
+                received = response.raw.tell() if encoding not in {"", "identity"} else size
+                if advertised_size is not None and received != advertised_size:
                     raise DownloadError(
-                        f"response size mismatch: advertised {advertised_size}, received {size}"
+                        f"response size mismatch: advertised {advertised_size}, received {received}"
                     )
                 handle.flush()
                 os.fsync(handle.fileno())

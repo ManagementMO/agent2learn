@@ -562,3 +562,49 @@ def test_independent_draft_copy_can_match_a_distinct_course_file(
 
     assert source.relative_to(vault.root).as_posix() in report.revisions
     assert any(finding.status == "evidence_found" for finding in report.findings)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "dual simplex",
+        "dual simplex 4",
+        "dual simplex 4 7 10",
+        "capacity >= 10",
+        "capacity <= 10",
+        "binary x_i and y_j 0 1",
+        "unrelated",
+    ],
+)
+def test_index_scoring_and_ties_match_the_independent_rational_reference(
+    tmp_path: Path, query: str
+) -> None:
+    from agent2learn.check import values
+    from agent2learn.ground import GENERIC, tok
+
+    lines = [
+        "dual simplex capacity 4",
+        "dual simplex capacity 7",
+        "capacity >= 10",
+        "binary x_i and y_j are 0 or 1",
+        "dual simplex capacity 4",
+    ]
+    corpus = tmp_path / "course.md"
+    corpus.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    source = ScanSource(corpus, "Term/COURSE/content/course.md", "a" * 64, "b" * 64)
+    terms = set(tok(query)) - GENERIC
+    numbers = values(query)
+    expected: list[tuple[int, int]] = []
+    for number, text in enumerate(lines, 1):
+        matched = len(terms & (set(tok(text)) - GENERIC))
+        if matched:
+            points = int(
+                exact_score(matched, len(terms), len(numbers & values(text)), len(numbers)) * 10000
+            )
+            expected.append((-points, number))
+
+    actual = LineIndex([source]).retrieve(Claim(1, query, "prose"), top=3)
+
+    assert [(item.retrieval_score_bp, item.line) for item in actual] == [
+        (-score, line) for score, line in sorted(expected)[:3]
+    ]

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from agent2learn import aipolicy, clock, paths
+from agent2learn import aipolicy, clock, paths, transactions
 from agent2learn import index as course_index
 from agent2learn.errors import AuthenticationError
 from agent2learn.ingest import (
@@ -317,8 +317,8 @@ def _install_outline(
     topic: TopicRecord,
     page: OutlinePage,
 ) -> tuple[str, str]:
-    manifest = vault.manifest()
-    prior = manifest.get(topic.source_key)
+    transactions.recover_generated(vault, topic.source_key)
+    prior = vault.entry(topic.source_key)
     if page.pdf is None:
         # A rendered outline is untrusted course HTML. Persist the inert canonical form, not
         # scripts, event handlers, remote-image loads, credentials, or signed query strings.
@@ -343,17 +343,9 @@ def _install_outline(
         artifact = prior.derived["markdown"]
         return prior.path, artifact.path
 
-    if prior is not None and _outline_needs_preservation(vault, prior, source_hash, markdown_hash):
-        preserved = vault.preserve_revision(key=topic.source_key, changed_at=clock.now())
-        prior_material_remains = any(
-            paths.is_link(path) or paths.long_path(path).exists()
-            for path in (source_destination, markdown_destination)
-        )
-        if preserved is None and prior_material_remains:
-            raise ValueError("current outline revision could not be preserved")
-
-    _install_bytes(source_destination, source_bytes, root=vault.root)
-    _install_bytes(markdown_destination, markdown_bytes, root=vault.root)
+    preserve = prior is not None and _outline_needs_preservation(
+        vault, prior, source_hash, markdown_hash
+    )
     derived = DerivedArtifact(
         path=paths.rel_posix(markdown_destination, vault.root),
         sha256=markdown_hash,
@@ -372,8 +364,14 @@ def _install_outline(
         fetched_at=_now(),
         derived={"markdown": derived},
     )
-    vault.mark(topic.source_key, entry)
-    vault.save_manifest()
+    transactions.install_generated(
+        vault,
+        topic.source_key,
+        entry,
+        source_bytes,
+        {"markdown": markdown_bytes},
+        preserve=preserve,
+    )
     _update_topic_map(vault, metadata, topic, entry, school)
     return entry.path, derived.path
 
@@ -464,7 +462,7 @@ def _source_destination(
     candidate = _content_directory(metadata.directory, ("Outlines",)) / (
         f"{paths.safe_name(topic.title)}{suffix}"
     )
-    return paths.unique_path(candidate)
+    return paths.unique_path(candidate, reserved=vault.claimed_paths())
 
 
 def _markdown_destination(vault: Vault, source: Path, prior: ManifestEntry | None) -> Path:
