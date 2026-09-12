@@ -46,6 +46,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
+          version: "0.12.13"
           python-version: "3.12"
           enable-cache: true
 
@@ -119,9 +120,13 @@ jobs:
           import hashlib
           from pathlib import Path
 
-          for path in sorted(Path("dist").iterdir()):
-              if path.name == "SHA256SUMS.txt":
-                  continue
+          distributions = sorted(
+              path for path in Path("dist").iterdir()
+              if path.is_file() and (path.suffix == ".whl" or path.name.endswith(".tar.gz"))
+          )
+          if not distributions:
+              raise SystemExit("release build contains no distributions")
+          for path in distributions:
               digest = hashlib.sha256(path.read_bytes()).hexdigest()
               print(f"{digest}  {path.name}")
           PY
