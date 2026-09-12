@@ -539,13 +539,17 @@ def convert_vault(
             )
             continue
         expected_threshold = ocr_words_per_page if source_kind == "pdf" else None
-        if artifact is not None and _artifact_is_current(
-            vault,
-            artifact,
-            entry,
-            expected_tool,
-            expected_version,
-            expected_threshold,
+        if (
+            artifact is not None
+            and vault.owns_derived_path(key, artifact.path)
+            and _artifact_is_current(
+                vault,
+                artifact,
+                entry,
+                expected_tool,
+                expected_version,
+                expected_threshold,
+            )
         ):
             skipped += 1
             continue
@@ -599,7 +603,7 @@ def convert_vault(
             )
             continue
 
-        destination = source.with_suffix(".md")
+        destination = vault.derived_destination(key, source.with_suffix(".md"))
         prior_artifact = entry.derived.get("markdown")
         local_modification = False
         if prior_artifact is not None:

@@ -458,3 +458,28 @@ def test_cdp_outline_browser_uses_existing_connection_and_no_new_profile() -> No
     browser.close_target()
     assert connection.calls[-1] == "Page.close"
     assert connection.closed is True
+
+
+def test_outline_render_preserves_unowned_markdown_at_the_preferred_path(tmp_path: Path) -> None:
+    vault, metadata = _metadata(tmp_path)
+    directory = metadata.courses[0].directory / "content" / "Outlines"
+    directory.mkdir(parents=True)
+    notes = directory / "Course Outline.md"
+    notes.write_text("My outline annotations.\n", encoding="utf-8")
+    browser = FakeOutlineBrowser(
+        OutlinePage(
+            html="<html><body><h1>Official outline</h1></body></html>",
+            canonical_url="https://learn.uwaterloo.ca/outline.html",
+        )
+    )
+
+    result = ingest_outlines(browser, vault, UWaterloo(), metadata)
+
+    assert result.rendered == 1 and not result.errors
+    assert notes.read_text(encoding="utf-8") == "My outline annotations.\n"
+    entry = vault.entry("uwaterloo:111111:topic:1")
+    assert entry is not None
+    assert vault.root / entry.derived["markdown"].path != notes
+    assert "Official outline" in (vault.root / entry.derived["markdown"].path).read_text(
+        encoding="utf-8"
+    )

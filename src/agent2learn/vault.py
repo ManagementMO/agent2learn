@@ -19,6 +19,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from collections.abc import Callable, Collection, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -162,6 +163,39 @@ class Vault:
 
         validated = _validate_entry(entry)
         return self._materialized_path(validated.path)
+
+    def owns_derived_path(self, key: str, relative: str, *, name: str = "markdown") -> bool:
+        entries = self.manifest()
+        entry = entries.get(key)
+        artifact = entry.derived.get(name) if entry is not None else None
+        if artifact is None or artifact.path != relative:
+            return False
+        wanted = unicodedata.normalize("NFC", relative).casefold()
+        for source_key, source in entries.items():
+            if unicodedata.normalize("NFC", source.path).casefold() == wanted:
+                return False
+            for artifact_name, other in source.derived.items():
+                if (source_key, artifact_name) != (key, name) and (
+                    unicodedata.normalize("NFC", other.path).casefold() == wanted
+                ):
+                    return False
+        return True
+
+    def derived_destination(self, key: str, preferred: Path, *, name: str = "markdown") -> Path:
+        _validate_source_key(key)
+        entries = self.manifest()
+        entry = entries.get(key)
+        artifact = entry.derived.get(name) if entry is not None else None
+        if artifact is not None and self.owns_derived_path(key, artifact.path, name=name):
+            return self._materialized_path(artifact.path)
+        if paths.has_link_component(preferred.parent, root=self.root):
+            raise A2LError("derived destination is outside the trusted vault")
+        reserved = [
+            self.root / PurePosixPath(relative)
+            for source in entries.values()
+            for relative in (source.path, *(value.path for value in source.derived.values()))
+        ]
+        return paths.unique_path(preferred, reserved=reserved)
 
     def mark(self, key: str, entry: ManifestEntry) -> None:
         """Validate and stage a manifest entry for the next atomic save."""

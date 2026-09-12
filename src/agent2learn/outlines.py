@@ -326,7 +326,9 @@ def _install_outline(
     source_bytes = page.pdf if page.pdf is not None else page.html.encode("utf-8")
     source_hash = sha256(source_bytes).hexdigest()
     source_destination = _source_destination(vault, metadata, topic, prior, page)
-    markdown_destination = _markdown_destination(vault, source_destination, prior)
+    markdown_destination = vault.derived_destination(
+        topic.source_key, _markdown_destination(vault, source_destination, prior)
+    )
     markdown_bytes = _outline_markdown(topic.title, page)
     markdown_hash = sha256(markdown_bytes).hexdigest()
     if prior is not None and _outline_is_current(
