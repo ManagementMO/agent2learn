@@ -202,6 +202,20 @@ jobs:
       - name: The installers stay pinned and offer no package override
         run: uv run pytest tests/test_installers.py -q
 
+      - name: Bare uv tool install works outside the checkout
+        working-directory: ${{ runner.temp }}
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/a2l-bare-tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/a2l-bare-bin
+        run: |
+          set -euo pipefail
+          expected="$(uv run --project "$GITHUB_WORKSPACE" --no-sync python -c 'import agent2learn; print(agent2learn.__version__)' | tr -d '\r')"
+          unset UV_PYTHON
+          uv tool install agent2learn
+          tool_bin="$(uv tool dir --bin | tr -d '\r')"
+          reported="$("$tool_bin/a2l" --version | tr -d '\r')"
+          test "$reported" = "agent2learn $expected"
+
   dependencies:
     # The lock is the authority for release artifacts. This job exists to detect stale
     # bounds: it resolves WITHOUT the lock, so a dependency that has moved past our

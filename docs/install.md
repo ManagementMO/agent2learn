@@ -59,8 +59,12 @@ irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 
 **Either platform, if `uv` is already installed and the user prefers it:**
 
 ```bash
-uv tool install agent2learn --python 3.12
+uv tool install agent2learn
 ```
+
+If uv reports that the selected Python is too old, `uv python install 3.12` adds a supported
+managed interpreter. With uv's default Python preference, rerunning the same install command then
+uses it. Do not lower package requirements or change index strategy to work around this error.
 
 What the scripts do, so you can explain it accurately: they install a pinned uv if the existing one
 is missing or older than the tested version, install the pinned `agent2learn` release, let uv add

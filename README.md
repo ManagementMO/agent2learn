@@ -31,12 +31,13 @@ irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 
 **Already have [uv](https://docs.astral.sh/uv/)?**
 
 ```bash
-uv tool install agent2learn --python 3.12 && a2l init
+uv tool install agent2learn
+a2l init
 ```
 
 These commands install the published package from PyPI, not an unreleased repository checkout.
-The explicit Python selection lets uv obtain a compatible interpreter instead of choosing an
-older system default.
+Python 3.11–3.14 is supported. If uv selects an older system Python or your shell cannot find
+`a2l`, see [setup troubleshooting](docs/FAQ.md#setup-and-path).
 
 `install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.1), verify that `a2l`
 runs, and then **continue straight into interactive `a2l init`** in the same command. If they are
