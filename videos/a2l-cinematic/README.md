@@ -21,9 +21,35 @@ The website uses the same vector master:
 the film's light and dark hashes. The current picture is available in Studio;
 the preserved MP4s below have **not** been replaced with this identity.
 
-## Current Studio soundtrack — Launchbeat (2026-09-08)
+## Current Studio soundtrack — Disclosure (2026-09-11)
 
-Studio now previews a punchier house/disco instrumental with a 4% pitch-preserving
+The local editor uses the opening **0.00–17.50s of Disclosure — Expressing What
+Matters**, at its original speed. A restrained music bed, gently eased level
+changes around input/citation moments and a closing fade keep the demo in front.
+The automated bed measures **-21.85 LUFS integrated**, approximately 6.5 dB below
+the previous Launchbeat bed. These are measured levels, not a listening review.
+The approved picture, logo, all timings, and both recorded Foley stems are
+unchanged; the typing and interface WAVs are byte-identical to Launchbeat's.
+
+- [Open the updated Studio](http://localhost:3017/#project/a2l-cinematic)
+- [Audition the 17.5s audio-only mix](renders/agent2learn-signalflow-disclosure-audio.m4a)
+- [Verification and source/export boundaries](VERIFICATION-DISCLOSURE.md)
+
+Active stems use `signalflow-disclosure`. Launchbeat's stems and audio review
+remain intact; its cue and metadata snapshots are saved locally in
+`.archive/signalflow-launchbeat-audio/`. Restore the saved cue file and run
+`npm run build` to switch back without regenerating the old stems.
+
+This is a **local audition of a commercial recording**, not original music or
+a cleared campaign soundtrack. The recording and derived audio stay ignored by
+Git. The owner approved the updated editor mix on 2026-09-11. Git publication
+is limited to the composition source, mix settings, provenance and verification;
+no new MP4 was rendered or replaced. Public-release rights must be resolved
+before publishing a movie with the track. See [CREDITS.md](CREDITS.md).
+
+## Previous Studio soundtrack — Launchbeat (2026-09-08)
+
+The preceding Studio revision used a punchier house/disco instrumental with a 4% pitch-preserving
 tempo lift, stronger information-transfer accents, quiet context/logo chimes, and
 a deliberate music dip at the source click. The subsequent visual cleanup removes
 the long bottom disclaimer and replaces the Content tab's inset shadow with a
@@ -36,7 +62,7 @@ them**.
 - [Open the updated Studio](http://localhost:3017/#project/a2l-cinematic)
 - [Soundtrack verification and boundaries](VERIFICATION-LAUNCHBEAT.md)
 
-The active stems use `signalflow-launchbeat`; the prior `signalflow-polish`
+That revision's stems use `signalflow-launchbeat`; the prior `signalflow-polish`
 stems remain intact. Prior cues and metadata are also saved locally in
 `.archive/signalflow-agent-audio/`. To revert the preview, restore its saved
 `launchflow-cues.json` to `src/` and run `npm run build` using the preserved stems.
@@ -111,7 +137,7 @@ synthetic course notes, timing/Foley schedules, authoring tools, three reviewed
 picture-only stills and verification reports. Historical authored experiments
 remain available as source.
 
-The following stay local and ignored: catalog music and Foley downloads,
+The following stay local and ignored: commercial recordings, catalog music and Foley downloads,
 audio stems, finished MP4s, old renders/source snapshots, reference material,
 the superseded generated monogram, dependency copies and inspection caches.
 None was deleted. `CREDITS.md` records music provenance but does not establish
@@ -124,7 +150,8 @@ approved soundtrack. Asset hashes and exact final MP4 hashes are recorded in
 
 Edit src/launchflow.html.template, src/launchflow.css,
 src/launchflow-motion.js and src/launchflow-cues.json. The names are historical;
-their active output is Signalflow Polish. tools/build.mjs compiles HTML/CSS and the
+their active output is the approved Signalflow picture with the Disclosure audition.
+tools/build.mjs compiles HTML/CSS and the
 single shared picture/Foley cue table. Demo provenance remains in the project
 documentation and synthetic fixtures; the long on-screen footer was removed.
 The older base styles and scripts are historical, not the active cut.
@@ -135,7 +162,7 @@ picture; their original software licenses remain in `node_modules`.
 
 For the full preview, audio tests and render, first restore the separately
 licensed local audio assets listed in `CREDITS.md`. Audio rebuilding additionally
-needs the original catalog files and `.media/manifest.jsonl`, plus uv and pinned
+needs the selected source recording, original Foley files and `.media/manifest.jsonl`, plus uv and pinned
 NumPy/SciPy. These are available in the author's existing worktree, not a fresh
 Git clone; no account credentials or automatic catalog download are included.
 
@@ -147,8 +174,9 @@ HYPERFRAMES_NO_TELEMETRY=1 npm run dev -- --background --port 3017
 npm test
 HYPERFRAMES_NO_TELEMETRY=1 npm run check -- --strict --samples 60 --at-transitions
 # Preserve an existing export before choosing to overwrite it.
-HYPERFRAMES_NO_TELEMETRY=1 npm run render -- --fps 120 --quality high --workers 3 --crf 17 --no-best-effort --strict-all --output renders/agent2learn-signalflow-agent-120fps.mp4
-ffmpeg -n -i renders/agent2learn-signalflow-agent-120fps.mp4 -vf fps=60 -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a copy -movflags +faststart renders/agent2learn-signalflow-agent.mp4
+# Only after creative approval and any required rights clearance:
+HYPERFRAMES_NO_TELEMETRY=1 npm run render -- --fps 120 --quality high --workers 3 --crf 17 --no-best-effort --strict-all --output renders/agent2learn-signalflow-disclosure-120fps.mp4
+ffmpeg -n -i renders/agent2learn-signalflow-disclosure-120fps.mp4 -vf fps=60 -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a copy -movflags +faststart renders/agent2learn-signalflow-disclosure.mp4
 npm run test:export
 npm run test:audio
 npm run review:export
@@ -194,8 +222,11 @@ token chunks, 36 bounded particle trajectories, forward/reverse states and
 typing changes, final hold and AAC against an independent stem mix.
 
 These are film checks, not a production ingestion/vault test or subjective
-perfection claim. Music is a catalog track with a custom edit/Foley mix, not an
-original composition. Confirm distribution rights before public release.
+perfection claim. The active music is Disclosure's recording with a custom
+edit/Foley mix, not an original composition. Confirm distribution rights before
+public release. `npm run test:soundtrack` checks this audio-only change against
+the approved gold-logo picture; the older `verify-soundtrack-edit.mjs` is a
+historical Launchbeat-specific verifier, not the current gate.
 
 See BRIEF.md, STORYBOARD.md, RESEARCH.md, CREDITS.md and VERIFICATION-POLISH.md.
 The headline-only follow-up is recorded separately in VERIFICATION-AGENT.md.
