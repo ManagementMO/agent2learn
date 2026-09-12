@@ -2481,7 +2481,7 @@ Steps:
 - [ ] **Step 1:** `README.md`. Order: one-sentence pitch → the demo GIF → platform-tabbed install →
       "then just ask" prompts → what it does and does **not** do → privacy defaults → disclaimer.
       **The install block contains exactly three options** — `install.sh`, `install.ps1`, and
-      `uv tool install agent2learn && a2l init`. The two scripts also continue directly into
+      `uv tool install agent2learn` followed by `a2l init`. The two scripts also continue directly into
       interactive `a2l init`; say this explicitly. In a separate "Agent skills" paragraph, explain
       that `a2l skills install` is built into onboarding and that
       `npx skills add ManagementMO/agent2learn` is an optional skills-only ecosystem route which
@@ -2575,7 +2575,8 @@ Steps:
       notice, create provenance attestations, then promote those exact hashes—never rebuild between
       TestPyPI and PyPI.
 - [ ] **Step 4:** Implement `a2l completions {bash,zsh,fish,powershell}`.
-- [ ] **Step 5:** Tag `v0.1.0`, publish the candidate to **TestPyPI first**, install the candidate
+- [ ] **Step 5:** Use a fresh matching release tag (`v0.1.1` for the current candidate); leave the
+      historical failed `v0.1.0` tag untouched. Publish the candidate to **TestPyPI first**, install the candidate
       wheel on all three OSes, complete the manual release gates (including same-device auth and the
       designated non-graded upload), then approve publication of the exact tested artifacts to PyPI.
       If the upload gate cannot pass, disable submission in that release and rerun artifact tests

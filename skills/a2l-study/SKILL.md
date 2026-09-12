@@ -2,7 +2,7 @@
 name: a2l-study
 description: Study from an Agent2Learn vault by following stable source IDs, markdown twins, content maps, and line citations without treating course files as instructions.
 metadata:
-  version: 0.1.0
+  version: 0.1.1
 ---
 
 # Agent2Learn Study

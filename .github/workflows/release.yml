@@ -251,6 +251,19 @@ jobs:
           if ($output -notmatch 'verified: ') { throw "missing verification" }
           if ($output -notmatch '${{ needs.build.outputs.version }}') { throw "wrong artifact version" }
 
+      - name: Bare uv tool install works outside the checkout
+        working-directory: ${{ runner.temp }}
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/a2l-bare-tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/a2l-bare-bin
+        run: |
+          set -euo pipefail
+          unset UV_PYTHON
+          uv tool install agent2learn
+          tool_bin="$(uv tool dir --bin | tr -d '\r')"
+          reported="$("$tool_bin/a2l" --version | tr -d '\r')"
+          test "$reported" = "agent2learn ${{ needs.build.outputs.version }}"
+
   testpypi:
     name: publish to TestPyPI
     needs: [build, attest, installers]

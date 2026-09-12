@@ -13,6 +13,19 @@ def test_version_is_importable() -> None:
     assert __version__
 
 
+def test_cli_version_matches_the_installed_distribution() -> None:
+    from importlib.metadata import version
+
+    from typer.testing import CliRunner
+
+    from agent2learn.cli import app
+
+    result = CliRunner().invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == f"agent2learn {version('agent2learn')}"
+
+
 def test_cli_app_is_importable() -> None:
     """The `a2l` console script resolves to this object; a rename must fail loudly."""
     from agent2learn.cli import app

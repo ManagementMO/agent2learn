@@ -16,7 +16,7 @@ import requests
 from conftest import COURSE_A_OU, LE, LP, SyntheticAPI, fixture_bytes
 from werkzeug.wrappers import Response as WerkzeugResponse
 
-from agent2learn import api, config
+from agent2learn import __version__, api, config
 from agent2learn.calibrate import Calibration, calibrate, load_calibration
 from agent2learn.errors import A2LError, NotConfigured, SessionExpired
 from agent2learn.session import Session
@@ -360,7 +360,7 @@ def test_requests_use_explicit_connect_and_read_timeouts(
     assert client.get_json("/timeout") == {"ok": True}
     assert calls[0]["timeout"] == (api.CONNECT_TIMEOUT, api.READ_TIMEOUT)
     assert calls[0]["allow_redirects"] is False
-    assert calls[0]["headers"]["User-Agent"].startswith("agent2learn/0.1.0 ")
+    assert calls[0]["headers"]["User-Agent"].startswith(f"agent2learn/{__version__} ")
 
 
 @pytest.mark.parametrize("status", [429, 500, 502, 503])

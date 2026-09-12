@@ -503,7 +503,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://agent2learn.dev/install.ps1 |
 
 ```bash
 # already have uv
-uv tool install agent2learn && a2l init
+uv tool install agent2learn
+a2l init
 ```
 
 Both installers perform the same five steps:

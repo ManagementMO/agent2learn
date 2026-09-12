@@ -62,6 +62,10 @@ irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 
 uv tool install agent2learn
 ```
 
+If uv reports that the selected Python is too old, `uv python install 3.12` adds a supported
+managed interpreter. With uv's default Python preference, rerunning the same install command then
+uses it. Do not lower package requirements or change index strategy to work around this error.
+
 What the scripts do, so you can explain it accurately: they install a pinned uv if the existing one
 is missing or older than the tested version, install the pinned `agent2learn` release, let uv add
 its tool directory to the user's `PATH`, verify `a2l --version`, and then continue into interactive
@@ -82,7 +86,7 @@ That is the expected, correct outcome. It is not an error.
 a2l --version
 ```
 
-Expect `agent2learn 0.1.0` or later. If the command is still not found, the tool directory is not on
+Expect `agent2learn 0.1.1` or later. If the command is still not found, the tool directory is not on
 this shell's `PATH`; tell the user to open a new terminal. On Windows, a terminal that was already
 open before the install keeps its old environment and must be reopened.
 

@@ -487,3 +487,33 @@ regressions. Frontend and video work are outside this change.
 
 Local verification does not replace exact-commit three-OS CI or live same-device authentication.
 Submission remains disabled, and publication still requires the existing human release gates.
+
+## Release preparation — 0.1.1
+
+- The remediation PR #17 is merged. Release preparation uses `release/v0.1.1` from current `main`,
+  not the shared frontend branch. A divergent `git pull origin main` on that frontend branch is
+  not a package-release failure; do not reset, rebase, or overwrite another agent's work.
+- Package metadata, runtime `__version__`, both installer pins, and all four skill metadata versions
+  must agree on 0.1.1. The CLI-version smoke compares reported output with installed distribution
+  metadata, so run `uv sync --frozen --all-extras --dev` after changing a version.
+- The direct manual command is `uv tool install agent2learn`, followed by `a2l init`. A real
+  isolated candidate-index probe passed with supported system Python and with no Python installed.
+  An older system-only interpreter failed; one-time `uv python install 3.12` made the same bare
+  command succeed. Keep that workaround in troubleshooting; do not claim the package can control
+  uv's interpreter selection before installation. Platform installers still select supported Python.
+- The historical `v0.1.0` tag points at 67b12bd and must not be silently moved. Prepare a fresh
+  matching `v0.1.1` tag only after the existing release approvals and publisher setup are complete.
+- A release-preparation commit or PR is not publication. PyPI/TestPyPI account bindings, actual
+  registry uploads, and live same-device validation must be verified separately. Upload capability
+  remains disabled; no safety gate is relaxed for this version bump.
+- Owner-approved pending publishers are configured on PyPI and TestPyPI for `agent2learn`, GitHub
+  `ManagementMO/agent2learn`, workflow `release.yml`, and environments `pypi` / `testpypi`. Both
+  management pages confirmed the records after submission. These bindings are not registry uploads
+  or evidence that the package is publicly installable.
+- CI and tagged-release installer jobs also exercise the bare uv command outside the checkout,
+  without `UV_PYTHON`, using fresh tool directories and the exact staged candidate index.
+- During 0.1.1 preparation, the owner confirmed that the required Windows/Linux same-device LEARN
+  checks were completed and recorded. This is owner attestation; the assistant did not repeat the
+  live checks or inspect private records. The owner explicitly authorized merging PR #20 after CI,
+  tagging v0.1.1, and promoting verified artifacts through TestPyPI and PyPI, including deployment
+  approvals. That authorization does not enable LEARN submissions or apply to a later version.
