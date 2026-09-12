@@ -19,6 +19,7 @@ from agent2learn.ground import (
     resolve_item,
     select_sources,
     tok,
+    verified_sources,
     write_grounding_pack,
 )
 from agent2learn.index import write_content_map
@@ -485,3 +486,43 @@ def test_an_empty_pack_names_the_real_cause_not_sync(tmp_path: Path) -> None:
     assert "a2l sync" not in message
     assert "Team Report" in message
     assert "matched" in message or "match" in message
+
+
+@pytest.mark.parametrize(
+    "availability", ["download_gap", "source_only", "external_link", "integrity_gap"]
+)
+@pytest.mark.parametrize("source_id", ["10", "20", "4-1"])
+def test_grounding_respects_topic_refusal_state_even_when_local_hashes_match(
+    grounding_course: tuple[Vault, Path, Path, dict[str, ManifestEntry]],
+    availability: str,
+    source_id: str,
+) -> None:
+    vault, course, _assignment, _entries = grounding_course
+    destination = course / "_meta" / "content_map.json"
+    payload = json.loads(destination.read_text(encoding="utf-8"))
+    for row in payload["topics"]:
+        if row["source_id"] == source_id:
+            row.update(availability=availability, path=None, etag='"new-version"')
+    _write_json(destination, payload)
+
+    selected = verified_sources(vault, course)
+    scoped = select_sources(vault, course, "Lab4")
+
+    assert source_id not in {source.source_id for source in selected}
+    assert source_id not in {source.source_id for source in scoped}
+    assert "21" in {source.source_id for source in selected}
+    assert any(source.role == "assignment_prompt" for source in scoped)
+
+
+def test_grounding_rejects_a_content_map_path_that_disagrees_with_its_manifest(
+    grounding_course: tuple[Vault, Path, Path, dict[str, ManifestEntry]],
+) -> None:
+    vault, course, _assignment, _entries = grounding_course
+    destination = course / "_meta" / "content_map.json"
+    payload = json.loads(destination.read_text(encoding="utf-8"))
+    for row in payload["topics"]:
+        if row["source_id"] == "20":
+            row["path"] = "Spring 2026/COURSE101_1265/content/other.md"
+    _write_json(destination, payload)
+
+    assert "20" not in {source.source_id for source in verified_sources(vault, course)}

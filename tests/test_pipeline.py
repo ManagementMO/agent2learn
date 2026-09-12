@@ -467,3 +467,73 @@ def test_second_unchanged_pipeline_run_is_byte_idempotent(
     assert len(list((root / ".a2l" / "snapshots").glob("*.json"))) == 1
     assert first_report.snapshot_path == second_report.snapshot_path
     assert _tree(root) == first
+
+
+@pytest.mark.parametrize("selection", [{}, {"selected_offering_ids": None}])
+def test_incomplete_initializer_selection_does_not_authorize_sync(
+    tmp_path: Path, selection: dict[str, object]
+) -> None:
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+    (vault.state() / "init.json").write_text(
+        json.dumps({"schema_version": 1, "vault_confirmed": True, **selection}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(NotConfigured, match="a2l init"):
+        _pipeline().load_sync_preferences(vault)
+
+
+def _reading_toc() -> dict[str, object]:
+    return {
+        "Modules": [
+            {
+                "ModuleId": 1,
+                "Title": "Readings",
+                "Modules": [],
+                "Topics": [
+                    {
+                        "TopicId": 1,
+                        "Title": "Reading.txt",
+                        "TypeIdentifier": "File",
+                        "Url": "/content/reading.txt",
+                        "Size": 50,
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def test_empty_selected_course_does_not_stop_other_courses(tmp_path: Path) -> None:
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+    client = FakeClient(
+        [course(), course(222222, code="COURSE202")],
+        tocs={111111: {"Modules": []}, 222222: _reading_toc()},
+    )
+
+    report = _pipeline().run_pipeline(client, vault, client.school, render_outlines=False)
+
+    assert report.exit_code == 0
+    assert report.files.downloaded == 1
+    assert report.indexed_courses == 2
+    assert vault.entry("uwaterloo:222222:topic:1") is not None
+    assert (vault.root / report.snapshot_path).is_file()
+
+
+@pytest.mark.parametrize("invalid", [{"unexpected": []}, {"Modules": [{"ModuleId": 1}]}])
+def test_malformed_toc_keeps_cache_but_blocks_success_and_downloads(
+    tmp_path: Path, invalid: dict[str, object]
+) -> None:
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+    client = FakeClient([course()], tocs={111111: _reading_toc()})
+    initial = ingest_module.ingest_metadata(client, vault, client.school)
+    client.tocs[111111] = invalid
+
+    report = _pipeline().run_pipeline(client, vault, client.school, render_outlines=False)
+
+    assert report.exit_code != 0 and report.metadata.errors
+    assert any(error.startswith("toc:") for error in report.metadata.errors)
+    assert client.download_calls == []
+    assert report.metadata.topic_count == initial.topic_count == 1
+    row = report.metadata.courses[0].topics[0]
+    assert row.missing_since is None and row.withdrawn_at is None

@@ -172,6 +172,7 @@ term. The normative shape is:
 │   ├── manifest.json                 canonical source keys -> source/derived artifact records
 │   ├── AUDIT.md                      structural coverage report
 │   ├── history/<source-key-digest>/  immutable prior source/twin revisions + metadata
+│   ├── pending-generated/            recoverable prompt/outline source-and-twin transactions
 │   ├── snapshots/                    deterministic inputs for `a2l diff`
 │   ├── submissions/                  minimal verified/unknown local upload receipts
 │   └── private/                      HMAC key and category inventory; permission-restricted
@@ -194,6 +195,7 @@ term. The normative shape is:
         │   └── announcements.md      merged chronology; withdrawn items remain marked
         ├── discussions/              absent unless explicitly enabled
         └── _meta/
+            ├── course.json           stable school/org-unit directory ownership
             ├── toc.json  assignments.json  quizzes.json  news.json
             ├── content_map.json  ai_policy.json
             └── my_grades.json        absent unless explicitly enabled
@@ -204,13 +206,23 @@ Rules that make this layout durable:
 - `<Term label>` is derived by the school adapter; `<term code>` and the course org-unit ID remain
   in metadata. `<Course label>` prefers the official course code, then the offering name, then a
   stable `Course-<short org-unit digest>` fallback. A path assigned to a canonical course/source key
-  is persisted and does not move merely because a display title changes.
+  is persisted and does not move merely because a display title changes. `_meta/course.json`
+  records schema version 1, school, org-unit ID, code, name, and term; it contains no timestamp or
+  student identity. Assignment rows retain a vault-relative `directory` keyed by their Dropbox ID,
+  including submission-only folders before instructions exist. Bindings are written before prompt
+  or hub generation, and remote metadata cannot replace them. Legacy paths are adopted from a
+  matching manifest or unambiguous prior metadata; ambiguous ownership fails closed. Display-name
+  collisions allocate distinct directories rather than merging courses or assignments.
 - `content/` follows the complete parent/child TOC by stable topic ID. Empty modules still appear in
   `INDEX.md`; a file bound never removes metadata from the tree. Duplicate titles are disambiguated
   deterministically under the cross-platform naming contract.
 - Original bytes and generated twins are adjacent because that is the simplest surface for a human
   or file-reading agent. The manifest—not filename resemblance—proves which twin belongs to which
-  source revision.
+  source revision. Every materialized source and twin path stays reserved by its identity even
+  when the file is temporarily missing. Generated prompts and rendered outlines stage both files
+  and a validated manifest journal before replacement. Restart completes that transaction before
+  accepting a newer revision; changes made to a destination after interruption are refused rather
+  than overwritten.
 - `INDEX.md`, assignment `README.md`, announcements, policy records, and `_meta/*.json` are generated
   artifacts. Their deterministic provenance is recorded. `assignments/*/instructions.{html,md}` and
   first-party attachments retain their D2L source identity separately from the generated hub, so
@@ -503,7 +515,9 @@ Both installers perform the same five steps:
    minimum and bootstrap version; release review may update both scripts together after installer
    smoke tests. Do not reimplement uv's installer and do not use the mutable latest-version URL.
 2. Install the exact release embedded in the installer with
-   `uv tool install "agent2learn==<version>"`.
+   `uv tool install "agent2learn==<version>" --python ">=3.11,<3.15"`. uv may download a supported
+   interpreter when the system default is older. After uv bootstrap, its actual executable
+   directory must be available to the current installer process before the tool install begins.
 3. Run `uv tool update-shell`, then obtain the actual executable directory from
    `uv tool dir --bin` and prepend it to the current process's `PATH`. Do not assume
    `~/.local/bin`. On Windows, uv itself updates the user registry and broadcasts
@@ -946,7 +960,9 @@ point; retrofitting migrations onto vaults in the wild is not possible.
   `a2l privacy purge discussions` first enumerate exact files/JSON fields, default to preview, and
   require an interactive phrase before removal. The inventory covers current category files,
   snapshots, manifest records, category-derived index text, Agent2Learn-managed revisions/backups,
-  and the discussion pseudonym key when no retained discussion needs it. They never use a recursive
+  and the discussion pseudonym key when no retained discussion needs it. Backup discovery stays
+  inside the selected vault; a similarly named sibling or external backup is not proof of ownership
+  and is left untouched. They never use a recursive
   broad delete, touch unrelated course source files, or imply secure erasure from filesystem
   snapshots or external backups. Disabling a category stops future collection but does not silently
   destroy prior local data; the CLI points to purge.

@@ -313,7 +313,7 @@ def test_outline_local_install_failure_is_an_error_not_a_gap(
     def refuse_write(*args: object, **kwargs: object) -> None:
         raise OSError("disk write refused")
 
-    monkeypatch.setattr(outlines_module, "_install_bytes", refuse_write)
+    monkeypatch.setattr(outlines_module.paths, "atomic_install_temp", refuse_write)
 
     result = ingest_outlines(browser, vault, school, metadata)
 
@@ -458,3 +458,89 @@ def test_cdp_outline_browser_uses_existing_connection_and_no_new_profile() -> No
     browser.close_target()
     assert connection.calls[-1] == "Page.close"
     assert connection.closed is True
+
+
+def test_outline_render_preserves_unowned_markdown_at_the_preferred_path(tmp_path: Path) -> None:
+    vault, metadata = _metadata(tmp_path)
+    directory = metadata.courses[0].directory / "content" / "Outlines"
+    directory.mkdir(parents=True)
+    notes = directory / "Course Outline.md"
+    notes.write_text("My outline annotations.\n", encoding="utf-8")
+    browser = FakeOutlineBrowser(
+        OutlinePage(
+            html="<html><body><h1>Official outline</h1></body></html>",
+            canonical_url="https://learn.uwaterloo.ca/outline.html",
+        )
+    )
+
+    result = ingest_outlines(browser, vault, UWaterloo(), metadata)
+
+    assert result.rendered == 1 and not result.errors
+    assert notes.read_text(encoding="utf-8") == "My outline annotations.\n"
+    entry = vault.entry("uwaterloo:111111:topic:1")
+    assert entry is not None
+    assert vault.root / entry.derived["markdown"].path != notes
+    assert "Official outline" in (vault.root / entry.derived["markdown"].path).read_text(
+        encoding="utf-8"
+    )
+
+
+def test_outline_refresh_recovers_if_manifest_save_fails_after_source_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault, metadata = _metadata(tmp_path)
+    browser = FakeOutlineBrowser(
+        OutlinePage(
+            html="<h1>First outline</h1>", canonical_url="https://learn.uwaterloo.ca/outline.html"
+        )
+    )
+    assert ingest_outlines(browser, vault, UWaterloo(), metadata).rendered == 1
+    browser.result = OutlinePage(
+        html="<h1>Second outline</h1>", canonical_url="https://learn.uwaterloo.ca/outline.html"
+    )
+
+    def fail_save() -> None:
+        raise OSError("synthetic manifest failure")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(vault, "save_manifest", fail_save)
+        assert ingest_outlines(browser, vault, UWaterloo(), metadata).errors
+    restarted = Vault(tmp_path)
+
+    result = ingest_outlines(browser, restarted, UWaterloo(), metadata)
+
+    assert result.rendered == 1 and not result.errors
+    entry = restarted.entry("uwaterloo:111111:topic:1")
+    assert entry is not None and "Second outline" in restarted.materialized(entry).read_text(
+        encoding="utf-8"
+    )
+    assert any(
+        "First outline" in path.read_text(encoding="utf-8")
+        for path in restarted.history_bucket("uwaterloo:111111:topic:1").rglob("*.html")
+    )
+
+
+def test_new_outline_does_not_take_another_sources_missing_path(tmp_path: Path) -> None:
+    vault, metadata = _metadata(tmp_path)
+    browser = FakeOutlineBrowser(
+        OutlinePage(html="<h1>First</h1>", canonical_url="https://learn.uwaterloo.ca/outline.html")
+    )
+    assert ingest_outlines(browser, vault, UWaterloo(), metadata).rendered == 1
+    first = vault.entry("uwaterloo:111111:topic:1")
+    assert first is not None
+    vault.materialized(first).unlink()
+    course_metadata = metadata.courses[0]
+    second = replace(
+        course_metadata.topics[0], source_key="uwaterloo:111111:topic:2", source_id="2", topic_id=2
+    )
+    updated = replace(metadata, courses=(replace(course_metadata, topics=(second,)),))
+    browser.result = OutlinePage(
+        html="<h1>Second</h1>", canonical_url="https://learn.uwaterloo.ca/outline.html"
+    )
+
+    result = ingest_outlines(browser, vault, UWaterloo(), updated)
+
+    assert result.rendered == 1
+    added = vault.entry(second.source_key)
+    assert added is not None and added.path != first.path
+    assert not vault.materialized(first).exists()

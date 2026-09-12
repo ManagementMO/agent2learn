@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from agent2learn import config, privacy
-from agent2learn.vault import Vault
+from agent2learn.vault import Vault, _backup_state
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -283,3 +283,23 @@ def test_unknown_category_and_symlinked_target_are_refused(tmp_path: Path) -> No
         pytest.skip("the test environment cannot create symlinks")
     with pytest.raises(Exception, match="symlink"):
         privacy.plan_purge(vault, "grades")
+
+
+def test_grade_purge_does_not_claim_another_vaults_sibling_backup(tmp_path: Path) -> None:
+    outer, _outer_course = _base_vault(tmp_path / "outer")
+    outer_snapshot = _write_snapshot(outer.root)
+    backup = _backup_state(outer.state(), 1, root=outer.root)
+    unrelated = backup / "snapshots" / outer_snapshot.name
+    before = unrelated.read_bytes()
+    inner, inner_course = _base_vault(outer.root / "inner")
+    owned = inner_course / "_meta/my_grades.json"
+    _write_json(owned, [{"id": "g1", "displayed": "97%"}])
+
+    plan = privacy.plan_purge(inner, "grades")
+
+    assert unrelated not in {target.path for target in plan.targets}
+    assert owned in {target.path for target in plan.targets}
+    privacy.execute_purge(inner, plan, phrase="PURGE GRADES", interactive=True)
+    assert not owned.exists()
+    assert unrelated.read_bytes() == before
+    assert outer_snapshot.read_bytes() == before

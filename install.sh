@@ -14,6 +14,7 @@ set -euo pipefail
 # ---- reviewed constants ---------------------------------------------------------------
 UV_VERSION="0.12.5"
 A2L_VERSION="0.1.0"
+PYTHON_REQUIREMENT=">=3.11,<3.15"
 # ---------------------------------------------------------------------------------------
 
 UV_INSTALLER="https://astral.sh/uv/${UV_VERSION}/install.sh"
@@ -41,6 +42,22 @@ detect_uv_version() {
     raw="$(uv --version 2>/dev/null || true)"
     # "uv 0.12.5 (abcdef 2026-01-01)" -> "0.12.5"
     printf '%s' "$raw" | sed -n 's/^uv[[:space:]]\{1,\}\([0-9][0-9.]*\).*/\1/p'
+}
+
+installed_uv_bin() {
+    local directory="${UV_INSTALL_DIR:-${CARGO_DIST_FORCE_INSTALL_DIR:-${UV_UNMANAGED_INSTALL:-}}}"
+    if [ -n "$directory" ]; then
+        if [ "$directory" = "${CARGO_HOME:-${HOME:-}/.cargo}" ]; then directory="$directory/bin"; fi
+    elif [ -n "${XDG_BIN_HOME:-}" ]; then
+        directory="$XDG_BIN_HOME"
+    elif [ -n "${XDG_DATA_HOME:-}" ]; then
+        directory="$XDG_DATA_HOME/../bin"
+    elif [ -n "${HOME:-}" ]; then
+        directory="$HOME/.local/bin"
+    else
+        fail "could not locate the user executable directory for uv"
+    fi
+    printf '%s\n' "$directory"
 }
 
 main() {
@@ -71,6 +88,7 @@ Install the tested version yourself, then rerun this installer:
     else
         say "  - reuse the uv ${existing} already on your PATH"
     fi
+    say "  - use Python 3.11-3.14, downloading a compatible interpreter if needed"
     say "  - install agent2learn==${A2L_VERSION} as a uv tool"
     say "  - add the uv tool directory to your shell PATH"
     say "  - verify that a2l runs"
@@ -87,13 +105,17 @@ Install the tested version yourself, then rerun this installer:
             || fail "could not download the uv installer from ${UV_INSTALLER}"
         sh "$installer" || { rm -f "$installer"; fail "the uv installer did not complete"; }
         rm -f "$installer"
+        local bootstrap_bin
+        bootstrap_bin="$(installed_uv_bin)"
+        PATH="${bootstrap_bin}:${PATH}"
+        export PATH
         hash -r 2>/dev/null || true
     fi
 
     command -v uv > /dev/null 2>&1 || fail "uv is still not on PATH after installation"
 
     say "installing agent2learn==${A2L_VERSION}"
-    uv tool install "agent2learn==${A2L_VERSION}"
+    uv tool install "agent2learn==${A2L_VERSION}" --python "$PYTHON_REQUIREMENT"
     uv tool update-shell || true
 
     local tool_bin

@@ -49,7 +49,12 @@ def _read(path: Path) -> str:
 
 
 def _fake_bin(
-    tmp_path: Path, *, uv_version: str | None, record: Path, a2l_version: str | None = None
+    tmp_path: Path,
+    *,
+    uv_version: str | None,
+    record: Path,
+    a2l_version: str | None = None,
+    bootstrapped_bin: Path | None = None,
 ) -> Path:
     """Build a throwaway PATH holding only the stubs the installer may legitimately call."""
     binary = tmp_path / "bin"
@@ -58,6 +63,8 @@ def _fake_bin(
     state.mkdir(parents=True, exist_ok=True)
     tool_bin = tmp_path / "tool-bin"
     tool_bin.mkdir(parents=True, exist_ok=True)
+    installed_bin = bootstrapped_bin if bootstrapped_bin is not None else binary
+    installed_label = "bootstrapped-uv" if bootstrapped_bin is not None else "uv"
 
     def write(name: str, body: str) -> Path:
         destination = binary / name
@@ -100,10 +107,11 @@ if [ -n "$target" ]; then
 #!/usr/bin/env bash
 set -eu
 echo "astral-installer-ran" >> "@RECORD@"
+mkdir -p "@BIN@"
 cat > "@BIN@/uv" <<'UVEOF'
 #!/usr/bin/env bash
 set -eu
-echo "uv $*" >> "@RECORD@"
+echo "{installed_label} $*" >> "@RECORD@"
 case "$1" in
   --version) echo "uv {UV_VERSION} (installed stub)" ;;
   tool)
@@ -117,7 +125,7 @@ esac
 UVEOF
 chmod 755 "@BIN@/uv"
 INNER
-  sed -i.bak "s#@RECORD@#{record}#g; s#@TOOLBIN@#{tool_bin}#g; s#@BIN@#{binary}#g" "$target"
+  sed -i.bak "s#@RECORD@#{record}#g; s#@TOOLBIN@#{tool_bin}#g; s#@BIN@#{installed_bin}#g" "$target"
   rm -f "$target.bak"
 fi
 ''',
@@ -414,3 +422,62 @@ def test_ci_candidate_index_wins_over_a_same_version_public_release() -> None:
         assert "UV_INDEX=" in workflow, workflow_name
         assert "UV_DEFAULT_INDEX=https://pypi.org/simple" in workflow, workflow_name
         assert "UV_INDEX_STRATEGY=first-index" in workflow, workflow_name
+
+
+@posix_shell_only
+@pytest.mark.parametrize("existing", [None, "0.1.0"])
+@pytest.mark.parametrize(
+    "layout", ["default", "xdg-bin", "xdg-data", "custom", "unmanaged", "cargo"]
+)
+def test_bootstrap_uses_new_uv_outside_the_original_path(
+    tmp_path: Path, existing: str | None, layout: str
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    environment = {"HOME": str(home)}
+    installed = home / ".local" / "bin"
+    if layout == "xdg-bin":
+        installed = home / "my bin"
+        environment["XDG_BIN_HOME"] = str(installed)
+    elif layout == "xdg-data":
+        installed = home / "xdg" / "share" / ".." / "bin"
+        environment["XDG_DATA_HOME"] = str(home / "xdg" / "share")
+    elif layout == "custom":
+        installed = home / "custom uv"
+        environment["UV_INSTALL_DIR"] = str(installed)
+        environment["XDG_BIN_HOME"] = str(home / "unused")
+    elif layout == "unmanaged":
+        installed = home / "unmanaged"
+        environment["UV_UNMANAGED_INSTALL"] = str(installed)
+    elif layout == "cargo":
+        installed = home / ".cargo" / "bin"
+        environment["UV_INSTALL_DIR"] = str(home / ".cargo")
+    record = tmp_path / "calls.log"
+    record.write_text("", encoding="utf-8")
+    binary = _fake_bin(tmp_path, uv_version=existing, record=record, bootstrapped_bin=installed)
+    environment["PATH"] = f"{binary}:/usr/bin:/bin"
+    assert not installed.exists()
+
+    result = subprocess.run(
+        ["bash", str(SH)], cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=20
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = record.read_text(encoding="utf-8")
+    assert f"bootstrapped-uv tool install agent2learn=={__version__}" in calls
+    assert "ONBOARDING-STARTED" not in result.stdout
+    assert HANDOFF in result.stdout
+
+
+@posix_shell_only
+def test_installer_requests_supported_python_instead_of_an_old_system_default(
+    tmp_path: Path,
+) -> None:
+    result, calls = _run(tmp_path, uv_version=UV_VERSION)
+
+    assert result.returncode == 0
+    invocation = next(
+        line.split() for line in calls.splitlines() if line.startswith("uv tool install ")
+    )
+    assert "--python" in invocation
+    assert invocation[invocation.index("--python") + 1] == ">=3.11,<3.15"

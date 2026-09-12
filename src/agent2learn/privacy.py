@@ -269,30 +269,14 @@ def _state_roots(vault: Vault) -> tuple[_StateRoot, ...]:
         result.append(_StateRoot(current, "<vault>/.a2l", vault.root))
 
     result.extend(_backup_state_roots(vault.root, vault.root))
-
-    parent = vault.root.parent
-    if not paths.long_path(parent).is_dir():
-        return tuple(result)
-    children = _directory_children(parent, "schema backup inventory")
-    for child in children:
-        if child == vault.root:
-            continue
-        result.extend(_backup_state_roots(parent, parent, only=child))
     return tuple(result)
 
 
-def _backup_state_roots(
-    directory: Path,
-    trusted_root: Path,
-    *,
-    only: Path | None = None,
-) -> list[_StateRoot]:
-    children = (
-        [only] if only is not None else _directory_children(directory, "schema backup inventory")
-    )
+def _backup_state_roots(directory: Path, trusted_root: Path) -> list[_StateRoot]:
+    children = _directory_children(directory, "schema backup inventory")
     result: list[_StateRoot] = []
     for child in children:
-        if child is None or not _BACKUP_NAME.fullmatch(child.name):
+        if not _BACKUP_NAME.fullmatch(child.name):
             continue
         if paths.is_link(child):
             raise A2LError("privacy purge refuses a symlinked schema backup")

@@ -18,7 +18,7 @@ from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
-from agent2learn import paths
+from agent2learn import locations, paths
 from agent2learn.errors import A2LError
 from agent2learn.vault import ManifestEntry, Vault
 
@@ -121,6 +121,13 @@ def resolve_course(vault: Vault, selector: str) -> Path:
                 value = item.get(field)
                 if isinstance(value, str) and value:
                     metadata[target] = value
+        identity = locations.read_course_identity(course_dir)
+        if identity is not None:
+            metadata.update(
+                code=identity.code or course_dir.name,
+                name=identity.name or identity.code or course_dir.name,
+                term=identity.term or metadata["term"],
+            )
 
     if not candidates:
         raise A2LError("no local courses found; run: a2l sync")

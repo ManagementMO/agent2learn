@@ -18,7 +18,7 @@ import os
 import re
 import shutil
 import zipfile
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from html import escape
 from html.parser import HTMLParser
@@ -482,11 +482,17 @@ def convert_vault(
     backend: ConverterBackend | None = None,
     fallback: ConverterBackend | None = None,
     ocr_words_per_page: int = DEFAULT_OCR_WORDS_PER_PAGE,
+    source_keys: Collection[str] | None = None,
 ) -> ConversionReport:
     """Install current, hash-linked twins for manifest sources without losing revisions."""
 
     _validate_threshold(ocr_words_per_page)
     entries = vault.manifest()
+    if source_keys is not None:
+        selected = set(source_keys)
+        if selected - entries.keys():
+            raise A2LError("conversion source is not recorded in the manifest")
+        entries = {key: entry for key, entry in entries.items() if key in selected}
     selected_backend = backend or PdfOxideBackend()
     selected_fallback = fallback or PdfiumBackend()
     converted = skipped = gaps = 0
@@ -539,13 +545,17 @@ def convert_vault(
             )
             continue
         expected_threshold = ocr_words_per_page if source_kind == "pdf" else None
-        if artifact is not None and _artifact_is_current(
-            vault,
-            artifact,
-            entry,
-            expected_tool,
-            expected_version,
-            expected_threshold,
+        if (
+            artifact is not None
+            and vault.owns_derived_path(key, artifact.path)
+            and _artifact_is_current(
+                vault,
+                artifact,
+                entry,
+                expected_tool,
+                expected_version,
+                expected_threshold,
+            )
         ):
             skipped += 1
             continue
@@ -599,7 +609,7 @@ def convert_vault(
             )
             continue
 
-        destination = source.with_suffix(".md")
+        destination = vault.derived_destination(key, source.with_suffix(".md"))
         prior_artifact = entry.derived.get("markdown")
         local_modification = False
         if prior_artifact is not None:
@@ -1131,9 +1141,10 @@ def _is_assignment_prompt_artifact(entry: ManifestEntry, artifact: DerivedArtifa
     source = PurePosixPath(entry.path)
     derived = PurePosixPath(artifact.path)
     return (
-        source.name.casefold() == "instructions.html"
+        re.fullmatch(r"instructions(?:_\d+)?\.html", source.name.casefold()) is not None
         and any(part.casefold() == "assignments" for part in source.parts)
-        and derived == source.with_suffix(".md")
+        and derived.parent == source.parent
+        and derived.suffix.casefold() == ".md"
     )
 
 

@@ -16,6 +16,7 @@ $ErrorActionPreference = "Stop"
 # ---- reviewed constants ---------------------------------------------------------------
 $UV_VERSION = "0.12.5"
 $A2L_VERSION = "0.1.0"
+$PYTHON_REQUIREMENT = ">=3.11,<3.15"
 # ---------------------------------------------------------------------------------------
 
 $UV_INSTALLER = "https://astral.sh/uv/$UV_VERSION/install.ps1"
@@ -77,6 +78,7 @@ if ($needsUv) {
 } else {
     Write-Output "  - reuse the uv $existing already on your PATH"
 }
+Write-Output "  - use Python 3.11-3.14, downloading a compatible interpreter if needed"
 Write-Output "  - install agent2learn==$A2L_VERSION as a uv tool"
 Write-Output "  - let uv add its tool directory to your user PATH"
 Write-Output "  - verify that a2l runs"
@@ -94,7 +96,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 
 Write-Output "installing agent2learn==$A2L_VERSION"
-& uv tool install "agent2learn==$A2L_VERSION"
+& uv tool install "agent2learn==$A2L_VERSION" --python $PYTHON_REQUIREMENT
 try { & uv tool update-shell } catch { }
 
 $toolBin = (& uv tool dir --bin | Out-String).Trim()
