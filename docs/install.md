@@ -59,7 +59,7 @@ irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 
 **Either platform, if `uv` is already installed and the user prefers it:**
 
 ```bash
-uv tool install agent2learn
+uv tool install agent2learn --python 3.12
 ```
 
 What the scripts do, so you can explain it accurately: they install a pinned uv if the existing one
@@ -82,7 +82,7 @@ That is the expected, correct outcome. It is not an error.
 a2l --version
 ```
 
-Expect `agent2learn 0.1.0` or later. If the command is still not found, the tool directory is not on
+Expect `agent2learn 0.1.1` or later. If the command is still not found, the tool directory is not on
 this shell's `PATH`; tell the user to open a new terminal. On Windows, a terminal that was already
 open before the install keeps its old environment and must be reopened.
 

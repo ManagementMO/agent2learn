@@ -11,7 +11,7 @@ import pytest
 from conftest import strip_ansi
 from typer.testing import CliRunner
 
-from agent2learn import config, skills
+from agent2learn import __version__, config, skills
 from agent2learn.cli import app
 from agent2learn.doctor import Check, report, run_checks
 from agent2learn.vault import Vault
@@ -46,7 +46,7 @@ MALICIOUS_COURSE_TEXT = (
 )
 
 
-def _synthetic_source(root: Path, *, version: str = "0.1.0") -> Path:
+def _synthetic_source(root: Path, *, version: str = __version__) -> Path:
     source = root / "skills"
     for slug in EXPECTED_SKILLS:
         directory = source / slug
@@ -246,7 +246,7 @@ def test_project_install_copies_by_default_writes_metadata_and_deduplicates_shar
         metadata = json.loads(installed.joinpath(".agent2learn.json").read_text(encoding="utf-8"))
         assert metadata == {
             "package": "agent2learn",
-            "package_version": "0.1.0",
+            "package_version": __version__,
             "schema_version": 1,
             "skill": slug,
             "source": "ManagementMO/agent2learn",
@@ -850,10 +850,10 @@ def test_public_skill_artifacts_validate_frontmatter_manifest_and_contracts() ->
 
 
 def test_frontmatter_validation_rejects_bad_names_descriptions_and_missing_versions() -> None:
-    assert skills.validate_frontmatter("bad--name", "short", "0.1.0") == [
+    assert skills.validate_frontmatter("bad--name", "short", __version__) == [
         "name must use lowercase letters, numbers, and single hyphens"
     ]
-    assert skills.validate_frontmatter("a2l-study", "x" * 1025, "0.1.0") == [
+    assert skills.validate_frontmatter("a2l-study", "x" * 1025, __version__) == [
         "description must be 1024 characters or fewer"
     ]
     assert skills.validate_frontmatter("a2l-study", "short", "") == [
@@ -863,7 +863,7 @@ def test_frontmatter_validation_rejects_bad_names_descriptions_and_missing_versi
         "metadata.version must be a valid package version"
     ]
     assert skills.validate_frontmatter("a2l-study", "short", "0.2.0") == [
-        "metadata.version must match agent2learn 0.1.0"
+        f"metadata.version must match agent2learn {__version__}"
     ]
 
 
@@ -997,18 +997,18 @@ def test_doctor_reports_per_agent_project_and_global_skill_versions_without_path
 
     assert check.status == "warn"
     assert "3 destination(s), 4 detected agent(s)" in check.detail
-    assert "Claude Code (project): 4 current skill(s), package 0.1.0" in check.detail
+    assert f"Claude Code (project): 4 current skill(s), package {__version__}" in check.detail
     assert (
-        "Codex (project): 2 current skill(s), package 0.1.0; 1 stale skill(s), "
+        f"Codex (project): 2 current skill(s), package {__version__}; 1 stale skill(s), "
         "package 0.0.9; 1 conflict skill(s) left alone" in check.detail
     )
-    assert "Codex (global): 4 current skill(s), package 0.1.0" in check.detail
+    assert f"Codex (global): 4 current skill(s), package {__version__}" in check.detail
     assert (
-        "Cursor (project): 2 current skill(s), package 0.1.0; 1 stale skill(s), "
+        f"Cursor (project): 2 current skill(s), package {__version__}; 1 stale skill(s), "
         "package 0.0.9; 1 conflict skill(s) left alone" in check.detail
     )
     assert (
-        "Universal Agent Skills target (project): 2 current skill(s), package 0.1.0; "
+        f"Universal Agent Skills target (project): 2 current skill(s), package {__version__}; "
         "1 stale skill(s), package 0.0.9; 1 conflict skill(s) left alone" in check.detail
     )
     assert conflict.joinpath("SKILL.md").read_text(encoding="utf-8") == "local skill kept intact\n"

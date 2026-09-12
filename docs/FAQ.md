@@ -8,8 +8,8 @@ is what it will tell you.
 **`a2l: command not found` right after installing.**
 The tool directory is not on this shell's `PATH` yet. `uv tool update-shell` (which the installers
 run) updates future sessions, so **open a new terminal**. To find the directory:
-`uv tool dir --bin`. If you installed manually, `uv tool install agent2learn` and then reopen the
-terminal.
+`uv tool dir --bin`. For a manual install, use `uv tool install agent2learn --python 3.12`,
+then `uv tool update-shell` and reopen the terminal.
 
 **Windows: I installed it but PowerShell cannot find `a2l`.**
 uv writes the user `PATH` entry and broadcasts the change, but a terminal that was **already open**

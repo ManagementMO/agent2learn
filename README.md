@@ -31,10 +31,14 @@ irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 
 **Already have [uv](https://docs.astral.sh/uv/)?**
 
 ```bash
-uv tool install agent2learn && a2l init
+uv tool install agent2learn --python 3.12 && a2l init
 ```
 
-`install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.0), verify that `a2l`
+These commands install the published package from PyPI, not an unreleased repository checkout.
+The explicit Python selection lets uv obtain a compatible interpreter instead of choosing an
+older system default.
+
+`install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.1), verify that `a2l`
 runs, and then **continue straight into interactive `a2l init`** in the same command. If they are
 run without a terminal on both ends — in CI, or through a pipe — they stop after verifying and
 print the exact next step instead of setting anything up. Neither script needs administrator
@@ -144,10 +148,11 @@ external request Agent2Learn can make, is in [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Status
 
-Agent2Learn is in active development and **not yet published as a package**. The repository holds
-the tested implementation of the full v0.1 command surface; publication is gated on the release
-checks in [docs/LAUNCH.md](docs/LAUNCH.md), including live same-device authentication records on
-Windows, macOS, and Linux, and a supervised upload test before the submission path is enabled in
-any published build.
+Agent2Learn is in active development. This branch targets **0.1.1**; the pinned installers require
+that version to be available on PyPI before they can install it. A release-preparation branch is
+not evidence of publication. The repository holds the tested implementation of the full v0.1
+command surface; publication is gated on the release checks in [docs/LAUNCH.md](docs/LAUNCH.md),
+including live same-device authentication records on Windows, macOS, and Linux, and a supervised
+upload test before the submission path is enabled in any published build.
 
 Licensed under [Apache-2.0](LICENSE).

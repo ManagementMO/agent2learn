@@ -487,3 +487,19 @@ regressions. Frontend and video work are outside this change.
 
 Local verification does not replace exact-commit three-OS CI or live same-device authentication.
 Submission remains disabled, and publication still requires the existing human release gates.
+
+## Release preparation — 0.1.1
+
+- The remediation PR #17 is merged. Release preparation uses `release/v0.1.1` from current `main`,
+  not the shared frontend branch. A divergent `git pull origin main` on that frontend branch is
+  not a package-release failure; do not reset, rebase, or overwrite another agent's work.
+- Package metadata, runtime `__version__`, both installer pins, and all four skill metadata versions
+  must agree on 0.1.1. The CLI-version smoke compares reported output with installed distribution
+  metadata, so run `uv sync --frozen --all-extras --dev` after changing a version.
+- The direct manual command is `uv tool install agent2learn --python 3.12`, followed by `a2l init`.
+  An explicit supported Python request avoids selecting an incompatible older system default.
+- The historical `v0.1.0` tag points at 67b12bd and must not be silently moved. Prepare a fresh
+  matching `v0.1.1` tag only after the existing release approvals and publisher setup are complete.
+- A release-preparation commit or PR is not publication. PyPI/TestPyPI account bindings, actual
+  registry uploads, and live same-device validation must be verified separately. Upload capability
+  remains disabled; no safety gate is relaxed for this version bump.
