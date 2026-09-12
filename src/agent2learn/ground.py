@@ -398,6 +398,8 @@ def _verify(
     manifest: Mapping[str, ManifestEntry],
     source_key: str,
     row: Mapping[str, object],
+    *,
+    declared_prompt: bool = False,
 ) -> _Verified | None:
     entry = manifest.get(source_key)
     if entry is None:
@@ -405,8 +407,18 @@ def _verify(
     artifact = entry.derived.get("markdown")
     if artifact is None or artifact.source_sha256 != entry.sha256:
         return None
+    if not declared_prompt and (
+        row.get("availability") != "markdown_ready"
+        or row.get("path") != artifact.path
+        or row.get("source_path") != entry.path
+        or row.get("source_sha256", row.get("sha256")) != entry.sha256
+        or row.get("source_id") != entry.source_id
+    ):
+        return None
+    if not vault.owns_derived_path(source_key, artifact.path):
+        return None
     twin = vault.root / PurePosixPath(artifact.path)
-    if _is_vault_state(twin):
+    if _is_vault_state(twin) or paths.has_link_component(twin, root=vault.root):
         return None
     if _digest(vault.materialized(entry)) != entry.sha256:
         return None
@@ -480,6 +492,7 @@ def _verify_declared(vault: Vault, declared: str, digest: str) -> _Verified | No
             {source_key: entry},
             source_key,
             {"source_key": source_key, "source_id": entry.source_id},
+            declared_prompt=True,
         )
     return None
 

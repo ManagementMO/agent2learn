@@ -515,3 +515,50 @@ def test_markdown_images_are_not_claims_and_do_not_pollute_claim_text() -> None:
     assert "base64" not in claims[0].text
     assert "figures/gap.png" not in claims[0].text
     assert "relaxation gap" in claims[0].text
+
+
+@pytest.mark.parametrize("alias", ["relative", "symlink", "hardlink"])
+def test_draft_file_aliases_cannot_cite_the_same_physical_file(
+    fixture_course: tuple[Vault, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+) -> None:
+    vault, course = fixture_course
+    source = course / "content" / "MIP-Modelling.md"
+    if alias == "relative":
+        monkeypatch.chdir(vault.root)
+        draft = source.relative_to(vault.root)
+    else:
+        draft = tmp_path / "alias.md"
+        if alias == "symlink":
+            try:
+                draft.symlink_to(source)
+            except OSError:
+                pytest.skip("symlink creation is unavailable")
+        else:
+            os.link(source, draft)
+
+    report = check(draft, course)
+
+    source_relative = source.relative_to(vault.root).as_posix()
+    assert source_relative not in report.revisions
+    assert all(
+        citation.path != source_relative
+        for finding in report.findings
+        for citation in finding.citations
+    )
+
+
+def test_independent_draft_copy_can_match_a_distinct_course_file(
+    fixture_course: tuple[Vault, Path], tmp_path: Path
+) -> None:
+    vault, course = fixture_course
+    source = course / "content" / "MIP-Modelling.md"
+    draft = tmp_path / "draft.md"
+    draft.write_bytes(source.read_bytes())
+
+    report = check(draft, course)
+
+    assert source.relative_to(vault.root).as_posix() in report.revisions
+    assert any(finding.status == "evidence_found" for finding in report.findings)

@@ -427,7 +427,7 @@ def check(draft: Path, course_dir: Path, *, assignment: str | None = None) -> Ch
     to read has not checked anything.
     """
 
-    draft_path = Path(draft)
+    draft_path = Path(draft).expanduser().absolute()
     text = _read_text(draft_path)
     if text is None:
         raise A2LError("draft file is unreadable")
@@ -1027,8 +1027,15 @@ def _display(path: Path, root: Path) -> str:
         return path.name
 
 
-def _same_file_key(path: Path) -> str:
-    return os.path.normcase(os.path.normpath(paths.plain_path(path)))
+def _same_file_key(path: Path) -> tuple[int, int] | str:
+    candidate = Path(path).expanduser()
+    try:
+        identity = paths.long_path(candidate).stat()
+        if identity.st_ino:
+            return identity.st_dev, identity.st_ino
+    except OSError:
+        pass
+    return os.path.normcase(os.path.abspath(paths.plain_path(candidate)))
 
 
 def _read_text(path: Path) -> str | None:
