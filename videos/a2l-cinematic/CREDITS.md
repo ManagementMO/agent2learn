@@ -44,7 +44,7 @@ visible course, context or source-editor document icons.
 
 ## Software
 
-HyperFrames 0.8.31, GSAP 3.14.2, Geist Variable/Mono 5.3.0,
+HyperFrames 0.8.35, GSAP 3.14.2, Geist Variable/Mono 5.3.0,
 Playwright 1.58.2, FFmpeg, NumPy 2.2.6 and SciPy 1.15.3.
 Geist Mono includes its real medium weight rather than relying on synthetic
 bold. Dependencies retain their licenses.
@@ -53,7 +53,36 @@ Registry references: ui-focus-zoom, code-terminal-run, tilt-card,
 arc-motion-path. These informed authored mechanisms; their showcase UI and
 branding are not mounted.
 
-## Current preview music and Foley — Launchbeat (2026-09-08)
+## Current preview music — Disclosure (2026-09-11)
+
+**Disclosure — Expressing What Matters**, sourced from the artist's
+[official visualiser](https://www.youtube.com/watch?v=nXOSgekiAJc).
+The public audio stream was retrieved without account cookies, subscription
+changes or DRM circumvention. Local source: `.media/audio/bgm/bgm_017.webm`,
+264.701s, Opus stereo/48kHz. The local media resolver froze it as `bgm_017`;
+`audio_meta.json` records the source SHA-256 and public source URL.
+
+The audition uses source **0.00–17.50s**, playback rate **1.0**, two-pass loudness
+preparation (-20 LUFS target, -6 dBTP ceiling, no added mastering gain) and a
+native HyperFrames volume envelope. The short quiet opening belongs to the
+recording; no silence was inserted. All established typing/click/receipt/chime/
+sweep cues remain unchanged, and both Foley stems are byte-identical to the
+previous Launchbeat preview.
+
+Active local files:
+
+- `assets/audio/signalflow-disclosure-{bed,typing,interface}.wav`
+- `assets/audio/signalflow-disclosure-mix-reference.wav`
+- `renders/agent2learn-signalflow-disclosure-audio.m4a` (audio-only review)
+
+This is a commercial recording, **not an original composition, catalog-cleared
+track, or newly generated music**. Availability of a public stream does not
+establish rights to publish this synchronization. All source/derived audio is
+local and Git-ignored; no upload or MP4 export was performed. Obtain the required
+clearance before public release. The owner approved the updated editor mix on
+2026-09-11; this is creative approval, not a rights-clearance claim.
+
+## Previous preview music and Foley — Launchbeat (2026-09-08)
 
 New bed: `.media/audio/bgm/bgm_012.wav`, retrieved through the existing signed-in
 HeyGen catalog. Provider track ID: `840f825204824c678f82835e27044fca`; catalog
@@ -72,11 +101,12 @@ It lands at 7.82s and 16.10s, with bounded level and bandwidth. All original
 keyboard/click/sweep sources below remain in use. The keyboard stem is
 byte-identical; some interface gains and sweep levels are slightly increased.
 
-Active local stems: `assets/audio/signalflow-launchbeat-{bed,typing,interface}.wav`.
+Preserved local stems: `assets/audio/signalflow-launchbeat-{bed,typing,interface}.wav`.
 The independent listening mix is `signalflow-launchbeat-mix-reference.wav`.
 An AAC audio-only review is in `renders/agent2learn-signalflow-launchbeat-audio.m4a`.
-No finished MP4 was replaced. `audio_meta.json` records the active sources,
-hashes, normalization measurement, events and automation.
+No finished MP4 was replaced. This revision's metadata is now preserved in
+`.archive/signalflow-launchbeat-audio/audio_meta.json`; `audio_meta.json` tracks
+the active Disclosure audition.
 
 Two other newly retrieved alternatives are retained but unused: `bgm_013`
 (short pop beat with a long quiet tail) and `bgm_015` (slower bounce-style groove).

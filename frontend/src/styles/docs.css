@@ -29,6 +29,7 @@
   --muted: var(--color-zinc-300);
   --subtle: var(--color-zinc-400);
   --line: var(--color-zinc-800);
+  --docs-nav-current: var(--color-zinc-900);
 }
 
 :root[data-theme='light'] {
@@ -50,6 +51,7 @@
   --muted: var(--color-zinc-600);
   --subtle: var(--color-zinc-500);
   --line: var(--color-zinc-200);
+  --docs-nav-current: var(--color-zinc-100);
 }
 
 body {
@@ -154,14 +156,80 @@ h1#_top {
 .sidebar-content {
   font-size: 13px;
 }
-.sidebar-content a[aria-current='page'] {
-  background: var(--gold-wash);
+
+/* Page and section navigation share one quiet selection treatment. Keep a
+   transparent border on every row so selection never moves the label. */
+:where(.sidebar-content .top-level, starlight-toc, mobile-starlight-toc) {
+  --focus-ring: var(--ink);
+  --sl-color-text-accent: var(--ink);
+  --sl-color-accent: var(--accent-line);
+}
+:where(.sidebar-content .top-level, starlight-toc, mobile-starlight-toc) a {
+  min-block-size: 2rem;
+  padding-block: 0.375rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--subtle);
+  font-weight: 450;
+  line-height: 1.45;
+  text-decoration: none;
+  box-shadow: none;
+}
+.sidebar-content .top-level a {
+  padding-inline: 0.625rem;
+}
+:is(starlight-toc, mobile-starlight-toc) a {
+  --pad-inline: 0.625rem;
+}
+@media (hover: hover) {
+  :where(.sidebar-content .top-level, starlight-toc, mobile-starlight-toc) a:hover {
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    color: var(--ink);
+  }
+}
+:where(.sidebar-content .top-level, starlight-toc, mobile-starlight-toc)
+  a:is([aria-current='page'], [aria-current='true']) {
+  background: var(--docs-nav-current);
+  border-color: var(--line);
   color: var(--ink);
   font-weight: 600;
-  box-shadow: inset 2px 0 var(--gold);
+}
+:where(.sidebar-content .top-level, starlight-toc, mobile-starlight-toc) a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.sidebar-content .top-level > li > details > ul > li {
+  margin-inline-start: 0;
+  padding-inline-start: 0;
+  border-inline-start: 0;
 }
 .sidebar-content .top-level > li + li {
   margin-top: 1.3rem;
+}
+@media (max-width: 49.999rem) {
+  .sidebar-content .top-level a {
+    min-block-size: 2.75rem;
+    padding-block: 0.625rem;
+    font-size: 0.9375rem;
+  }
+}
+starlight-toc li + li {
+  margin-block-start: 2px;
+}
+mobile-starlight-toc .dropdown {
+  padding: 0.375rem;
+}
+mobile-starlight-toc a {
+  min-block-size: 2.75rem;
+  align-items: center;
+}
+mobile-starlight-toc a[aria-current='true']::after {
+  block-size: 1rem;
+  background-color: currentColor;
+}
+mobile-starlight-toc details[open] .toggle {
+  border-color: var(--accent-line);
+  background: var(--docs-nav-current);
 }
 .sl-markdown-content .agent-prompt {
   margin-block: 24px;
@@ -199,10 +267,6 @@ starlight-tabs .tablist-wrapper a[role='tab'][aria-selected='true'] {
 }
 .right-sidebar-panel {
   font-size: 12px;
-}
-starlight-toc a[aria-current='true'] {
-  color: var(--ink);
-  box-shadow: inset 2px 0 var(--gold);
 }
 .sl-link-button {
   border-radius: 6px;

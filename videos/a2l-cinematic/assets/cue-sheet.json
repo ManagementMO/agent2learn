@@ -1,16 +1,19 @@
 {
   "duration": 17.5,
-  "audioPrefix": "signalflow-launchbeat",
-  "exportPrefix": "signalflow-launchbeat",
+  "audioPrefix": "signalflow-disclosure",
+  "exportPrefix": "signalflow-disclosure",
   "music": {
-    "id": "bgm_012",
-    "path": ".media/audio/bgm/bgm_012.wav",
-    "sourceStart": 0.454,
-    "playbackRate": 1.04,
-    "normalizationLufs": -17,
+    "id": "bgm_017",
+    "path": ".media/audio/bgm/bgm_017.webm",
+    "sourceStart": 0,
+    "playbackRate": 1,
+    "normalizationLufs": -20,
     "truePeakDb": -6,
-    "masteringGainDb": 3,
-    "label": "Launchbeat — energetic house/disco instrumental"
+    "masteringGainDb": 0,
+    "label": "Disclosure — Expressing What Matters",
+    "sourceUrl": "https://www.youtube.com/watch?v=nXOSgekiAJc",
+    "authorship": "Disclosure recording; custom opening edit and synchronized Foley mix, not original music",
+    "rightsStatus": "local-audition-only; public-release clearance not established"
   },
   "soundGainOverridesDb": {
     "sourceArrival0": -24,
@@ -399,44 +402,40 @@
       0
     ],
     [
-      0.04,
-      0.9
+      0.12,
+      0.55
     ],
     [
-      0.36,
-      0.82
+      0.32,
+      0.84
     ],
     [
-      1.38,
-      0.82
+      1.32,
+      0.84
     ],
     [
       1.5,
-      0.66
+      0.7
     ],
     [
-      1.74,
-      0.92
+      1.88,
+      0.86
     ],
     [
-      2.02,
-      1
-    ],
-    [
-      2.44,
-      1
+      2.36,
+      0.86
     ],
     [
       2.56,
-      0.78
+      0.72
     ],
     [
-      2.78,
-      1
+      2.88,
+      0.86
     ],
     [
-      4.78,
-      1
+      4.62,
+      0.86
     ],
     [
       4.9,
@@ -447,72 +446,76 @@
       0.7
     ],
     [
-      5.62,
-      1
+      5.75,
+      0.86
     ],
     [
-      6.72,
-      1
+      6.58,
+      0.86
     ],
     [
-      6.84,
-      0.8
+      6.83,
+      0.76
     ],
     [
-      7.15,
-      0.96
+      7.3,
+      0.86
     ],
     [
-      7.9,
-      0.96
+      8.1,
+      0.86
     ],
     [
-      8.4,
-      0.7
+      8.55,
+      0.62
     ],
     [
-      10.38,
-      0.7
+      10.28,
+      0.62
     ],
     [
-      10.77,
-      0.84
+      10.85,
+      0.78
     ],
     [
-      12.5,
-      0.84
+      12.35,
+      0.78
     ],
     [
       12.78,
-      0.34
+      0.48
     ],
     [
-      12.96,
-      0.34
+      13,
+      0.48
     ],
     [
-      13.45,
-      0.82
+      13.5,
+      0.78
     ],
     [
-      13.8,
-      0.92
+      14.15,
+      0.84
     ],
     [
       15.4,
-      0.92
+      0.84
     ],
     [
-      15.65,
-      1
+      15.95,
+      0.88
     ],
     [
-      16.65,
-      1
+      16.58,
+      0.88
     ],
     [
-      17.1,
-      0.4
+      16.92,
+      0.62
+    ],
+    [
+      17.25,
+      0.18
     ],
     [
       17.48,

@@ -3,25 +3,27 @@
   "sample_rate": 48000,
   "channels": 2,
   "music": {
-    "id": "bgm_012",
-    "source_start": 0.454,
-    "playback_rate": 1.04,
-    "normalization_lufs": -17,
+    "id": "bgm_017",
+    "source_start": 0,
+    "playback_rate": 1,
+    "normalization_lufs": -20,
     "true_peak_target_db": -6,
-    "mastering_gain_db": 3,
+    "mastering_gain_db": 0,
     "normalization_measurement": {
-      "input_i": "-13.67",
-      "input_tp": "0.40",
-      "input_lra": "0.60",
-      "input_thresh": "-23.67",
-      "output_i": "-17.13",
+      "input_i": "-13.77",
+      "input_tp": "1.56",
+      "input_lra": "8.30",
+      "input_thresh": "-24.12",
+      "output_i": "-19.68",
       "output_tp": "-6.00",
-      "output_lra": "0.60",
-      "output_thresh": "-27.13",
+      "output_lra": "6.00",
+      "output_thresh": "-29.78",
       "normalization_type": "dynamic",
-      "target_offset": "0.13"
+      "target_offset": "-0.32"
     },
-    "authorship": "catalog music; custom editorial and synchronized Foley mix"
+    "authorship": "Disclosure recording; custom opening edit and synchronized Foley mix, not original music",
+    "source_url": "https://www.youtube.com/watch?v=nXOSgekiAJc",
+    "rights_status": "local-audition-only; public-release clearance not established"
   },
   "typing": [
     {
@@ -707,63 +709,59 @@
       "sha256": "7bb0f183f589c996ffba9fdde5e41f76f561bb0d7dcd832291f9bc96cb82c355"
     },
     {
-      "id": "bgm_012",
-      "path": ".media/audio/bgm/bgm_012.wav",
-      "description": "energetic house disco instrumental, upbeat tempo, neon vibes",
-      "sha256": "0178bbb88df28736c66a1fea9f1b4eb02c5cfab9859482a655069a0098d82fb0"
-    },
-    {
       "id": "sfx_006",
       "path": ".media/audio/sfx/sfx_006.mp3",
       "description": "A quick, bright, high-pitched synthesized chime resembling a user interface notification.",
       "sha256": "b0813dcb9a2d0a354c06d3d57bc4964f6443597deeb76c20a665c8a0e483f6ab"
+    },
+    {
+      "id": "bgm_017",
+      "path": ".media/audio/bgm/bgm_017.webm",
+      "description": "disclosure-expressing-what-matters.webm",
+      "sha256": "3f110c4da7a736b4ce37a12d4c3c5ca53ad8fc0ea9d19c8477743189d3e80ec5"
     }
   ],
-  "reference_peak_dbfs": -2.7614835826222555,
+  "reference_peak_dbfs": -6.78414818570751,
   "automation": [
     [
       0,
       0
     ],
     [
-      0.04,
-      0.9
+      0.12,
+      0.55
     ],
     [
-      0.36,
-      0.82
+      0.32,
+      0.84
     ],
     [
-      1.38,
-      0.82
+      1.32,
+      0.84
     ],
     [
       1.5,
-      0.66
+      0.7
     ],
     [
-      1.74,
-      0.92
+      1.88,
+      0.86
     ],
     [
-      2.02,
-      1
-    ],
-    [
-      2.44,
-      1
+      2.36,
+      0.86
     ],
     [
       2.56,
-      0.78
+      0.72
     ],
     [
-      2.78,
-      1
+      2.88,
+      0.86
     ],
     [
-      4.78,
-      1
+      4.62,
+      0.86
     ],
     [
       4.9,
@@ -774,72 +772,76 @@
       0.7
     ],
     [
-      5.62,
-      1
+      5.75,
+      0.86
     ],
     [
-      6.72,
-      1
+      6.58,
+      0.86
     ],
     [
-      6.84,
-      0.8
+      6.83,
+      0.76
     ],
     [
-      7.15,
-      0.96
+      7.3,
+      0.86
     ],
     [
-      7.9,
-      0.96
+      8.1,
+      0.86
     ],
     [
-      8.4,
-      0.7
+      8.55,
+      0.62
     ],
     [
-      10.38,
-      0.7
+      10.28,
+      0.62
     ],
     [
-      10.77,
-      0.84
+      10.85,
+      0.78
     ],
     [
-      12.5,
-      0.84
+      12.35,
+      0.78
     ],
     [
       12.78,
-      0.34
+      0.48
     ],
     [
-      12.96,
-      0.34
+      13,
+      0.48
     ],
     [
-      13.45,
-      0.82
+      13.5,
+      0.78
     ],
     [
-      13.8,
-      0.92
+      14.15,
+      0.84
     ],
     [
       15.4,
-      0.92
+      0.84
     ],
     [
-      15.65,
-      1
+      15.95,
+      0.88
     ],
     [
-      16.65,
-      1
+      16.58,
+      0.88
     ],
     [
-      17.1,
-      0.4
+      16.92,
+      0.62
+    ],
+    [
+      17.25,
+      0.18
     ],
     [
       17.48,
