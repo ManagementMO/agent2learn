@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -341,6 +342,53 @@ def _step_script(name: str) -> str:
             break
         lines.append(line[10:])
     return "\n".join(lines)
+
+
+def _release_hash_program() -> str:
+    script = _step_script("Record the artifact hashes")
+    return script.split("<<'PY'", 1)[1].split("\n", 1)[1].rsplit("\nPY", 1)[0]
+
+
+def test_release_hash_manifest_excludes_build_bookkeeping(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    wheel = f"agent2learn-{__version__}-py3-none-any.whl"
+    sdist = f"agent2learn-{__version__}.tar.gz"
+    (dist / wheel).write_bytes(b"wheel bytes")
+    (dist / sdist).write_bytes(b"source bytes")
+    for name in (".gitignore", "SHA256SUMS.txt", "sbom.cdx.json", "notes.txt"):
+        (dist / name).write_bytes(b"build bookkeeping\n")
+
+    result = subprocess.run(
+        [sys.executable, "-c", _release_hash_program()],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        f"{sha256(b'wheel bytes').hexdigest()}  {wheel}",
+        f"{sha256(b'source bytes').hexdigest()}  {sdist}",
+    ]
+
+
+def test_release_hash_manifest_refuses_a_directory_without_distributions(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / ".gitignore").write_text("*\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-c", _release_hash_program()],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
 
 
 @posix_release_shell

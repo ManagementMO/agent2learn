@@ -517,3 +517,21 @@ Submission remains disabled, and publication still requires the existing human r
   live checks or inspect private records. The owner explicitly authorized merging PR #20 after CI,
   tagging v0.1.1, and promoting verified artifacts through TestPyPI and PyPI, including deployment
   approvals. That authorization does not enable LEARN submissions or apply to a later version.
+
+## Release recovery — 0.1.2
+
+- The v0.1.1 run 34712712368 built, attested, and uploaded valid distributions to TestPyPI, but
+  all three staging checks failed because `SHA256SUMS.txt` also named uv's generated `.gitignore`.
+  GitHub's artifact transfer did not include that hidden bookkeeping file. Production PyPI and
+  GitHub Release creation correctly remained blocked; do not bypass their hash gates.
+- The checksum producer now emits only regular `.whl` and `.tar.gz` files and rejects an empty
+  distribution set. Regression tests execute the real workflow Python payload with bookkeeping
+  files present. Strict downstream filename-set and digest equality remain unchanged.
+- Release builds pin uv 0.12.13, the builder used for the attested v0.1.1 artifacts. A local older
+  uv changed only WHEEL/RECORD metadata; matching the recorded builder reproduced both originals.
+  Dependency bounds and the runtime lock are not changed to suppress that difference.
+- The owner explicitly chose a fresh 0.1.2 release instead of moving v0.1.1. Keep both historical
+  tags and the TestPyPI 0.1.1 files intact. Package/runtime/installer/skill versions target 0.1.2;
+  after its checks pass, merge the fix, create v0.1.2, and promote through TestPyPI then PyPI using
+  the existing protected workflow. The owner authorized that version's publication. LEARN uploads
+  remain disabled, and the normal user command remains `uv tool install agent2learn`.

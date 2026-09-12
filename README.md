@@ -39,7 +39,7 @@ These commands install the published package from PyPI, not an unreleased reposi
 Python 3.11–3.14 is supported. If uv selects an older system Python or your shell cannot find
 `a2l`, see [setup troubleshooting](docs/FAQ.md#setup-and-path).
 
-`install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.1), verify that `a2l`
+`install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.2), verify that `a2l`
 runs, and then **continue straight into interactive `a2l init`** in the same command. If they are
 run without a terminal on both ends — in CI, or through a pipe — they stop after verifying and
 print the exact next step instead of setting anything up. Neither script needs administrator
@@ -149,7 +149,7 @@ external request Agent2Learn can make, is in [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Status
 
-Agent2Learn is in active development. This branch targets **0.1.1**; the pinned installers require
+Agent2Learn is in active development. This branch targets **0.1.2**; the pinned installers require
 that version to be available on PyPI before they can install it. A release-preparation branch is
 not evidence of publication. The repository holds the tested implementation of the full v0.1
 command surface; publication is gated on the release checks in [docs/LAUNCH.md](docs/LAUNCH.md),

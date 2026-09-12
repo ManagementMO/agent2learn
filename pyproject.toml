@@ -1,6 +1,6 @@
 [project]
 name = "agent2learn"
-version = "0.1.1"
+version = "0.1.2"
 description = "A local, source-cited course vault for AI agents"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -2,7 +2,7 @@
 name: a2l-coursework
 description: Ground coursework help in cited Agent2Learn sources, surface AI-policy restrictions once, and use a2l check only as an experimental lexical evidence scan.
 metadata:
-  version: 0.1.1
+  version: 0.1.2
 ---
 
 # Agent2Learn Coursework
