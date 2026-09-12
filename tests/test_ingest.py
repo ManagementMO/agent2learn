@@ -17,7 +17,7 @@ from agent2learn import ingest as ingest_module
 from agent2learn.api import DiskSpaceExhausted, DownloadError, DownloadResult, FileTooLarge
 from agent2learn.errors import A2LError
 from agent2learn.ingest import fetch_topic, ingest_files, ingest_metadata
-from agent2learn.vault import Vault
+from agent2learn.vault import ManifestEntry, Vault
 
 
 def _toc(*topics: dict[str, object]) -> dict[str, object]:
@@ -1512,3 +1512,232 @@ def test_split_name_inserts_a_collision_suffix_before_the_real_extension() -> No
     assert ingest_module._split_name("Reading list..pdf") == ("Reading list.", ".pdf")
     assert ingest_module._split_name("Reading list.") == ("Reading list.", "")
     assert ingest_module._split_name("plain") == ("plain", "")
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt", "during-request"])
+def test_fetch_repairs_invalid_local_bytes_instead_of_accepting_304(
+    tmp_path: Path, damage: str
+) -> None:
+    payload = b"Course source bytes.\n"
+    source: Path | None = None
+    damaged_during_request = False
+
+    def download(_url: str, temp: Path, prior: object | None) -> DownloadResult:
+        nonlocal damaged_during_request
+        if isinstance(prior, ManifestEntry):
+            if damage == "during-request" and not damaged_during_request:
+                assert source is not None
+                source.write_bytes(b"changed during request")
+                damaged_during_request = True
+            return DownloadResult(None, prior.sha256, prior.size, prior.etag, None, True)
+        temp.write_bytes(payload)
+        return DownloadResult(temp, sha256(payload).hexdigest(), len(payload), '"v1"', None, False)
+
+    topic = _topic(1, "Lecture", filename="topic-1.txt")
+    topic["LastModifiedDate"] = None
+    topic["Size"] = len(payload)
+    client = FakeClient([course()], tocs={111111: _toc(topic)}, download_handler=download)
+    vault = Vault(tmp_path)
+    ingest_metadata(client, vault, client.school)
+    ingest_files(client, vault, client.school)
+    entry = vault.entry("uwaterloo:111111:topic:1")
+    assert entry is not None
+    source = vault.materialized(entry)
+    if damage == "missing":
+        source.unlink()
+    elif damage == "corrupt":
+        source.write_bytes(b"X" * len(payload))
+
+    fetch_topic(client, Vault(tmp_path), client.school, "1")
+
+    assert source.read_bytes() == payload
+    assert not list(tmp_path.rglob("*.part"))
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("has_validator", [False, True])
+def test_installed_source_recovers_after_manifest_commit_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool, has_validator: bool
+) -> None:
+    topic = _topic(1, "Lecture", filename="topic-1.txt")
+    topic["LastModifiedDate"] = "2026-01-05T14:00:00Z" if has_validator else None
+    payloads = {"topic-1.txt": b"First revision.\n"}
+    topic["Size"] = len(payloads["topic-1.txt"])
+    client = FakeClient(
+        [course()], tocs={111111: _toc(topic)}, download_handler=_handler_for(payloads)
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(client, vault, client.school)
+    old_path: str | None = None
+    if existing:
+        ingest_files(client, vault, client.school)
+        entry = vault.entry("uwaterloo:111111:topic:1")
+        assert entry is not None
+        old_path = entry.path
+        payloads["topic-1.txt"] = b"Second revision.\n"
+        topic["LastModifiedDate"] = "2026-01-12T14:00:00Z" if has_validator else None
+        topic["Size"] = len(payloads["topic-1.txt"])
+        client.tocs[111111] = _toc(topic)
+        ingest_metadata(client, vault, client.school)
+
+    def fail_save() -> None:
+        raise OSError("synthetic manifest persistence failure")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(vault, "save_manifest", fail_save)
+        with pytest.raises(OSError, match="synthetic manifest"):
+            fetch_topic(client, vault, client.school, "1")
+    markers = list(tmp_path.rglob("*.part.meta.json"))
+    assert len(markers) == 1
+    pending = json.loads(markers[0].read_text(encoding="utf-8"))
+    installed = vault.root / pending["destination"]
+    assert installed.read_bytes() == payloads["topic-1.txt"]
+    assert not list(tmp_path.rglob("*.part"))
+
+    restarted = Vault(tmp_path)
+    fetch_topic(client, restarted, client.school, "1")
+
+    current = restarted.entry("uwaterloo:111111:topic:1")
+    assert current is not None and current.path == pending["destination"]
+    assert current.sha256 == sha256(payloads["topic-1.txt"]).hexdigest()
+    assert not list(tmp_path.rglob("*.part.meta.json"))
+    if has_validator:
+        assert current.fetched_at == pending["fetched_at"]
+    if existing:
+        assert current.path == old_path
+        assert any(
+            path.read_bytes() == b"First revision.\n"
+            for path in restarted.history_bucket("uwaterloo:111111:topic:1").rglob("*.txt")
+        )
+
+
+def test_recovery_commits_installed_revision_before_fetching_a_newer_remote_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    topic = _topic(1, "Lecture", filename="topic-1.txt")
+    payloads = {"topic-1.txt": b"Revision one\n"}
+    client = FakeClient(
+        [course()], tocs={111111: _toc(topic)}, download_handler=_handler_for(payloads)
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(client, vault, client.school)
+    ingest_files(client, vault, client.school)
+    payloads["topic-1.txt"] = b"Revision two\n"
+    topic["LastModifiedDate"] = "2026-01-12T14:00:00Z"
+    client.tocs[111111] = _toc(topic)
+    ingest_metadata(client, vault, client.school)
+
+    def fail_save() -> None:
+        raise OSError("synthetic manifest failure")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(vault, "save_manifest", fail_save)
+        with pytest.raises(OSError, match="synthetic manifest"):
+            fetch_topic(client, vault, client.school, "1")
+    payloads["topic-1.txt"] = b"Revision three\n"
+    topic["LastModifiedDate"] = "2026-01-19T14:00:00Z"
+    client.tocs[111111] = _toc(topic)
+    restarted = Vault(tmp_path)
+    ingest_metadata(client, restarted, client.school)
+
+    fetch_topic(client, restarted, client.school, "1")
+
+    entry = restarted.entry("uwaterloo:111111:topic:1")
+    assert entry is not None
+    assert restarted.materialized(entry).read_bytes() == b"Revision three\n"
+    history = {
+        path.read_bytes()
+        for path in restarted.history_bucket("uwaterloo:111111:topic:1").rglob("*.txt")
+    }
+    assert {b"Revision one\n", b"Revision two\n"} <= history
+    assert not list(tmp_path.rglob("*.part.meta.json"))
+
+
+def test_fetch_produces_a_verified_twin_for_only_the_requested_source(tmp_path: Path) -> None:
+    topics = (
+        _topic(1, "First", filename="first.txt"),
+        _topic(2, "Second", filename="second.txt"),
+    )
+    client = FakeClient(
+        [course()],
+        tocs={111111: _toc(*topics)},
+        download_handler=_handler_for({"source.txt": b"Network flow class material.\n"}),
+    )
+    vault = Vault(tmp_path)
+    ingest_metadata(client, vault, client.school)
+    ingest_files(client, vault, client.school)
+    client.download_calls.clear()
+
+    report = fetch_topic(client, vault, client.school, "1")
+
+    assert report.availability == "markdown_ready"
+    assert report.citation_path is not None and report.citation_path.endswith(".md")
+    assert (vault.root / report.citation_path).read_bytes() == b"Network flow class material.\n"
+    second = vault.entry("uwaterloo:111111:topic:2")
+    assert second is not None and second.derived == {}
+    assert client.download_calls == []
+    assert report.changed
+    (vault.root / report.citation_path).unlink()
+
+    repaired = fetch_topic(client, vault, client.school, "1")
+
+    assert repaired.citation_path == report.citation_path
+    assert (vault.root / repaired.citation_path).is_file()
+    assert client.download_calls == []
+
+
+def test_prompt_refresh_recovers_if_manifest_save_fails_after_source_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assignment = {
+        "Id": 700001,
+        "Name": "Lab 1",
+        "CustomInstructions": {"Html": "<p>First prompt.</p>"},
+    }
+    client = FakeClient([course()], responses={"/dropbox/folders/": [assignment]})
+    vault = Vault(tmp_path)
+    ingest_metadata(client, vault, client.school)
+    assignment["CustomInstructions"] = {"Html": "<p>Second prompt.</p>"}
+
+    def fail_save() -> None:
+        raise OSError("synthetic manifest failure")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(vault, "save_manifest", fail_save)
+        with pytest.raises(OSError, match="synthetic manifest"):
+            ingest_metadata(client, vault, client.school)
+    restarted = Vault(tmp_path)
+
+    ingest_metadata(client, restarted, client.school)
+
+    entry = restarted.entry("uwaterloo:111111:dropbox:700001")
+    assert (
+        entry is not None and restarted.materialized(entry).read_bytes() == b"<p>Second prompt.</p>"
+    )
+    assert any(
+        path.read_bytes() == b"<p>First prompt.</p>"
+        for path in restarted.history_bucket("uwaterloo:111111:dropbox:700001").rglob("*.html")
+    )
+
+
+def test_new_source_cannot_claim_a_missing_originals_reserved_path(tmp_path: Path) -> None:
+    first = _topic(1, "Notes", filename="first.txt")
+    second = _topic(2, "Notes", filename="second.txt")
+    client = FakeClient([course()], tocs={111111: _toc(first)})
+    vault = Vault(tmp_path)
+    ingest_metadata(client, vault, client.school)
+    ingest_files(client, vault, client.school)
+    original = vault.entry("uwaterloo:111111:topic:1")
+    assert original is not None
+    vault.materialized(original).unlink()
+    client.tocs[111111] = _toc(first, second)
+    ingest_metadata(client, vault, client.school)
+
+    ingest_files(client, vault, client.school)
+
+    refreshed = vault.entry("uwaterloo:111111:topic:1")
+    added = vault.entry("uwaterloo:111111:topic:2")
+    assert refreshed is not None and added is not None
+    assert refreshed.path == original.path and added.path != original.path
+    assert sha256(vault.materialized(refreshed).read_bytes()).hexdigest() == refreshed.sha256
+    assert sha256(vault.materialized(added).read_bytes()).hexdigest() == added.sha256

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import shutil
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -724,3 +726,43 @@ def test_malformed_utf8_calibration_requires_auth(
 
     with pytest.raises(NotConfigured, match="a2l auth"):
         load_calibration()
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+def test_encoded_download_validates_wire_length_and_archives_decoded_bytes(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, encoding: str
+) -> None:
+    payload = b"<html><body>Course lecture content.</body></html>" * 100
+    encoded = gzip.compress(payload) if encoding == "gzip" else zlib.compress(payload)
+    synthetic_api.server.expect_request("/encoded.html").respond_with_data(
+        encoded, content_type="text/html", headers={"Content-Encoding": encoding}
+    )
+    monkeypatch.setattr(api.time, "sleep", lambda _seconds: None)
+    part = tmp_path / "encoded.part"
+
+    result = _client(synthetic_api).download(
+        synthetic_api.base_url + "/encoded.html", part, is_html_topic=True
+    )
+
+    assert result.size == len(payload)
+    assert part.read_bytes() == payload
+
+
+def test_encoded_download_still_enforces_the_decoded_byte_ceiling(
+    synthetic_api: SyntheticAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    payload = b"<html><body>Course lecture content.</body></html>" * 100
+    encoded = gzip.compress(payload)
+    assert len(encoded) < 1024 < len(payload)
+    synthetic_api.server.expect_request("/expanded.html").respond_with_data(
+        encoded, content_type="text/html", headers={"Content-Encoding": "gzip"}
+    )
+    monkeypatch.setattr(api.time, "sleep", lambda _seconds: None)
+    part = tmp_path / "expanded.part"
+
+    with pytest.raises(api.FileTooLarge):
+        _client(synthetic_api).download(
+            synthetic_api.base_url + "/expanded.html", part, is_html_topic=True, max_bytes=1024
+        )
+
+    assert not part.exists()

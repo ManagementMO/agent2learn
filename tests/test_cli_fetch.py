@@ -141,3 +141,29 @@ def test_large_fetch_confirmation_uses_the_long_path_disk_boundary(
 
     assert result.exit_code == 1
     assert disk_paths == [extended]
+
+
+def test_fetch_does_not_present_a_raw_source_as_a_verified_citation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(config, "load", lambda: config.Config(vault=tmp_path))
+    monkeypatch.setattr(session, "load", lambda: object())
+    monkeypatch.setattr(cli_module, "Client", lambda *_args: object())
+    monkeypatch.setattr(
+        cli_module,
+        "fetch_topic",
+        lambda *_args, **_kwargs: FetchReport(
+            source_key="uwaterloo:111111:topic:123",
+            availability="conversion_gap",
+            source_path="Winter 2026/COURSE101/content/outline.pdf",
+            citation_path=None,
+            changed=True,
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["fetch", "123"])
+
+    assert result.exit_code != 0
+    assert "verified citation:" not in result.output
+    assert "no verified citation twin" in result.output
+    assert "a2l" in result.output

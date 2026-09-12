@@ -770,3 +770,160 @@ def test_optional_dependency_gap_stays_unsupported_format(tmp_path: Path) -> Non
     assert report.gaps == 1
     row = _mapped_row(course_dir)
     assert row["availability"] == "unsupported_format"
+
+
+def _captured_text_source(vault: Vault, filename: str, payload: bytes, identifier: int = 1) -> Path:
+    source = vault.root / "Winter 2026" / "COURSE101" / "content" / filename
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(payload)
+    vault.mark(
+        f"uwaterloo:111111:topic:{identifier}",
+        ManifestEntry(
+            path=source.relative_to(vault.root).as_posix(),
+            sha256=_sha256(payload),
+            source_id=str(identifier),
+            etag=None,
+            last_modified=None,
+            size=len(payload),
+            fetched_at="2026-08-25T12:00:00Z",
+        ),
+    )
+    vault.save_manifest()
+    return source
+
+
+@pytest.mark.parametrize("filename", ["notes.md", "notes.MD"])
+def test_markdown_original_bytes_survive_conversion(tmp_path: Path, filename: str) -> None:
+    vault = Vault(tmp_path / "vault")
+    payload = b"# Course source\r\nPreserve these bytes.\r\n\r\n"
+    source = _captured_text_source(vault, filename, payload)
+
+    report = convert_vault(vault)
+
+    assert source.read_bytes() == payload
+    assert report.converted == 1 and not report.errors
+    entry = Vault(vault.root).entry("uwaterloo:111111:topic:1")
+    assert entry is not None
+    artifact = entry.derived["markdown"]
+    assert artifact.path.casefold() != entry.path.casefold()
+    assert (vault.root / artifact.path).parent == source.parent
+    assert (vault.root / artifact.path).read_bytes() == b"# Course source\nPreserve these bytes.\n"
+    assert convert_vault(vault).skipped == 1
+
+
+def test_first_conversion_preserves_unowned_markdown_siblings(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault")
+    source = _captured_text_source(vault, "notes.txt", b"Course material.\n")
+    notes = source.with_suffix(".md")
+    second = notes.with_name("notes_2.md")
+    notes.write_bytes(b"Student notes.\n")
+    second.write_bytes(b"Other student notes.\n")
+
+    report = convert_vault(vault)
+
+    assert report.converted == 1
+    assert notes.read_bytes() == b"Student notes.\n"
+    assert second.read_bytes() == b"Other student notes.\n"
+    entry = vault.entry("uwaterloo:111111:topic:1")
+    assert entry is not None
+    twin = vault.root / entry.derived["markdown"].path
+    assert twin not in {source, notes, second}
+    assert twin.read_bytes() == b"Course material.\n"
+    assert convert_vault(vault).skipped == 1
+
+
+def test_different_sources_with_one_stem_have_independent_twins(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault")
+    sources = [
+        _captured_text_source(vault, "notes.txt", b"Course explanation.\n", 1),
+        _captured_text_source(vault, "notes.csv", b"capacity,value\nlimit,20\n", 2),
+    ]
+    originals = [source.read_bytes() for source in sources]
+
+    report = convert_vault(vault)
+
+    assert report.converted == 2
+    entries = list(Vault(vault.root).manifest().values())
+    twins = [entry.derived["markdown"] for entry in entries]
+    assert len({twin.path.casefold() for twin in twins}) == 2
+    assert all(_sha256((vault.root / twin.path).read_bytes()) == twin.sha256 for twin in twins)
+    assert [source.read_bytes() for source in sources] == originals
+    assert convert_vault(vault).skipped == 2
+
+
+def test_regeneration_reuses_the_owned_artifact_path(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault")
+    source = _captured_text_source(vault, "notes.txt", b"Course explanation.\n")
+    unrelated = source.with_suffix(".md")
+    unrelated.write_bytes(b"Untracked notes.\n")
+    owned = source.with_name("owned-twin.md")
+    owned.write_bytes(b"Student annotation on an owned twin.\n")
+    entry = vault.entry("uwaterloo:111111:topic:1")
+    assert entry is not None
+    artifact = DerivedArtifact(
+        path=owned.relative_to(vault.root).as_posix(),
+        sha256=_sha256(b"Previous generated content.\n"),
+        source_sha256=entry.sha256,
+        tool="agent2learn-text",
+        tool_version="0",
+        created_at="2026-08-25T12:00:00Z",
+    )
+    vault.mark("uwaterloo:111111:topic:1", replace(entry, derived={"markdown": artifact}))
+    vault.save_manifest()
+
+    report = convert_vault(vault)
+
+    assert report.converted == 1
+    refreshed = vault.entry("uwaterloo:111111:topic:1")
+    assert refreshed is not None and refreshed.derived["markdown"].path == artifact.path
+    assert unrelated.read_bytes() == b"Untracked notes.\n"
+    assert owned.read_bytes() == b"Course explanation.\n"
+    assert any(
+        item.read_bytes() == b"Student annotation on an owned twin.\n"
+        for item in (vault.state() / "history").rglob("owned-twin.md")
+    )
+
+
+def test_missing_original_paths_are_still_reserved_during_conversion(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault")
+    _captured_text_source(vault, "notes.txt", b"First source.\n", 1)
+    missing = _captured_text_source(vault, "notes.md", b"Second source.\n", 2)
+    missing.unlink()
+
+    report = convert_vault(vault)
+
+    assert report.converted == 1 and report.gaps == 1
+    assert not missing.exists()
+    first = vault.entry("uwaterloo:111111:topic:1")
+    assert first is not None
+    assert vault.root / first.derived["markdown"].path != missing
+
+
+def test_legacy_shared_twins_are_repaired_without_overwriting_each_other(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault")
+    first = _captured_text_source(vault, "notes.txt", b"First source.\n", 1)
+    _captured_text_source(vault, "notes.csv", b"Second source.\n", 2)
+    shared = first.with_suffix(".md")
+    shared.write_bytes(b"Second source.\n")
+    for key, entry in vault.manifest().items():
+        artifact = DerivedArtifact(
+            path=shared.relative_to(vault.root).as_posix(),
+            sha256=entry.sha256,
+            source_sha256=entry.sha256,
+            tool="agent2learn-text",
+            tool_version="1",
+            created_at="2026-08-25T12:00:00Z",
+        )
+        vault.mark(key, replace(entry, derived={"markdown": artifact}))
+    vault.save_manifest()
+
+    report = convert_vault(vault)
+
+    assert not report.errors
+    artifacts = [entry.derived["markdown"] for entry in vault.manifest().values()]
+    assert len({artifact.path for artifact in artifacts}) == 2
+    assert all(
+        _sha256((vault.root / artifact.path).read_bytes()) == artifact.sha256
+        for artifact in artifacts
+    )
+    assert shared.read_bytes() == b"Second source.\n"

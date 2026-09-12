@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from contextlib import suppress
 from pathlib import Path
 
@@ -156,13 +156,21 @@ def remove_tree(root: Path, *, ignore_errors: bool = False) -> None:
             raise
 
 
-def unique_path(destination: Path) -> Path:
+def unique_path(destination: Path, *, reserved: Collection[Path] = ()) -> Path:
     """Return ``destination`` or the next available ``_2``/``_3`` sibling."""
+    reserved_names = {
+        _canonical_component(os.fspath(_plain_absolute(plain_path(path)))) for path in reserved
+    }
+
+    def available(path: Path) -> bool:
+        name = _canonical_component(os.fspath(_plain_absolute(plain_path(path))))
+        return name not in reserved_names and not collides(path)
+
     candidate_name = _truncate_component(destination.name, DEFAULT_MAXLEN).rstrip(" .")
     if not candidate_name:
         candidate_name = "untitled"
     candidate = destination.with_name(candidate_name)
-    if not collides(candidate):
+    if available(candidate):
         return candidate
 
     stem, extension = _split_extension(candidate.name)
@@ -173,7 +181,7 @@ def unique_path(destination: Path) -> Path:
             raise ValueError("filename budget cannot fit a collision suffix")
         candidate_name = f"{stem[:available_stem_length]}{suffix}{extension}"
         candidate = destination.with_name(candidate_name)
-        if not collides(candidate):
+        if available(candidate):
             return candidate
     raise RuntimeError("could not allocate a unique path")
 

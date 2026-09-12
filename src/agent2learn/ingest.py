@@ -29,10 +29,11 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from requests import RequestException
 
-from agent2learn import api, clock, paths, snapshot
+from agent2learn import api, clock, locations, paths, snapshot, transactions
 from agent2learn import index as course_index
 from agent2learn.api import DownloadError, DownloadResult, FileTooLarge
 from agent2learn.calibrate import CourseRef, calibrate, load_calibration
+from agent2learn.convert import DEFAULT_OCR_WORDS_PER_PAGE, _validate_threshold, convert_vault
 from agent2learn.errors import A2LError, NotConfigured, SessionExpired
 from agent2learn.schools import (
     School,
@@ -164,6 +165,7 @@ class FetchReport:
     source_path: str | None
     citation_path: str | None
     changed: bool
+    next_action: str | None = None
 
 
 @dataclass(frozen=True)
@@ -189,6 +191,7 @@ class _PendingInstall:
     last_modified: str | None
     prior_sha256: str | None
     revision_preserved: bool
+    fetched_at: str | None = None
 
 
 class IngestClient(Protocol):
@@ -255,6 +258,8 @@ def ingest_metadata(
             records, module_tree, toc_valid = _topics_from_toc(
                 toc_payload, course=course, school=school
             )
+            if not toc_valid and toc_error is None:
+                errors.append("toc: invalid response")
             toc_complete = toc_complete and toc_valid
         except SessionExpired:
             raise
@@ -292,14 +297,31 @@ def ingest_metadata(
                 module_tree = []
 
         assignments_rows = _project_assignments(assignments)
+        active_assignments = {str(row["id"]) for row in assignments_rows}
+        previous_assignments = _read_list(course_dir / "_meta" / "assignments.json")
         assignments_rows = _merge_rows(
-            _read_list(course_dir / "_meta" / "assignments.json"),
+            previous_assignments,
             assignments_rows,
             id_field="id",
             complete=assignments_complete,
         )
+        assignment_directories = locations.assignment_directories(
+            vault,
+            course_dir,
+            school,
+            course,
+            assignments_rows,
+            previous_assignments,
+            active_assignments,
+        )
+        _write_list(course_dir / "_meta" / "assignments.json", assignments_rows, root=vault.root)
         assignment_artifacts = _materialize_assignments(
-            assignments, course_dir=course_dir, vault=vault, school=school, course=course
+            assignments,
+            course_dir=course_dir,
+            vault=vault,
+            school=school,
+            course=course,
+            directories=assignment_directories,
         )
         for row in assignments_rows:
             artifact = assignment_artifacts.get(str(row.get("id")))
@@ -373,6 +395,7 @@ def ingest_metadata(
             assignments,
             artifacts=assignment_artifacts,
             course_dir=course_dir,
+            directories=assignment_directories,
             topics=merged_topics,
             root=vault.root,
         )
@@ -514,7 +537,7 @@ def ingest_files(
         course_dir = _course_directory(vault, school, course)
         content_map = _read_content_map(course_dir)
         rows = [_topic_from_row(row, course=course) for row in _map_topics(content_map)]
-        if not rows:
+        if not paths.long_path(course_dir / "_meta" / "content_map.json").is_file():
             # Keep the public entry point safe when called directly: metadata remains a separate
             # phase, but a missing map is a configuration problem rather than a silent no-op.
             raise A2LError("course metadata is unavailable; run ingest_metadata first")
@@ -669,9 +692,11 @@ def fetch_topic(
     *,
     allow_large: bool = False,
     confirm: Callable[[int | None], bool] | None = None,
+    ocr_words_per_page: int = DEFAULT_OCR_WORDS_PER_PAGE,
 ) -> FetchReport:
     """Resolve one stable topic ID/path/title and fetch only that source."""
 
+    _validate_threshold(ocr_words_per_page)
     match = _resolve_topic(vault, topic)
     if match is None:
         raise A2LError(f"topic not found: {topic}")
@@ -703,6 +728,9 @@ def fetch_topic(
         record,
         max_bytes=None if unbounded else api.DEFAULT_MAX_BYTES,
     )
+    conversion = convert_vault(
+        vault, source_keys=(record.source_key,), ocr_words_per_page=ocr_words_per_page
+    )
     refreshed = _topic_from_row(
         _find_content_row(course_dir, record.source_key) or _topic_to_row(record), course=course
     )
@@ -711,7 +739,8 @@ def fetch_topic(
         availability=refreshed.availability,
         source_path=refreshed.source_path,
         citation_path=refreshed.path,
-        changed=result == "downloaded",
+        changed=result == "downloaded" or conversion.converted > 0,
+        next_action=refreshed.next_action,
     )
 
 
@@ -795,7 +824,8 @@ def _course_directory(vault: Vault, school: School, course: CourseRef) -> Path:
         except ValueError:
             term_label = f"Term {course.term}"
     course_label = f"{course.code}_{term_code}" if course.code else f"Course-{course.org_unit_id}"
-    return vault.root / paths.safe_name(term_label) / paths.safe_name(course_label)
+    preferred = vault.root / paths.safe_name(term_label) / paths.safe_name(course_label)
+    return locations.course_directory(vault, school, course, preferred)
 
 
 def _toc_path(client: IngestClient, course: CourseRef) -> str:
@@ -1320,12 +1350,16 @@ def _stable_numeric_id(value: str) -> int:
 
 
 def _materialize_assignments(
-    values: Sequence[object], *, course_dir: Path, vault: Vault, school: School, course: CourseRef
+    values: Sequence[object],
+    *,
+    course_dir: Path,
+    vault: Vault,
+    school: School,
+    course: CourseRef,
+    directories: Mapping[str, Path],
 ) -> dict[str, dict[str, object]]:
     """Sanitize Dropbox RichText and persist a provenance-backed source/twin pair."""
 
-    manifest = vault.manifest()
-    reserved: set[str] = set()
     artifacts: dict[str, dict[str, object]] = {}
     assignments = sorted(
         (value for value in values if isinstance(value, dict) and isinstance(value.get("Id"), int)),
@@ -1333,6 +1367,8 @@ def _materialize_assignments(
     )
     for assignment in assignments:
         assignment_id = int(assignment["Id"])
+        key = f"{school.id}:{course.org_unit_id}:dropbox:{assignment_id}"
+        transactions.recover_generated(vault, key)
         richtext = _assignment_richtext(assignment)
         if richtext is None:
             continue
@@ -1342,15 +1378,15 @@ def _materialize_assignments(
             continue
         html_bytes = canonical_html.encode("utf-8")
         source_hash = sha256(html_bytes).hexdigest()
-        key = f"{school.id}:{course.org_unit_id}:dropbox:{assignment_id}"
-        prior = manifest.get(key)
+        prior = vault.entry(key)
         title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
         if prior is not None:
             source_destination = vault.materialized(prior)
         else:
-            candidate = course_dir / "assignments" / paths.safe_name(f"{title} {assignment_id}")
-            assignment_directory = _unique_reserved(candidate, reserved)
-            source_destination = assignment_directory / "instructions.html"
+            assignment_directory = directories[str(assignment_id)]
+            source_destination = paths.unique_path(
+                assignment_directory / "instructions.html", reserved=vault.claimed_paths()
+            )
 
         prior_artifact = prior.derived.get("markdown") if prior is not None else None
         if prior_artifact is not None:
@@ -1367,6 +1403,7 @@ def _materialize_assignments(
             )
         else:
             markdown_destination = source_destination.with_suffix(".md")
+        markdown_destination = vault.derived_destination(key, markdown_destination)
 
         source_changed = prior is not None and prior.sha256 != source_hash
         twin_modified = bool(
@@ -1374,18 +1411,7 @@ def _materialize_assignments(
             and paths.long_path(markdown_destination).is_file()
             and _hash_file(markdown_destination)[0] != prior_artifact.sha256
         )
-        if prior is not None and (source_changed or twin_modified):
-            preserved = vault.preserve_revision(key, changed_at=clock.now())
-            if preserved is None and (
-                twin_modified or paths.long_path(vault.materialized(prior)).exists()
-            ):
-                raise A2LError("assignment instructions could not be preserved")
-        paths.ensure_dir(source_destination.parent, root=vault.root)
-        paths.atomic_write_bytes(source_destination, html_bytes, root=vault.root)
-
         markdown_bytes = _richtext_markdown(title, canonical_html).encode("utf-8")
-        paths.ensure_dir(markdown_destination.parent, root=vault.root)
-        paths.atomic_write_bytes(markdown_destination, markdown_bytes, root=vault.root)
         derived = DerivedArtifact(
             path=paths.rel_posix(markdown_destination, vault.root),
             sha256=sha256(markdown_bytes).hexdigest(),
@@ -1404,9 +1430,14 @@ def _materialize_assignments(
             fetched_at=_now(),
             derived={"markdown": derived},
         )
-        vault.mark(key, entry)
-        vault.save_manifest()
-        manifest[key] = entry
+        transactions.install_generated(
+            vault,
+            key,
+            entry,
+            html_bytes,
+            {"markdown": markdown_bytes},
+            preserve=source_changed or twin_modified,
+        )
 
         _write_assignment_readme(
             source_destination.parent,
@@ -1498,6 +1529,7 @@ def _materialize_submission_only_readmes(
     *,
     artifacts: Mapping[str, Mapping[str, object]],
     course_dir: Path,
+    directories: Mapping[str, Path],
     topics: Sequence[Mapping[str, object]],
     root: Path | None = None,
 ) -> None:
@@ -1515,7 +1547,7 @@ def _materialize_submission_only_readmes(
         if assignment_id in artifacts:
             continue
         title = _safe_text(assignment.get("Name")) or f"Assignment {assignment_id}"
-        directory = course_dir / "assignments" / paths.safe_name(f"{title} {assignment_id}")
+        directory = directories[assignment_id]
         paths.ensure_dir(directory, root=root)
         links: list[tuple[str, str]] = []
         for topic in topics:
@@ -1572,7 +1604,17 @@ def _plan_file_paths(
 ) -> list[TopicRecord]:
     del scope
     manifest = Vault(vault.root).manifest()
+    installed = _installed_pending_paths(
+        vault, course_dir, {row.source_key for row in rows if row.source_key not in manifest}
+    )
     reserved_by_folder: dict[str, set[str]] = defaultdict(set)
+    for reserved_entry in manifest.values():
+        for relative in (
+            reserved_entry.path,
+            *(artifact.path for artifact in reserved_entry.derived.values()),
+        ):
+            occupied = vault.root / PurePosixPath(relative)
+            reserved_by_folder[occupied.parent.as_posix()].add(occupied.name.casefold())
     planned: list[TopicRecord] = []
     for topic in sorted(rows, key=lambda item: item.source_key):
         if topic.availability == "external_link":
@@ -1586,6 +1628,11 @@ def _plan_file_paths(
             continue
         if topic.url_path is None or topic.kind.casefold() not in _DOWNLOADABLE_KINDS:
             planned.append(topic)
+            continue
+        if topic.source_key in installed:
+            planned.append(
+                replace(topic, source_path=paths.rel_posix(installed[topic.source_key], vault.root))
+            )
             continue
         destination = _content_directory(course_dir, topic.module_path) / _topic_filename(topic)
         folder_key = destination.parent.as_posix()
@@ -1640,15 +1687,18 @@ def _ingest_one_topic(
     if topic.url_path is None:
         raise DownloadError("topic has no first-party download route")
     key = topic.source_key
+    transactions.recover_generated(vault, key)
     manifest = vault.manifest()
     prior = manifest.get(key)
     destination = _destination_for_topic(vault, course_dir, topic, prior)
     paths.ensure_dir(destination.parent, root=vault.root)
     pending = _find_pending_install(vault, destination, topic)
     if pending is not None:
+        persisted = Vault(vault.root).entry(key)
         retried = _retry_pending_install(
-            vault, course_dir, school, topic, destination, prior, pending
+            vault, course_dir, school, topic, destination, persisted, pending
         )
+        prior = vault.entry(key)
         if retried is not None:
             return retried
     if prior is not None and _unchanged_local(prior, topic, vault):
@@ -1674,14 +1724,25 @@ def _ingest_one_topic(
         # later writer can use a parent that was swapped to a link in the meantime.
         if paths.has_link_component(temporary, root=vault.root):
             raise A2LError("download temporary path contains a link component")
+        conditional = prior if prior is not None and _source_bytes_match(prior, vault) else None
         result = _download_with_candidates(
-            client, school, topic, temporary, prior=prior, max_bytes=max_bytes, root=vault.root
+            client,
+            school,
+            topic,
+            temporary,
+            prior=conditional,
+            max_bytes=max_bytes,
+            root=vault.root,
         )
         if result.not_modified:
-            if prior is None or not paths.long_path(vault.materialized(prior)).is_file():
-                raise DownloadError("server returned 304 without a local source")
-            _mark_topic_source_only(vault, course_dir, topic, school)
-            return "skipped"
+            if prior is not None and _source_bytes_match(prior, vault):
+                _mark_topic_source_only(vault, course_dir, topic, school)
+                return "skipped"
+            result = _download_with_candidates(
+                client, school, topic, temporary, prior=None, max_bytes=max_bytes, root=vault.root
+            )
+            if result.not_modified:
+                raise DownloadError("server returned 304 without a verified local source")
         if result.temp is None or not paths.long_path(result.temp).is_file():
             raise DownloadError("download did not produce a source file")
         actual_hash, actual_size = _hash_file(result.temp)
@@ -1702,6 +1763,7 @@ def _ingest_one_topic(
                 prior.sha256 if prior is not None and actual_hash != prior.sha256 else None
             ),
             revision_preserved=prior is None or actual_hash == prior.sha256,
+            fetched_at=_now(),
         )
         _write_pending_install(pending, root=vault.root)
         install_attempted = True
@@ -1725,6 +1787,7 @@ def _ingest_one_topic(
             size=actual_size,
             etag=pending.etag,
             last_modified=pending.last_modified,
+            fetched_at=pending.fetched_at,
         )
         vault.mark(key, entry)
         vault.save_manifest()
@@ -1749,7 +1812,8 @@ def _pending_marker_path(part: Path) -> Path:
 
 def _write_pending_install(pending: _PendingInstall, *, root: Path | None = None) -> None:
     payload = {
-        "version": 1,
+        "version": 2,
+        "fetched_at": pending.fetched_at or _now(),
         "source_key": pending.source_key,
         "destination": pending.destination,
         "sha256": pending.sha256,
@@ -1774,8 +1838,22 @@ def _read_pending_install(marker: Path, part: Path) -> _PendingInstall | None:
             raw: Any = json.load(handle)
     except (OSError, json.JSONDecodeError, UnicodeError):
         return None
-    if not isinstance(raw, dict) or set(raw) != _PENDING_INSTALL_KEYS:
+    if not isinstance(raw, dict):
         return None
+    version = raw.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or version not in {1, 2}:
+        return None
+    expected_keys = _PENDING_INSTALL_KEYS | ({"fetched_at"} if version == 2 else set())
+    if set(raw) != expected_keys:
+        return None
+    fetched_at = raw.get("fetched_at")
+    if version == 2:
+        if not isinstance(fetched_at, str):
+            return None
+        try:
+            parse_api_timestamp(fetched_at)
+        except (TypeError, ValueError):
+            return None
     source_key = raw.get("source_key")
     destination = raw.get("destination")
     sha256_value = raw.get("sha256")
@@ -1785,8 +1863,7 @@ def _read_pending_install(marker: Path, part: Path) -> _PendingInstall | None:
     prior_sha256 = raw.get("prior_sha256")
     revision_preserved = raw.get("revision_preserved")
     if (
-        raw.get("version") != 1
-        or not isinstance(source_key, str)
+        not isinstance(source_key, str)
         or not source_key
         or not isinstance(destination, str)
         or not destination
@@ -1818,6 +1895,7 @@ def _read_pending_install(marker: Path, part: Path) -> _PendingInstall | None:
         last_modified=last_modified,
         prior_sha256=prior_sha256,
         revision_preserved=revision_preserved,
+        fetched_at=fetched_at,
     )
 
 
@@ -1855,6 +1933,47 @@ def _pending_matches_topic(pending: _PendingInstall, topic: TopicRecord) -> bool
     return topic.remote_size is None or pending.size == topic.remote_size
 
 
+def _installed_pending_matches(pending: _PendingInstall, destination: Path) -> bool:
+    return (
+        pending.revision_preserved
+        and not paths.collides(pending.part)
+        and _is_safe_local_file(destination)
+        and _hash_file(destination) == (pending.sha256, pending.size)
+    )
+
+
+def _installed_pending_paths(vault: Vault, course_dir: Path, wanted: set[str]) -> dict[str, Path]:
+    if not wanted:
+        return {}
+    content = course_dir / _COURSE_CONTENT
+    if paths.has_link_component(content, root=vault.root):
+        raise A2LError("pending download directory contains a link component")
+    if not paths.long_path(content).is_dir():
+        return {}
+    result: dict[str, Path] = {}
+    for marker in paths.walk(content):
+        if not marker.name.startswith(".") or not marker.name.endswith(_PENDING_INSTALL_SUFFIX):
+            continue
+        part = marker.with_name(marker.name[: -len(_PENDING_MARKER_SUFFIX)])
+        pending = _read_pending_install(marker, part)
+        if pending is None or pending.source_key not in wanted or pending.prior_sha256 is not None:
+            continue
+        try:
+            destination = _vault_relative_path(vault, pending.destination)
+        except (A2LError, ValueError):
+            continue
+        if destination.parent != marker.parent or not destination.is_relative_to(content):
+            continue
+        if not marker.name.startswith(f".{destination.name}."):
+            continue
+        if not _installed_pending_matches(pending, destination):
+            continue
+        if pending.source_key in result and result[pending.source_key] != destination:
+            raise A2LError("multiple installed revisions require recovery for one source")
+        result[pending.source_key] = destination
+    return result
+
+
 def _find_pending_install(
     vault: Vault, destination: Path, topic: TopicRecord
 ) -> _PendingInstall | None:
@@ -1883,6 +2002,8 @@ def _find_pending_install(
             continue
         if pending.source_key != topic.source_key or pending.destination != expected_destination:
             continue
+        if _installed_pending_matches(pending, destination):
+            return pending
         if not _pending_matches_topic(pending, topic) or not _is_safe_local_file(pending.part):
             _remove_pending_install(pending)
             continue
@@ -1904,6 +2025,11 @@ def _retry_pending_install(
     pending: _PendingInstall,
 ) -> Literal["downloaded"] | None:
     """Install a previously validated part; return ``None`` when it is stale and was removed."""
+    already_installed = _installed_pending_matches(pending, destination)
+    if already_installed and prior is not None and prior.sha256 == pending.sha256:
+        vault.mark(topic.source_key, prior)
+        _remove_pending_install(pending)
+        return None
     if pending.prior_sha256 is None:
         if prior is not None and pending.sha256 != prior.sha256:
             _remove_pending_install(pending)
@@ -1922,7 +2048,8 @@ def _retry_pending_install(
         pending = replace(pending, revision_preserved=True)
         _write_pending_install(pending, root=vault.root)
 
-    paths.atomic_install_temp(destination, pending.part, root=vault.root)
+    if not already_installed:
+        paths.atomic_install_temp(destination, pending.part, root=vault.root)
     entry = _manifest_entry_for_install(
         vault,
         topic,
@@ -1932,12 +2059,15 @@ def _retry_pending_install(
         size=pending.size,
         etag=pending.etag,
         last_modified=pending.last_modified,
+        fetched_at=pending.fetched_at,
     )
     vault.mark(topic.source_key, entry)
     vault.save_manifest()
     _mark_topic_source_only(vault, course_dir, topic, school)
     _remove_pending_install(pending)
-    return "downloaded"
+    return (
+        None if already_installed and not _pending_matches_topic(pending, topic) else "downloaded"
+    )
 
 
 def _manifest_entry_for_install(
@@ -1950,6 +2080,7 @@ def _manifest_entry_for_install(
     size: int,
     etag: str | None,
     last_modified: str | None,
+    fetched_at: str | None = None,
 ) -> ManifestEntry:
     return ManifestEntry(
         path=paths.rel_posix(destination, vault.root),
@@ -1958,7 +2089,7 @@ def _manifest_entry_for_install(
         etag=etag,
         last_modified=last_modified,
         size=size,
-        fetched_at=_now(),
+        fetched_at=fetched_at or _now(),
         derived=prior.derived if prior is not None and sha256 == prior.sha256 else {},
     )
 
@@ -2054,11 +2185,15 @@ def _unchanged_local(entry: ManifestEntry, topic: TopicRecord, vault: Vault) -> 
         return False
     if topic.last_modified is not None and entry.last_modified != topic.last_modified:
         return False
+    return _source_bytes_match(entry, vault)
+
+
+def _source_bytes_match(entry: ManifestEntry, vault: Vault) -> bool:
     source = vault.materialized(entry)
-    if not paths.long_path(source).is_file():
+    try:
+        return _hash_file(source) == (entry.sha256, entry.size)
+    except (FileNotFoundError, IsADirectoryError):
         return False
-    actual_hash, actual_size = _hash_file(source)
-    return actual_hash == entry.sha256 and actual_size == entry.size
 
 
 def _mark_topic_source_only(

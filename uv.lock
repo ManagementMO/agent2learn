@@ -29,6 +29,7 @@ dependencies = [
     { name = "requests" },
     { name = "rich" },
     { name = "typer" },
+    { name = "tzdata" },
     { name = "websocket-client" },
 ]
 
@@ -67,6 +68,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32,<3" },
     { name = "rich", specifier = ">=13,<15" },
     { name = "typer", specifier = ">=0.15,<1" },
+    { name = "tzdata", specifier = ">=2026.3,<2027" },
     { name = "websocket-client", specifier = ">=1.8,<2" },
 ]
 provides-extras = ["office", "notebook"]
