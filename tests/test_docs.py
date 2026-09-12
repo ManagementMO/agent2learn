@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urljoin
 
 import pytest
 from conftest import strip_ansi
@@ -168,6 +169,18 @@ def test_the_readme_advertises_exactly_three_install_options() -> None:
     assert "npx skills add" not in block
     assert "pipx" not in block
     assert "pip install" not in block
+
+
+@pytest.mark.parametrize("index", ["pypi.org", "test.pypi.org"])
+def test_readme_links_resolve_the_same_on_package_indexes_and_github(index: str) -> None:
+    links = re.findall(r"\[[^\]]+\]\(([^)]+)\)", _read(ROOT / "README.md"))
+    assert links
+    package_page = f"https://{index}/project/agent2learn/{__version__}/"
+    repository_page = "https://github.com/ManagementMO/agent2learn/blob/main/README.md"
+
+    for link in links:
+        if not link.startswith("#"):
+            assert urljoin(package_page, link) == urljoin(repository_page, link), link
 
 
 def test_the_readme_says_the_scripts_continue_into_onboarding() -> None:

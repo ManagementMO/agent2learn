@@ -349,10 +349,9 @@ architecture.
   makes the Windows and Linux auth validation below more load-bearing than before;
   Task 9's live same-device auth still needs pass/fail
   records on Windows and Linux (macOS passed 2026-08-25); the supervised non-graded upload must
-  pass for the exact release candidate before `SUBMISSION_AVAILABLE` may be flipped; the README's
-  walkthrough recording has not been made and is deliberately not linked; PyPI Trusted Publishing
-  still needs owner-side setup, while the GitHub `testpypi` and `pypi` environments now exist with
-  required owner review and administrator bypass disabled; GitHub private vulnerability reporting,
+  pass for the exact release candidate before `SUBMISSION_AVAILABLE` may be flipped; PyPI Trusted
+  Publishing still needs owner-side setup, while the GitHub `testpypi` and `pypi` environments now
+  exist with required owner review and administrator bypass disabled; GitHub private vulnerability reporting,
   Dependabot alerts, and Dependabot security updates are enabled (2026-08-30); `mypy` covers
   `src/`, `tests/`, and `tools/`; coverage is measured in `docs/COVERAGE.md` with a 77.5% branch
   floor in CI;
@@ -552,3 +551,22 @@ Submission remains disabled, and publication still requires the existing human r
   documented rather than hidden.
 - The workflow follow-up passes `GITHUB_REPOSITORY` explicitly to the release CLI and tests the
   command from a directory without a checkout. It does not rebuild or republish version 0.1.2.
+
+## Public presentation preference
+
+- The owner wants a text-first release. Do not add promotional-media placeholders or make media
+  production a publication prerequisite in the README, package description, or launch plan.
+- Public examples still use synthetic data, and all privacy, authentication, and submission
+  safeguards remain unchanged.
+
+## Documentation release — 0.1.3
+
+- The owner authorized a documentation-only 0.1.3: update package/runtime/installer/skill versions,
+  remove the unwanted promotional-media requirements, and replace README document links with
+  absolute repository URLs so they work on both package indexes and GitHub.
+- Commit and push the change, merge only after exact-head CI passes, create a fresh v0.1.3 tag,
+  and promote the same verified artifacts through TestPyPI and PyPI using the existing approvals.
+  Do not move older tags or replace older registry files. Past versions retain their historical
+  metadata; the new release updates the current package page.
+- Runtime behavior, dependency bounds, and submission capability are unchanged. Do not describe
+  the candidate as published until registry uploads and public installation are verified.

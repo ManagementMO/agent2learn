@@ -2478,7 +2478,7 @@ Steps:
 
 Steps:
 
-- [ ] **Step 1:** `README.md`. Order: one-sentence pitch → the demo GIF → platform-tabbed install →
+- [ ] **Step 1:** `README.md`. Order: one-sentence pitch → platform-tabbed install →
       "then just ask" prompts → what it does and does **not** do → privacy defaults → disclaimer.
       **The install block contains exactly three options** — `install.sh`, `install.ps1`, and
       `uv tool install agent2learn` followed by `a2l init`. The two scripts also continue directly into
@@ -2575,8 +2575,8 @@ Steps:
       notice, create provenance attestations, then promote those exact hashes—never rebuild between
       TestPyPI and PyPI.
 - [ ] **Step 4:** Implement `a2l completions {bash,zsh,fish,powershell}`.
-- [ ] **Step 5:** Use a fresh matching release tag (`v0.1.2` for the current candidate); leave the
-      historical `v0.1.0` and `v0.1.1` tags untouched. Record checksums only for wheel and source
+- [ ] **Step 5:** Use a fresh matching release tag (`v0.1.3` for the current candidate); leave the
+      historical `v0.1.0`, `v0.1.1`, and `v0.1.2` tags untouched. Record checksums only for wheel and source
       distributions, not build bookkeeping such as `dist/.gitignore`. Publish the candidate to
       **TestPyPI first**, install the candidate
       wheel on all three OSes, complete the manual release gates (including same-device auth and the

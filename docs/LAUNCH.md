@@ -86,7 +86,6 @@ description and the one that survives a hostile reading.
       it early enough to incorporate concrete concerns; do not imply silence equals approval.
 - [ ] **Recruit ten alpha students** across at least three faculties, with **at least three on
       Windows**. They will find auth failures you cannot predict. Fix every one before Phase 1.
-- [ ] Record the demo assets (shot list below).
 - [ ] `agent2learn.dev` live, serving `install.sh`, `install.ps1`, `install.md`, and `llms.txt`.
 - [x] GitHub Discussions enabled; `FAQ.md` written; the bug-report template requires an
       `a2l doctor --report` block.
@@ -144,31 +143,16 @@ Track the date, recipient, response, and any resulting action in a private relea
 help-desk response is useful evidence, not permanent authorization; re-check when authentication,
 submission, request volume, or university policy materially changes.
 
-### Demo asset shot list
+### Public examples
 
-The GIF does more work than every paragraph you will write. Record with `asciinema` (terminal) and
-a clean screen recording (editor). Build every public asset from the synthetic demo vault and fake
-API fixture. Never record a real WatIAM/Duo flow, authenticated browser profile, course title,
-deadline, filename, grade, name, ID, or classmate content; cropping or blurring after capture is not
-the primary privacy control.
+Any public examples must use the synthetic fixture vault and fake API. Never include a real
+WatIAM/Duo flow, authenticated browser profile, course title, deadline, filename, grade, name, ID,
+or classmate content. Review public material for private data before publication; cropping or
+blurring is only a second layer, not a substitute for synthetic source material.
 
-1. **`a2l init` — 45 seconds.** Install line → disclosed dedicated-profile handoff → synthetic
-   authenticated transition → metadata progress → ends on **useful synthetic deadlines**. Trim only
-   idle time and label the data `DEMO`; do not fake benchmark numbers. This is the hero asset.
-2. **`a2l today` — 8 seconds.** One command, a week of work laid out.
-3. **The citation moment — 20 seconds.** Ask an agent a course question; it answers and cites
-   `content/Week 3/Duality.md:145`. Cut to the synthetic source. *This is the emotional core of the
-   product*—make the inspectability unmistakable without claiming the answer was proven correct.
-4. **`a2l check` — 25 seconds.** Lead with its experimental-scan disclosure. Show one
-   `evidence_found`, one `related_evidence`, one `no_matching_evidence`, one `possible_conflict`,
-   and one path-null `a2l fetch` hint. Never label a result supported, contradicted, verified, or
-   graded. **This is the asset that gets shared.**
-5. **The before/after — 12 seconds.** Split screen: twelve clicks through D2L to find last week's
-   lab, versus one question.
-6. **A still of the vault in Obsidian**, for the note-taking audience.
-
-Run a frame-by-frame privacy review and OCR scan before publication. The source recording itself
-must already be synthetic; redaction is only a second layer.
+Keep examples truthful: do not fake benchmark numbers or present `a2l check` results as proof of
+correctness or a grade. Its experimental lexical-scan disclosure and incomplete-coverage notices
+remain visible whenever its output is shown.
 
 ---
 
@@ -200,7 +184,7 @@ That subreddit punishes self-promotion and rewards utility. The post that works:
 
 Structure:
 
-1. **The GIF, above the fold.** No architecture diagram, no feature list.
+1. **A concise explanation of the local vault and source citations.** Lead with what the tool does.
 2. One line of who you are: *"3A MSE, I built this because I was drowning in four courses and could
    never find the lab I needed."*
 3. Three bullets of what it does. Not ten.
