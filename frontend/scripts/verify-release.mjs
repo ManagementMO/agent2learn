@@ -43,7 +43,6 @@ try {
     env: {
       ...process.env,
       SITE_URL: 'https://release-preview.invalid',
-      PUBLIC_DEMO_VIDEO_URL: 'https://demo.example.invalid/agent2learn.mp4',
     },
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
@@ -76,27 +75,6 @@ try {
     );
   }
   assert.equal(home.querySelector('.release-pill'), null, 'The hero has no release badge.');
-  assert.equal(
-    home.querySelector('.video-placeholder'),
-    null,
-    'A configured video replaces the placeholder.',
-  );
-  assert.equal(
-    home.querySelector('a2l-demo-video').getAttribute('data-video-url'),
-    'https://demo.example.invalid/agent2learn.mp4',
-  );
-  assert.equal(
-    home.querySelector('video').getAttribute('src'),
-    null,
-    'Opening the page must not load a video.',
-  );
-  assert.equal(
-    home.querySelector('video').getAttribute('poster'),
-    null,
-    'Opening the page must not load a video poster.',
-  );
-  assert.equal(home.querySelector('video').hasAttribute('autoplay'), false);
-  assert.equal(home.querySelector('dialog').hasAttribute('open'), false);
   assert.doesNotMatch(home.querySelector('.install-caption').textContent, /coming soon/);
   assert.equal(install.querySelector('.release-note'), null);
   assert.doesNotMatch(prompt, /RELEASE STATUS|not published yet/);
@@ -109,7 +87,7 @@ try {
     'https://release-preview.invalid/',
   );
   console.log(
-    'Published-state build verified: install copy, agent handoff, docs notice, llms index, social images, canonical URL, sitemap, and optional video without initial media loading. Actual release setting unchanged.',
+    'Published-state build verified: install copy, agent handoff, docs notice, llms index, social images, canonical URL, and sitemap. Actual release setting unchanged.',
   );
 } finally {
   await rm(candidate, { recursive: true, force: true });
