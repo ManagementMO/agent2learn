@@ -1,6 +1,6 @@
-"""Edit catalog music and recorded Foley into frame-synchronized demo stems.
+"""Edit sourced music and recorded Foley into frame-synchronized demo stems.
 
-This does not synthesize another MIDI rock track. The music is catalog sourced;
+This does not synthesize another MIDI rock track. The music is a sourced recording;
 the custom work is the edit, transient selection, cue placement and mix. Track
 volume automation remains editable in HyperFrames rather than baked into the bed.
 """
@@ -60,7 +60,7 @@ mastering_gain_db = music.get("masteringGainDb", 3)
 if not 0.5 <= playback_rate <= 2 or source_start < 0:
     raise ValueError("Unsupported music edit")
 # Pitch-preserving tempo matching is source preparation, not a picture retime.
-# The new source's onset at ~16.73s lands on the 15.65s brand transition.
+# A rate of 1 preserves the selected recording's original tempo.
 source_filters = (
     f"atrim=start={source_start}:duration={CUES['duration'] * playback_rate},"
     f"asetpts=PTS-STARTPTS,atempo={playback_rate},highpass=f=45"
@@ -123,7 +123,7 @@ events = []
 
 
 def place(track, sample, time, db, kind, selector=None):
-    db += 3  # common mastering lift, preserving the foreground/background ratio
+    db += 3  # approved Foley mastering lift; independent of the music bed's gain
     sample = peak_normalize(sample, db)
     i = round(time * RATE)
     if i < 0 or i >= N:
@@ -229,7 +229,11 @@ meta = {
         "true_peak_target_db": true_peak_db,
         "mastering_gain_db": mastering_gain_db,
         "normalization_measurement": measured,
-        "authorship": "catalog music; custom editorial and synchronized Foley mix",
+        "authorship": music.get(
+            "authorship", "catalog music; custom editorial and synchronized Foley mix"
+        ),
+        "source_url": music.get("sourceUrl"),
+        "rights_status": music.get("rightsStatus", "public-release clearance not established"),
     },
     "typing": CUES["typing"],
     "events": sorted(events, key=lambda e: e["time"]),
