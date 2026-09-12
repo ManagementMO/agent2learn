@@ -535,3 +535,20 @@ Submission remains disabled, and publication still requires the existing human r
   after its checks pass, merge the fix, create v0.1.2, and promote through TestPyPI then PyPI using
   the existing protected workflow. The owner authorized that version's publication. LEARN uploads
   remain disabled, and the normal user command remains `uv tool install agent2learn`.
+
+## Published release — 0.1.2
+
+- PR #21 merged as 05b99f4 after all 17 CI jobs passed. Tag v0.1.2 remains on that merge commit;
+  v0.1.0/v0.1.1 and the TestPyPI 0.1.1 files were not moved or replaced.
+- Run 34715405821 successfully built and attested 0.1.2, passed all three installer jobs, published
+  to TestPyPI, passed all three exact-hash staging/install checks, and published to production PyPI.
+- The final GitHub attachment job failed because it had no checkout and `gh release create` lacked
+  an explicit repository. The already-authorized GitHub Release was then created with `--repo`
+  using those same downloaded, attested artifacts; its asset digests match PyPI and the manifest.
+  The historical workflow run still records the failed attachment step; it was not rewritten.
+- A fresh isolated public-index `uv tool install agent2learn` installed 0.1.2 with no Python flag,
+  custom index, local-wheel override, or dependency constraints. CLI version, four bundled skills,
+  and the installed core workflow smoke passed. Older-system-Python and shell-PATH fallbacks remain
+  documented rather than hidden.
+- The workflow follow-up passes `GITHUB_REPOSITORY` explicitly to the release CLI and tests the
+  command from a directory without a checkout. It does not rebuild or republish version 0.1.2.
