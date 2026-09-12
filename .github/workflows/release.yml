@@ -395,7 +395,8 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz \
-            --verify-tag --title "Agent2Learn ${{ needs.build.outputs.version }}" --generate-notes
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Agent2Learn ${{ needs.build.outputs.version }}" --generate-notes
 
   pypi:
     name: publish to PyPI

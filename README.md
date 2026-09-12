@@ -149,11 +149,13 @@ external request Agent2Learn can make, is in [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Status
 
-Agent2Learn is in active development. This branch targets **0.1.2**; the pinned installers require
-that version to be available on PyPI before they can install it. A release-preparation branch is
-not evidence of publication. The repository holds the tested implementation of the full v0.1
-command surface; publication is gated on the release checks in [docs/LAUNCH.md](docs/LAUNCH.md),
-including live same-device authentication records on Windows, macOS, and Linux, and a supervised
-upload test before the submission path is enabled in any published build.
+Agent2Learn **0.1.2 is available on [PyPI](https://pypi.org/project/agent2learn/0.1.2/)**.
+The [GitHub release](https://github.com/ManagementMO/agent2learn/releases/tag/v0.1.2) carries the
+same verified wheel and source distribution. Install with `uv tool install agent2learn`, then
+run `a2l init` in your terminal.
+
+The project remains in active development. Release checks are documented in
+[docs/LAUNCH.md](docs/LAUNCH.md), including same-device authentication and a fresh supervised upload
+test before submission capability can be enabled. **LEARN uploads remain disabled in 0.1.2.**
 
 Licensed under [Apache-2.0](LICENSE).

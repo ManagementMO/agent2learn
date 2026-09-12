@@ -392,6 +392,49 @@ def test_release_hash_manifest_refuses_a_directory_without_distributions(tmp_pat
 
 
 @posix_release_shell
+def test_github_release_targets_the_repository_without_a_checkout(tmp_path: Path) -> None:
+    outside = tmp_path / "outside checkout"
+    binary = outside / "bin"
+    binary.mkdir(parents=True)
+    gh = binary / "gh"
+    gh.write_text(
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$A2L_TEST_ARGS"\n',
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    dist = outside / "dist"
+    dist.mkdir()
+    (dist / f"agent2learn-{__version__}-py3-none-any.whl").write_bytes(b"wheel")
+    (dist / f"agent2learn-{__version__}.tar.gz").write_bytes(b"source")
+    calls = outside / "calls"
+    environment = {
+        **os.environ,
+        "PATH": f"{binary}{os.pathsep}{os.environ.get('PATH', '')}",
+        "GITHUB_REF_NAME": f"v{__version__}",
+        "GITHUB_REPOSITORY": "fixture-owner/fixture-repository",
+        "A2L_TEST_ARGS": str(calls),
+    }
+    script = _step_script("Attach the exact promoted distributions to the GitHub release")
+    script = script.replace("${{ needs.build.outputs.version }}", __version__)
+
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=outside,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    arguments = calls.read_text(encoding="utf-8").splitlines()
+    assert arguments[:3] == ["release", "create", f"v{__version__}"]
+    assert "--repo" in arguments
+    assert arguments[arguments.index("--repo") + 1] == "fixture-owner/fixture-repository"
+    assert "--verify-tag" in arguments
+
+
+@posix_release_shell
 @pytest.mark.parametrize(
     ("tag", "expected_ok"), [(f"v{__version__}", True), ("v9.9.9", False), ("not-a-tag", False)]
 )
