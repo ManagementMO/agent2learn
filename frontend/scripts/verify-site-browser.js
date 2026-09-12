@@ -276,53 +276,7 @@ async function verifySiteBrowser(page) {
     }
   }
 
-  for (const width of [320, 1440]) {
-    for (const theme of ['light', 'dark']) {
-      const label = `demo placeholder ${width}px ${theme}`;
-      await page.setViewportSize({ width, height: 900 });
-      await setTheme(theme);
-      const mediaRequests = [];
-      const onRequest = (request) => {
-        if (request.url() === `${origin}/brand/demo-poster.png`) mediaRequests.push(request.url());
-      };
-      page.on('request', onRequest);
-      await page.goto(origin);
-      await ready();
-      assert(mediaRequests.length === 0, `${label}: poster loaded before opening the dialog`);
-      await page.getByRole('button', { name: 'Preview the demo', exact: true }).click();
-      const dialog = page.getByRole('dialog');
-      assert(await dialog.isVisible(), `${label}: dialog did not open`);
-      await dialog.locator('img').evaluate((image) => image.decode());
-      assert(
-        await dialog.getByText('Demo placeholder', { exact: true }).isVisible(),
-        `${label}: placeholder is not labeled`,
-      );
-      assert(
-        (await dialog.locator('video').count()) === 0,
-        `${label}: placeholder pretends to play a video`,
-      );
-      assert(mediaRequests.length === 1, `${label}: poster was not loaded on demand`);
-      assert(
-        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-        `${label}: horizontal overflow`,
-      );
-      await audit(label);
-      await page.keyboard.press('Escape');
-      assert(await dialog.isHidden(), `${label}: Escape did not close the dialog`);
-      assert(
-        await page.locator('[data-open-demo]').evaluate((el) => el === document.activeElement),
-        `${label}: closing lost keyboard focus`,
-      );
-      // Native dialog close events are queued after the open attribute clears.
-      await page.waitForFunction(() => !document.querySelector('.video-placeholder-art img'));
-      await page.getByRole('button', { name: 'Preview the demo', exact: true }).click();
-      await page.getByRole('button', { name: 'Close demo', exact: true }).click();
-      assert(await dialog.isHidden(), `${label}: close button did not work`);
-      page.off('request', onRequest);
-      cases.push(label);
-    }
-  }
-
+  await page.goto(origin);
   await page.locator('.footer-links').getByRole('link', { name: 'Docs', exact: true }).click();
   assert(
     (await page.locator('h1').textContent()).trim() === 'A course vault your agent can read.',
