@@ -117,7 +117,9 @@ The Vercel project is **`agent2learn`** under **`managementmos-projects`**, with
 
 Push a branch and open a pull request to get a Vercel preview and build status. Merging into **`main`**, the configured production branch, automatically builds and updates the production site. A failed build keeps the previous successful deployment live. The repository's existing required CI checks still govern merges.
 
-`SITE_URL=https://agent2learn.vercel.app` is configured in Vercel for production and preview builds. The native GitHub integration handles deployments without adding a Vercel token to GitHub Actions. `.vercel/` and downloaded local environment files are ignored by Git. `.vercelignore` restricts direct frontend CLI uploads to source, public assets, build scripts, and required configuration; local environment files, browser reports, build output, and dependencies are excluded.
+`SITE_URL=https://agent2learn.vercel.app` is configured in Vercel for production and preview builds. The native GitHub integration handles deployments without adding a Vercel token to GitHub Actions. `.vercel/` and downloaded local environment files are ignored by Git. The repository-root `.vercelignore` allows only the frontend source, public assets, build scripts, and required configuration in both Git and CLI deployments; local environment files, browser reports, build output, and dependencies are excluded.
+
+For optional CLI access, run `vercel link --repo --yes --scope managementmos-projects` from the repository root. This maps the `frontend` directory to the existing project. Run manual `vercel deploy --prod` commands from that repository root so the upload paths match the project's configured Root Directory.
 
 For another static host, deploy `dist/` using this folder as the project root. The site expects deployment at an origin's root, not under a repository-name subpath. Serve `404.html` for unknown paths; do not rewrite every route to the landing page.
 

@@ -1,0 +1,14 @@
+*
+!frontend
+!frontend/src
+!frontend/src/**
+!frontend/public
+!frontend/public/**
+!frontend/scripts
+!frontend/scripts/**
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/astro.config.mjs
+!frontend/ec.config.mjs
+!frontend/tsconfig.json
+!frontend/vercel.json
