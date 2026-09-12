@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0 <23"
   },
   "scripts": {
     "dev": "astro dev --host 127.0.0.1",
@@ -12,7 +12,7 @@
     "check:release": "node scripts/verify-release.mjs",
     "brand:build": "node scripts/build-brand.mjs",
     "brand:check": "node scripts/build-brand.mjs --check",
-    "build": "npm run brand:check && astro check && astro build --force && node scripts/verify-build.mjs",
+    "build": "npm run brand:check -- --site-only && astro check && astro build --force && node scripts/verify-build.mjs",
     "preview": "astro preview --host 127.0.0.1",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

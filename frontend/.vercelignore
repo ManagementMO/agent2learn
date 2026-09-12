@@ -1,0 +1,13 @@
+*
+!src
+!src/**
+!public
+!public/**
+!scripts
+!scripts/**
+!package.json
+!package-lock.json
+!astro.config.mjs
+!ec.config.mjs
+!tsconfig.json
+!vercel.json

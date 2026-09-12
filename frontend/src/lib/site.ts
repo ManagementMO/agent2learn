@@ -1,19 +1,22 @@
 export const repository = 'https://github.com/ManagementMO/agent2learn';
 
 /**
- * Website copy is prepared for launch after the matching package is on PyPI.
+ * Keep this version aligned with a verified public PyPI release.
+ * Installer links use its tag so unreleased changes on main cannot break setup.
  * This editorial setting does not publish or check the package itself.
  * It has no connection to the engine's independent submission capability.
  */
 export const release = {
   published: true,
-  version: '0.1.0',
+  version: '0.1.2',
 };
+
+const releaseRef = `v${release.version}`;
 
 export const installCommands = {
   uv: 'uv tool install agent2learn',
-  posix: `curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.sh | bash`,
-  windows: `irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 | iex`,
+  posix: `curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/${releaseRef}/install.sh | bash`,
+  windows: `irm https://raw.githubusercontent.com/ManagementMO/agent2learn/${releaseRef}/install.ps1 | iex`,
 };
 
 // Shared by the visible install tabs and the text copied with a documentation page.
@@ -49,7 +52,7 @@ export const releaseNotice = {
 export const agentPrompt = `Help me set up and use Agent2Learn, a local course vault for my own University of Waterloo LEARN account.
 
 Read the official installation guide first:
-https://github.com/ManagementMO/agent2learn/blob/main/docs/install.md
+${repository}/blob/${releaseRef}/docs/install.md
 ${release.published ? '' : '\nRELEASE STATUS: The PyPI package is not published yet. You may check for an existing a2l installation and explain setup, but do not run a package installer until the official release is available.\n'}
 SETUP
 Check a2l --version before installing. Use only a supported installation method from the official guide, then verify a2l --version. Do not use administrator privileges or invent another package, index, or installer URL.

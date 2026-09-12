@@ -3,6 +3,7 @@ dist/
 .astro/
 .playwright-cli/
 output/
+.vercel/
 .env
 .env.*
 !.env.example

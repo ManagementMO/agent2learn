@@ -20,6 +20,7 @@ const mark = variant('#161616');
 const dark = variant('#FFFFFF');
 const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" data-source-sha256="${sourceHash}"><rect x=".5" y=".5" width="63" height="63" rx="14" fill="#fff" stroke="#e4e4e7"/><g transform="translate(4 20.8) scale(.155555556)">${geometry.replace('fill="currentColor"', 'fill="#161616"')}</g></svg>\n`;
 const icon = await sharp(Buffer.from(favicon)).resize(512, 512).png().toBuffer();
+const siteOnly = process.argv.includes('--site-only');
 const outputs = new Map([
   ['public/brand/mark.svg', Buffer.from(mark)],
   ['public/brand/mark-dark.svg', Buffer.from(dark)],
@@ -27,9 +28,11 @@ const outputs = new Map([
   ['public/brand/mark-dark.png', await sharp(Buffer.from(dark)).resize(1440).png().toBuffer()],
   ['public/favicon.svg', Buffer.from(favicon)],
   ['public/brand/icon.png', icon],
-  ['../videos/a2l-cinematic/assets/brand/a2l-waterloo-gold.svg', Buffer.from(mark)],
-  ['../videos/a2l-cinematic/assets/brand/a2l-waterloo-gold-dark.svg', Buffer.from(dark)],
 ]);
+if (!siteOnly) {
+  outputs.set('../videos/a2l-cinematic/assets/brand/a2l-waterloo-gold.svg', Buffer.from(mark));
+  outputs.set('../videos/a2l-cinematic/assets/brand/a2l-waterloo-gold-dark.svg', Buffer.from(dark));
+}
 const check = process.argv.includes('--check');
 for (const [path, bytes] of outputs) {
   if (check)
@@ -37,5 +40,5 @@ for (const [path, bytes] of outputs) {
   else await writeFile(path, bytes);
 }
 console.log(
-  `${check ? 'Verified' : 'Exported'} A2L vector marks, gold-preserving dark variant, favicon, icon and identical film artwork.`,
+  `${check ? 'Verified' : 'Exported'} A2L vector marks, gold-preserving dark variant, favicon and icon${siteOnly ? '.' : ', plus identical film artwork.'}`,
 );
