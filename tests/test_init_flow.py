@@ -7,6 +7,7 @@ proves the CLI's ordering and persistence contract rather than duplicating brows
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, replace
@@ -348,6 +349,47 @@ def test_init_runs_consent_and_sync_stages_in_order_and_persists_defaults(
     assert result.stdout.index("dedicated local browser") < result.stdout.index("Spring 2026")
     assert result.stdout.index("Spring 2026") < result.stdout.index("reading 2 courses")
     assert result.stdout.index("reading 2 courses") < result.stdout.index("Files:")
+
+
+@pytest.mark.parametrize("boundary", ["vault", "browser profile"])
+@pytest.mark.parametrize(("interrupt", "expected_exit"), [(KeyboardInterrupt, 130), (EOFError, 1)])
+def test_prompt_interruption_preserves_captured_work_and_distinguishes_ctrl_c(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    boundary: str,
+    interrupt: type[BaseException],
+    expected_exit: int,
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+    note = world.root / "student-note.md"
+    note.write_text("preserve this synthetic note\n", encoding="utf-8")
+    real_confirm = cli.typer.confirm
+    prompt_module = importlib.import_module(real_confirm.__module__)
+
+    def interrupted_input(_prompt: str) -> str:
+        raise interrupt
+
+    def confirm(text: str, default: bool = False) -> bool:
+        selected = text == "Continue?" if boundary == "browser profile" else "local vault" in text
+        if selected:
+            # Let the real prompt layer translate the terminal interruption into Abort.
+            # CliRunner installs its own input function, so replace it only during this prompt.
+            with monkeypatch.context() as prompt_patch:
+                prompt_patch.setattr(prompt_module, "visible_prompt_func", interrupted_input)
+                return real_confirm(text, default=default)
+        return real_confirm(text, default=default)
+
+    monkeypatch.setattr(cli.typer, "confirm", confirm)
+    result = CliRunner().invoke(cli.app, ["init"], input="y\nn\nn\n")
+
+    assert result.exit_code == expected_exit, result.output
+    assert result.output.count("run:") == 1
+    assert "run: a2l init" in result.output
+    assert note.read_text(encoding="utf-8") == "preserve this synthetic note\n"
+    assert not world.auth_backends
+    if boundary == "browser profile":
+        assert _state(world.root)["include_grades"] is False
+        assert "profile_consent" not in _state(world.root)
 
 
 def test_init_deselection_passes_only_stable_offering_ids_to_metadata(

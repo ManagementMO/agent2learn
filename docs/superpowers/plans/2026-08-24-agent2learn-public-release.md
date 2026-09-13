@@ -1349,6 +1349,8 @@ Steps:
 - [x] **Step 6:** `authenticate(backend="auto")` tries direct CDP, then prints a clear pointer to
       `a2l auth --paste`. Do not add opportunistic Playwright/Selenium/agent-browser backends in
       v0.1; a backend that exists only on some machines creates a second unvalidated profile model.
+      Preserve a fixed missing-browser diagnostic across the redaction boundary; unknown browser
+      exception text remains generic. Exercise real empty executable discovery through the CLI.
 - [x] **Step 7:** Implement `a2l auth --clear-profile`. It first clears the exported API session,
       then shows the exact dedicated profile path and warns that Waterloo/Duo remembered state will
       be lost; deletion requires an interactive human confirmation. It never targets a default
@@ -1702,6 +1704,10 @@ Steps:
       the exact platform install command and sanitized probed locations (`winget …` /
       `brew install tesseract` / `apt install tesseract-ocr`). Never modify the user's global
       environment, download OCR models, or crash the overall sync.
+      Treat undecodable language-discovery or recognition output as an OCR gap, not a successful
+      text-only fallback. Pass a private, resolved temporary-image path to Tesseract, preserving
+      the white alpha matte and cleaning the scratch image on success or failure. Test aliased
+      temporary roots without changing global environment settings.
 - [x] **Step 4c:** Implement notebook conversion directly on `nbformat.read(..., as_version=4)`;
       do not recreate nbconvert's exporter/template stack. Keep the renderer small and auditable
       (the validated spike was 64 implementation lines). Preserve markdown cells; fence code with
@@ -1723,7 +1729,15 @@ Steps:
       exact source hash, threshold, page coverage, converter/version, and timestamp only after atomic
       installation. If the twin's current hash differs from its record, preserve it in source
       history as `local-modification`, report it, regenerate atomically, and test that no edited
-      bytes are lost. Add adversarial HTML/archive tests: strip active
+      bytes are lost. Retrying a fallback must preserve identical twin bytes and timestamps, and
+      preserve its creation time when all artifact provenance matches. Test preferred-backend
+      recovery with both identical and changed output. Seed an existing fallback before testing
+      OCR failure: the old twin stays on disk but a conversion gap keeps its citation path null
+      through reconciliation and grounding. Successful conversion or current-settings cache
+      validation explicitly clears that gap. Both paths must preserve a download gap when remote
+      validators still identify an unserved revision, including after an intermediate conversion
+      failure. Verify recovery after the new revision arrives. An unchanged cache refresh must not
+      rewrite content maps or rehash every course artifact. Add adversarial HTML/archive tests: strip active
       tags/attributes/schemes and remote-image loads; reject absolute/parent paths, links, device
       names, encrypted members, member-count and uncompressed-size caps, and suspicious compression
       ratios before extraction. Monkeypatch socket/process-launch APIs so any converter network,
@@ -1893,6 +1907,9 @@ Steps:
       paths, URL query strings, headers, cookies, and tokens are absent. `--open` shows the exact
       GitHub destination and explains that opening it leaves the device, then builds a pre-filled
       URL (URL-encoded and truncated safely); the user still reviews and submits the issue.
+      Detect uv tool environments from their local receipt marker, not path-name substrings.
+      Test custom tool roots, ordinary virtual environments, and system paths containing `uv`;
+      never read or report the receipt's contents or path.
 - [x] **Step 6:** Create `.github/ISSUE_TEMPLATE/bug_report.yml` with a **required** textarea for the
       report block.
 - [x] **Step 7:** Tests pass; commit.
@@ -2064,6 +2081,9 @@ Steps:
       does exactly what it says. Declining profile creation offers the hidden-TTY `--paste` path in
       the same run rather than dead-ending. Rerunning `init` is idempotent and resumes at the first
       incomplete stage without erasing prior choices or browser state.
+      Test Ctrl-C through the real prompt library, not only a directly raised KeyboardInterrupt:
+      it exits `130` at the initial vault prompt and within later stages. EOF remains an ordinary
+      cancellation, completed data is retained, and interrupted consent never starts authentication.
 - [x] **Step 8:** Commit.
       ```
       git commit -m "feat: a2l init onboarding that ends on a real deadline"

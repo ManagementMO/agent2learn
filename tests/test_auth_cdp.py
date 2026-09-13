@@ -1076,6 +1076,27 @@ def test_authentication_orchestration_redacts_untrusted_cdp_errors_and_controls_
     assert str(cdp_error.value) == "dedicated browser authentication failed"
 
 
+def test_auth_cli_reports_a_missing_browser_without_exposing_local_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from typer.testing import CliRunner
+
+    from agent2learn.cli import app
+
+    # Exercise real browser discovery with no installed candidates on any supported OS.
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(cdp, "_CHROMIUM_EXECUTABLE_BASENAMES", ())
+    monkeypatch.setattr(cdp, "_windows_browser_paths", lambda: [])
+    monkeypatch.setattr(cdp.shutil, "which", lambda _name: None)
+
+    result = CliRunner().invoke(app, ["auth"])
+
+    assert result.exit_code == 1
+    assert "Chrome or Edge was not found" in result.output
+    assert "install" in result.output.casefold()
+    assert str(tmp_path) not in result.output
+
+
 def test_authentication_orchestration_preserves_only_a_sanitized_blocked_hostname(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

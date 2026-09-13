@@ -29,4 +29,8 @@ class AuthenticationError(A2LError):
     exit_code: ClassVar[int] = 1
 
 
-__all__ = ["A2LError", "AuthenticationError", "NotConfigured", "SessionExpired"]
+class BrowserNotFound(AuthenticationError):
+    """No supported browser executable is available for dedicated-profile sign-in."""
+
+
+__all__ = ["A2LError", "AuthenticationError", "BrowserNotFound", "NotConfigured", "SessionExpired"]

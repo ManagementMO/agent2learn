@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 
 from agent2learn import __version__, config, paths, session
-from agent2learn.errors import AuthenticationError
+from agent2learn.errors import AuthenticationError, BrowserNotFound
 from agent2learn.schools import School
 
 from . import paste
@@ -212,7 +212,10 @@ def _verified_id_from_cdp_result(value: object) -> str | None:
 
 
 def _safe_cdp_error(exc: AuthenticationError) -> str:
-    """Keep the public auth error generic while retaining a sanitized blocked hostname."""
+    """Expose fixed local prerequisite diagnostics, never arbitrary browser exception text."""
+
+    if isinstance(exc, BrowserNotFound):
+        return "Chrome or Edge was not found; install one for dedicated-browser sign-in"
 
     prefix = "authentication stopped at undeclared host "
     raw = str(exc)

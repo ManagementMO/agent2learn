@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import io
+import os
 import socket
 import subprocess
 import sys
+import tempfile
 import zipfile
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -24,6 +27,7 @@ from agent2learn.convert import (
     convert_source,
     convert_vault,
 )
+from agent2learn.ground import verified_sources
 from agent2learn.vault import DerivedArtifact, ManifestEntry, Vault
 
 
@@ -268,6 +272,78 @@ def test_unavailable_ocr_is_an_explicit_conversion_gap(tmp_path: Path) -> None:
     assert "conversion gap" in result.markdown
 
 
+@pytest.mark.parametrize("stage", ["languages", "recognition"])
+def test_undecodable_ocr_output_remains_a_page_gap_instead_of_a_text_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stage: str
+) -> None:
+    # pytesseract decodes subprocess output strictly; malformed bytes can escape as
+    # UnicodeDecodeError rather than TesseractError. Keep the real PDF/render/fallback path.
+    executable = tmp_path / "tesseract"
+    executable.touch()
+    monkeypatch.setattr(convert.shutil, "which", lambda _name: str(executable))
+
+    def malformed_output(*_args: object, **_kwargs: object) -> str:
+        raise UnicodeDecodeError("utf-8", b"\x89", 0, 1, "private-ocr-diagnostic")
+
+    monkeypatch.setattr(convert.pytesseract, "get_languages", lambda **_kwargs: ["eng"])
+    monkeypatch.setattr(convert.pytesseract, "image_to_string", malformed_output)
+    if stage == "languages":
+        monkeypatch.setattr(convert.pytesseract, "get_languages", malformed_output)
+
+    result = convert_pdf(FILES / "lecture01.pdf", ocr_words_per_page=10_000)
+
+    assert result.gap is True
+    assert all(page.mode == "unresolved" for page in result.page_coverage)
+    assert all("OCR unavailable" in warning for warning in result.warnings)
+    assert "private-ocr-diagnostic" not in result.markdown
+    assert "private-ocr-diagnostic" not in " ".join(result.warnings)
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_ocr_uses_a_private_resolved_input_and_removes_it_afterward(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fails: bool
+) -> None:
+    # Some Tesseract/Leptonica builds refuse an alias such as macOS /tmp. An image
+    # object lets pytesseract pick that unresolved path; provide our own resolved file.
+    temporary_root = tmp_path / "real temporary directory"
+    temporary_root.mkdir()
+    if sys.platform != "win32":
+        alias = tmp_path / "temporary alias"
+        alias.symlink_to(temporary_root, target_is_directory=True)
+        temporary_root = alias
+    monkeypatch.setattr(tempfile, "tempdir", str(temporary_root))
+    monkeypatch.setattr(convert, "_configure_tesseract", lambda _language: True)
+    visited: list[Path] = []
+
+    def recognize(image: object, *, lang: str) -> str:
+        if not isinstance(image, str):
+            raise convert.pytesseract.TesseractError(1, "unresolved temporary input")
+        image_path = Path(image)
+        assert image_path == image_path.resolve()
+        assert lang == "eng"
+        with convert.Image.open(image_path) as rendered:
+            assert rendered.getpixel((0, 0)) == (0, 0, 0)
+            assert rendered.getpixel((1, 0)) == (255, 255, 255)
+        visited.append(image_path)
+        if fails:
+            raise convert.pytesseract.TesseractError(1, "synthetic recognition failure")
+        return "recognized synthetic text"
+
+    monkeypatch.setattr(convert.pytesseract, "image_to_string", recognize)
+    output = io.BytesIO()
+    with convert.Image.new("RGBA", (2, 1), (0, 0, 0, 0)) as image:
+        image.putpixel((0, 0), (0, 0, 0, 255))
+        image.save(output, format="PNG")
+
+    if fails:
+        with pytest.raises(ConversionError, match="could not OCR"):
+            PdfOxideBackend()._read_ocr(output.getvalue())
+    else:
+        assert PdfOxideBackend()._read_ocr(output.getvalue()) == "recognized synthetic text\n"
+    assert len(visited) == 1 and not visited[0].exists()
+    assert not list(temporary_root.iterdir())
+
+
 class _Backend:
     name = "fake"
     version = "1"
@@ -359,6 +435,70 @@ def test_convert_vault_installs_hash_linked_twin_and_is_idempotent(tmp_path: Pat
     assert artifact.derived["markdown"].source_sha256 == entry.sha256
     assert artifact.derived["markdown"].ocr_words_per_page == 80
     assert artifact.derived["markdown"].page_coverage[0]["page"] == 1
+
+
+@pytest.mark.parametrize("recovered_text", ["degraded", "recovered"])
+def test_unchanged_fallback_preserves_twin_and_still_retries_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recovered_text: str
+) -> None:
+    vault = Vault(tmp_path / "vault")
+    source = vault.root / "Winter 2026" / "COURSE101" / "content" / "lecture01.pdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(fixture_bytes("lecture01.pdf"))
+    key = "uwaterloo:111111:topic:1"
+    entry = ManifestEntry(
+        path=source.relative_to(vault.root).as_posix(),
+        sha256=_sha256(source.read_bytes()),
+        source_id="1",
+        etag=None,
+        last_modified=None,
+        size=source.stat().st_size,
+        fetched_at="2026-08-25T12:00:00Z",
+    )
+    vault.mark(key, entry)
+    vault.save_manifest()
+    primary = _Backend(name="primary", error=ConversionError("unavailable"))
+    fallback = _Backend(name="pypdfium2", text="degraded")
+    monkeypatch.setattr(convert, "_now", lambda: "2026-08-25T12:00:00Z")
+    first = convert_vault(vault, backend=primary, fallback=fallback)
+    assert first.converted == 1
+    first_entry = vault.entry(key)
+    assert first_entry is not None
+    first_artifact = first_entry.derived["markdown"]
+    twin = vault.root / first_artifact.path
+    # A deliberately old timestamp makes a rewrite observable on coarse filesystems too.
+    os.utime(twin, (1_600_000_000, 1_600_000_000))
+    original_mtime = twin.stat().st_mtime_ns
+    source_mtime = source.stat().st_mtime_ns
+
+    monkeypatch.setattr(convert, "_now", lambda: "2026-08-26T12:00:00Z")
+    second = convert_vault(vault, backend=primary, fallback=fallback)
+
+    assert primary.calls == fallback.calls == 2
+    assert any("fallback" in warning.casefold() for warning in second.warnings)
+    assert twin.stat().st_mtime_ns == original_mtime
+    assert second.skipped == 1 and second.converted == second.gaps == 0
+    assert source.stat().st_mtime_ns == source_mtime
+    assert _sha256(twin.read_bytes()) == first_artifact.sha256
+    assert Vault(vault.root).entry(key) == first_entry
+
+    # Do not make fallback permanent: successful primary output updates its provenance,
+    # even when the preferred backend produces the same bytes as the fallback did.
+    primary.error = None
+    primary.text = recovered_text
+    third = convert_vault(vault, backend=primary, fallback=fallback)
+    assert third.converted == 1 and third.gaps == 0
+    assert primary.calls == 3 and fallback.calls == 2
+    refreshed = Vault(vault.root).entry(key)
+    assert refreshed is not None
+    assert refreshed.derived["markdown"].tool == "primary"
+    assert refreshed.derived["markdown"].created_at == "2026-08-26T12:00:00Z"
+    assert refreshed.derived["markdown"].path == first_artifact.path
+    assert twin.read_text(encoding="utf-8") == recovered_text
+    if recovered_text == "degraded":
+        assert twin.stat().st_mtime_ns == original_mtime
+    else:
+        assert twin.stat().st_mtime_ns != original_mtime
 
 
 def test_convert_vault_preserves_a_sanitized_assignment_prompt_twin(tmp_path: Path) -> None:
@@ -759,6 +899,170 @@ def test_ocr_unavailable_gap_points_at_tesseract_setup(tmp_path: Path) -> None:
     assert row["availability"] == "conversion_gap"
     assert row["next_action"] == convert.OCR_SETUP_ACTION
     assert "Tesseract" in convert.OCR_SETUP_ACTION
+
+
+@pytest.mark.parametrize("stage", ["languages", "recognition"])
+def test_failed_ocr_does_not_revalidate_a_cached_fallback_twin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    vault, course_dir = _vault_with_mapped_source(tmp_path, payload=fixture_bytes("lecture01.pdf"))
+    first = convert_vault(
+        vault,
+        backend=_Backend(error=ConversionError("primary unavailable")),
+        ocr_words_per_page=10_000,
+    )
+    assert first.converted == 1
+    prior = vault.entry("uwaterloo:111111:topic:1")
+    assert prior is not None and prior.derived["markdown"].tool == "pypdfium2"
+    twin = vault.root / prior.derived["markdown"].path
+    original_bytes = twin.read_bytes()
+    original_mtime = twin.stat().st_mtime_ns
+    assert len(verified_sources(vault, course_dir)) == 1
+    executable = tmp_path / "tesseract"
+    executable.touch()
+    monkeypatch.setattr(convert.shutil, "which", lambda _name: str(executable))
+
+    def malformed_output(*_args: object, **_kwargs: object) -> str:
+        raise UnicodeDecodeError("utf-8", b"\x89", 0, 1, "private-ocr-diagnostic")
+
+    monkeypatch.setattr(convert.pytesseract, "get_languages", lambda **_kwargs: ["eng"])
+    monkeypatch.setattr(convert.pytesseract, "image_to_string", malformed_output)
+    if stage == "languages":
+        monkeypatch.setattr(convert.pytesseract, "get_languages", malformed_output)
+
+    failed = convert_vault(vault, ocr_words_per_page=10_000)
+
+    assert failed.gaps == 1 and failed.converted == 0
+    row = _mapped_row(course_dir)
+    assert row["availability"] == "conversion_gap"
+    assert row["path"] is None and row["source_path"] == prior.path
+    assert row["next_action"] == convert.OCR_SETUP_ACTION
+    assert "private-ocr-diagnostic" not in str(row)
+    assert course_index.reconcile_content_map(vault, [row]) == [row]
+    assert verified_sources(vault, course_dir) == ()
+    assert twin.read_bytes() == original_bytes and twin.stat().st_mtime_ns == original_mtime
+    assert vault.materialized(prior).read_bytes() == fixture_bytes("lecture01.pdf")
+    assert Vault(vault.root).entry("uwaterloo:111111:topic:1") == prior
+
+    monkeypatch.setattr(convert.pytesseract, "get_languages", lambda **_kwargs: ["eng"])
+    monkeypatch.setattr(
+        convert.pytesseract, "image_to_string", lambda *a, **k: "Recovered OCR text"
+    )
+    recovered = convert_vault(vault, ocr_words_per_page=10_000)
+    assert recovered.converted == 1 and recovered.gaps == 0
+    assert _mapped_row(course_dir)["availability"] == "markdown_ready"
+    assert len(verified_sources(vault, course_dir)) == 1
+
+
+def test_verified_cached_twin_can_clear_a_failed_different_conversion_threshold(
+    tmp_path: Path,
+) -> None:
+    vault, course_dir = _vault_with_mapped_source(tmp_path)
+    primary = _Backend(text="verified cached text")
+    fallback = _Backend(error=ConversionError("fallback unavailable"))
+    assert (
+        convert_vault(vault, backend=primary, fallback=fallback, ocr_words_per_page=1).converted
+        == 1
+    )
+    primary.error = ConversionError("primary unavailable")
+
+    failed = convert_vault(vault, backend=primary, fallback=fallback, ocr_words_per_page=80)
+    assert failed.gaps == 1
+    assert _mapped_row(course_dir)["availability"] == "conversion_gap"
+    assert verified_sources(vault, course_dir) == ()
+
+    restored = convert_vault(vault, backend=primary, fallback=fallback, ocr_words_per_page=1)
+    assert restored.skipped == 1 and restored.gaps == 0
+    assert primary.calls == 2
+    assert _mapped_row(course_dir)["availability"] == "markdown_ready"
+    assert len(verified_sources(vault, course_dir)) == 1
+
+
+@pytest.mark.parametrize("threshold", [1, 80])
+@pytest.mark.parametrize("intermediate_failure", [False, True])
+def test_local_conversion_cannot_clear_an_unserved_remote_revision(
+    tmp_path: Path, threshold: int, intermediate_failure: bool
+) -> None:
+    vault, course_dir = _vault_with_mapped_source(tmp_path)
+    backend = _Backend(text="old remote revision")
+    assert convert_vault(vault, backend=backend, ocr_words_per_page=1).converted == 1
+    key = "uwaterloo:111111:topic:1"
+    entry = vault.entry(key)
+    assert entry is not None
+    vault.mark(key, replace(entry, etag="old-revision"))
+    vault.save_manifest()
+    row = _mapped_row(course_dir)
+    row.update(
+        availability="download_gap",
+        etag="new-revision",
+        path=None,
+        next_action="download failed; retry: a2l fetch 1",
+    )
+    course_index.write_content_map(course_dir, [row], root=vault.root)
+
+    if intermediate_failure:
+        failing = _Backend(error=ConversionError("conversion unavailable"))
+        failed = convert_vault(vault, backend=failing, fallback=failing, ocr_words_per_page=80)
+        assert failed.gaps == 1
+        assert _mapped_row(course_dir)["availability"] == "download_gap"
+        assert _mapped_row(course_dir)["next_action"] == "download failed; retry: a2l fetch 1"
+
+    result = convert_vault(vault, backend=backend, ocr_words_per_page=threshold)
+
+    assert result.converted + result.skipped == 1 and result.gaps == 0
+    current = _mapped_row(course_dir)
+    assert current["availability"] == "download_gap"
+    assert current["path"] is None
+    assert current["next_action"] == "download failed; retry: a2l fetch 1"
+    assert verified_sources(vault, course_dir) == ()
+
+    # Once the requested remote revision really is captured, conversion failures must
+    # remain explicit too, and later success must be able to restore citation eligibility.
+    captured = vault.entry(key)
+    assert captured is not None
+    vault.mark(key, replace(captured, etag="new-revision"))
+    vault.save_manifest()
+    failing = _Backend(name="unavailable", error=ConversionError("conversion unavailable"))
+    failed = convert_vault(vault, backend=failing, fallback=failing)
+    assert failed.gaps == 1
+    assert _mapped_row(course_dir)["availability"] == "conversion_gap"
+    recovered = convert_vault(vault, backend=backend, ocr_words_per_page=threshold)
+    assert recovered.converted + recovered.skipped == 1 and recovered.gaps == 0
+    assert _mapped_row(course_dir)["availability"] == "markdown_ready"
+    assert len(verified_sources(vault, course_dir)) == 1
+
+
+def test_unchanged_cache_does_not_reconcile_or_write_content_maps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = Vault(tmp_path / "vault")
+    rows = []
+    for identifier in range(1, 11):
+        source = _captured_text_source(
+            vault, f"lecture{identifier}.pdf", b"%PDF-synthetic", identifier
+        )
+        rows.append(
+            {
+                "source_key": f"uwaterloo:111111:topic:{identifier}",
+                "source_id": str(identifier),
+                "topic_id": identifier,
+                "availability": "source_only",
+            }
+        )
+    course_dir = source.parent.parent
+    course_index.write_content_map(course_dir, rows, root=vault.root)
+    backend = _Backend()
+    assert convert_vault(vault, backend=backend).converted == 10
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unchanged cache rehashed or rewrote the content map")
+
+    monkeypatch.setattr(course_index, "_hash", forbidden)
+    monkeypatch.setattr(course_index, "write_content_map", forbidden)
+    report = convert_vault(vault, backend=backend)
+
+    assert report.skipped == 10 and report.converted == report.gaps == 0
+    assert backend.calls == 10
 
 
 def test_optional_dependency_gap_stays_unsupported_format(tmp_path: Path) -> None:
