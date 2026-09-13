@@ -603,3 +603,30 @@ Submission remains disabled, and publication still requires the existing human r
   an isolated HOME, preserve the VM's configured XAUTHORITY path for GUI access; do not copy its
   contents or weaken X-server/browser security. Source checks must retain the selected Python,
   all test extras, and uv on their subprocess PATH. These are test-environment requirements.
+
+## Release recovery — 0.1.4
+
+- PR #26 merged as d2acb4d after all 17 required CI jobs passed in run 34734171068. The immutable
+  v0.1.3 tag points at that merge. Release run 34735270744 built and attested both distributions,
+  passed all three installer jobs, and published the exact files to TestPyPI. All three staging
+  hash checks passed, but all three staging installs failed; production PyPI and GitHub release
+  publication were correctly skipped. Production still serves 0.1.2 at this checkpoint.
+- The failure was index precedence: uv prioritizes `--extra-index-url` over `--index-url` under
+  `first-index`. Since production now contains Agent2Learn, the old recipe found only production's
+  older version and never considered TestPyPI's candidate. Do not use unsafe index matching.
+- The owner explicitly approved a fresh 0.1.4 instead of moving v0.1.3 or replacing its TestPyPI
+  files. The correction installs the wheel downloaded from TestPyPI only after host, size, and
+  SHA-256 verification, while dependencies resolve only from PyPI with `first-index` unchanged.
+  Existing protected environments, Trusted Publishing, tag checks, and submission-disable gates
+  remain intact. No dependency bound or third-party lock entry changes for this recovery.
+- A real-uv two-index regression reproduced the old failure and passes with the correction; it
+  also proves that a conflicting staging dependency is not selected. Download tests reject corrupt
+  or oversized bytes, foreign hosts, cleartext URLs, embedded credentials, and redirects before
+  exposing an installable artifact path.
+- The corrected workflow steps were also executed against the actual, already-published TestPyPI
+  0.1.3 artifacts: exact hashes, installation, CLI version, installed core workflow, and skills all
+  passed without any new upload. The new 0.1.4 still needs its own final CI and publication gates.
+- The owner requested an independent end-to-end QA prompt, including a real same-device login they
+  will complete. Its target is the eventual published 0.1.4, not the staging-only 0.1.3. Preserve
+  existing user data, keep uploads disabled, and report real-account versus synthetic evidence
+  separately rather than claiming universal success.

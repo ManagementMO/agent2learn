@@ -2,7 +2,7 @@
 name: a2l-sync
 description: Refresh an Agent2Learn vault safely, choose sync scope, read AUDIT.md, and recover from expired-session exit 75.
 metadata:
-  version: 0.1.3
+  version: 0.1.4
 ---
 
 # Agent2Learn Sync
