@@ -7,7 +7,6 @@ import CopyButton from '../components/CopyButton.astro';
 import AgentPrompt from '../components/AgentPrompt.astro';
 import VaultDemo from '../components/VaultDemo.astro';
 import FeatureStory from '../components/FeatureStory.astro';
-import DemoVideo from '../components/DemoVideo.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeToggle from '../components/ThemeToggle.astro';
 import ThemeColor from '../components/ThemeColor.astro';
@@ -112,7 +111,7 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
       </section>
 
       <section class="page-width demo-section" aria-label="Explore an example course vault">
-        <div class="demo-intro"><h2>A source you can follow.</h2><DemoVideo /></div>
+        <div class="demo-intro"><h2>A source you can follow.</h2></div>
         <VaultDemo />
       </section>
 

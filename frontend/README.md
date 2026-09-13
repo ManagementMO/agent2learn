@@ -29,7 +29,6 @@ Pagefind indexes the production HTML during the build. Search is entirely local 
 | `src/content/docs/docs/`                 | Eleven user guides and reference pages, written in Markdown/MDX.                    |
 | `src/components/VaultDemo.astro`         | The interactive, explicitly synthetic course example.                               |
 | `src/components/FeatureStory.astro`      | Small product illustrations for original files, citations, and preserved revisions. |
-| `src/components/DemoVideo.astro`         | Video dialog with an explicit image placeholder; media loads only when opened.      |
 | `src/components/CitationExample.astro`   | Annotated source excerpt in the study guide.                                        |
 | `src/lib/demo.ts`                        | Synthetic files and cited lines shared by the homepage, guide, and Copy page.       |
 | `src/components/FileIcon.astro`          | Distinct icons for the index, Markdown, assignment instructions, and original PDF.  |
@@ -56,7 +55,7 @@ The logo is an outlined serif **A2L** wordmark with a raised 2 and a Waterloo-go
 
 `Mark.astro` supplies the homepage header/footer, setup prompt, citation demo, and all documentation headers (including the 404 page). It reserves the wordmark's 2.5:1 proportions and changes only the lettering to white in dark mode and on the charcoal setup section. The underline stays gold: do not use CSS inversion. Mobile headers use a smaller optical size to preserve navigation space. The browser favicon and 512px icon use a light tile for a consistent silhouette in either browser theme.
 
-After an approved master change, run `npm run brand:build`, review the film asset hashes in `videos/a2l-cinematic/src/brand-variant.json`, then rebuild the film and site and regenerate the sharing image below. `npm run brand:check` verifies that all exports, including the film assets, still match the master; the normal build includes this gate. Do not edit generated SVGs or PNGs independently.
+After an approved master change, run `npm run brand:build`, review the film asset hashes in `videos/a2l-cinematic/src/brand-variant.json`, then rebuild the film and site and regenerate the sharing image below. `npm run brand:check` verifies that all exports, including the film assets, still match the master. The normal website build passes `--site-only` to verify its own exports without requiring the separate video folder, so `frontend/` can build on its own. Do not edit generated SVGs or PNGs independently.
 
 ## Light and dark themes
 
@@ -80,12 +79,6 @@ The desktop vault starts on the assignment instructions. Following its citation 
 
 On phones, the question, answer, and a source excerpt come first. The excerpt is generated from the same source lines as the full viewer and hides while that viewer is open. Following the citation expands the vault and focuses the source; **Back to answer** collapses the viewer, restores the excerpt, and returns keyboard focus to the citation. The reader can also expand the vault independently. That disclosure choice survives viewport changes, and all three files remain available with compact mobile labels. Without JavaScript, the full vault stays expanded and native file selection remains usable.
 
-## Optional demo video
-
-Set `PUBLIC_DEMO_VIDEO_URL` to the final approved HTTPS video URL, or an origin-relative file path such as `/demo.mp4`, in the hosting build environment. `.env.example` documents both build settings. An unset value shows **Preview the demo**, opening a clearly labeled, picture-only placeholder so the placement and dialog can be reviewed. The placeholder uses the existing poster in grayscale and has no pretend playback controls. Setting the URL replaces it with the actual player and **Watch the demo** action.
-
-The native dialog loads media only after the viewer opens it. It provides Escape and close-button dismissal and returns focus to its trigger. The configured player also provides native playback controls and a direct-video link if playback fails. Closing the dialog unloads the image or pauses and unloads the video. The website keeps its own static export of the synthetic launch-film artwork at `public/brand/demo-poster.png`, including the shared A2L wordmark. Updating that poster does not rebuild or publish the film. The final export, its captions and transcript can replace the placeholder when approved.
-
 ## Sharing image
 
 `public/brand/social-card.png` is a static, 1200 by 630 PNG. The homepage and documentation include its absolute Open Graph and large-image card URLs when `SITE_URL` is configured. It shows only the synthetic example and contains no release-availability claim.
@@ -102,7 +95,7 @@ The renderer reuses the built vault markup and bundled fonts. It changes only it
 
 ## Publishing the website
 
-The site is prepared with **`release.published: true`** for publication after the matching package is available on PyPI. The landing page, install guide, copied pages, and agent prompt use the standard installation flow.
+The site uses **`release.published: true`** and advertises the verified PyPI version in `src/lib/site.ts`. The platform installer URLs and the agent's installation guide use the corresponding Git tag, so an unpublished version on `main` cannot break the live site's setup instructions. The `uv` command installs the latest published package.
 
 Before deploying:
 
@@ -113,7 +106,15 @@ Before deploying:
 
 The shared release switch concerns **package availability only**. It cannot enable the engine's submission capability. Upload-related documentation must continue to match `src/agent2learn/_release.py` and the authoritative release gates.
 
-Deploy `dist/` to a static host, using this folder as the project root and `npm run build` as the build command. The site expects deployment at an origin's root, not under a repository-name subpath. Serve `404.html` for unknown paths; do not rewrite every route to the landing page. No deployment has been configured or performed here.
+The Vercel project is **`agent2learn`** under **`managementmos-projects`**, with production origin **https://agent2learn.vercel.app**. It is connected to **`ManagementMO/agent2learn`** on GitHub, with **`frontend`** as its Root Directory and files outside that directory excluded from the build. `vercel.json` selects Astro, installs with `npm ci`, builds with `npm run build`, and publishes only `dist/`. The project and package target Node.js 22.
+
+Push a branch and open a pull request to get a Vercel preview and build status. Merging into **`main`**, the configured production branch, automatically builds and updates the production site. A failed build keeps the previous successful deployment live. The repository's existing required CI checks still govern merges.
+
+`SITE_URL=https://agent2learn.vercel.app` is configured in Vercel for production and preview builds. The native GitHub integration handles deployments without adding a Vercel token to GitHub Actions. `.vercel/` and downloaded local environment files are ignored by Git. The repository-root `.vercelignore` allows only the frontend source, public assets, build scripts, and required configuration in both Git and CLI deployments; local environment files, browser reports, build output, and dependencies are excluded.
+
+For optional CLI access, run `vercel link --repo --yes --scope managementmos-projects` from the repository root. This maps the `frontend` directory to the existing project. Run manual `vercel deploy --prod` commands from that repository root so the upload paths match the project's configured Root Directory.
+
+For another static host, deploy `dist/` using this folder as the project root. The site expects deployment at an origin's root, not under a repository-name subpath. Serve `404.html` for unknown paths; do not rewrite every route to the landing page.
 
 ## Documentation for agents
 
@@ -155,7 +156,7 @@ the homepage and documentation at 320, 375, 768 and 1440px in both themes, inclu
 image decoding, aspect ratio, theme treatment and mobile header spacing. Screenshots
 are saved under `output/playwright/`.
 
-In the same session, run `run-code --filename scripts/verify-site-browser.js` for the interaction and accessibility checks. It exercises citation focus, native keyboard file selection, mobile return and viewport changes, install/prompt/page copying, clipboard refusal, installation tabs, production search, the demo placeholder, and footer navigation. It runs axe checks over the homepage at five widths in both themes, five representative guides at phone and desktop widths in both themes, and the open placeholder dialog at phone and desktop widths in both themes. Both scripts use the origin of the open preview, so independent worktrees can use different ports.
+In the same session, run `run-code --filename scripts/verify-site-browser.js` for the interaction and accessibility checks. It exercises citation focus, native keyboard file selection, mobile return and viewport changes, install/prompt/page copying, clipboard refusal, installation tabs, production search, and footer navigation. It runs axe checks over the homepage at five widths in both themes and five representative guides at phone and desktop widths in both themes. Both scripts use the origin of the open preview, so independent worktrees can use different ports.
 
 Run `run-code --filename scripts/verify-marker-browser.js` to inspect the actual opening draw in both themes. It captures intermediate frames, checks left-to-right ink progression and stable headline geometry, exercises hidden-tab pause/resume, and confirms that the marker finishes without replay and the feature illustrations remain static. It also checks the reduced-motion and JavaScript-disabled fallbacks. Frames are saved under `output/playwright/`.
 
@@ -163,7 +164,7 @@ Run `run-code --filename scripts/verify-toc-browser.js` in Chromium and WebKit t
 
 The build runs Astro/TypeScript checks, freshly renders all static pages, creates the search index, verifies internal navigation and anchors, and checks the agent index, setup prompt, and code-example labels. `astro build --force` clears the content cache so changes to rendering hooks cannot leave stale documentation HTML. Browser checks should cover both themes, phone and desktop widths, file selection, citation focus, copy success/failure, docs search, tabs, and the mobile menu. Keep temporary screenshots and browser reports under the ignored `output/playwright/` folder.
 
-`check:release` builds a disposable copy with package availability switched on, a reserved test origin, and an optional video URL. It checks the published installation copy, agent prompt, documentation release notice, agent index, social image metadata, canonical URL, sitemap, and the player's absence of initial media loading, then removes the copy. It leaves the real release setting and any running preview unchanged.
+`check:release` builds a disposable copy with package availability switched on and a reserved test origin. It checks the published installation copy, agent prompt, documentation release notice, agent index, social image metadata, canonical URL, and sitemap, then removes the copy. It leaves the real release setting and any running preview unchanged.
 
 For a short student walkthrough, ask a few Waterloo students to describe what Agent2Learn does, follow a source citation in the demo, and find the installation or agent setup path. Let them explore without coaching and record where they hesitate. This checks comprehension and discoverability beyond the automated browser checks.
 
