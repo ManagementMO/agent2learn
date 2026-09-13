@@ -45,8 +45,8 @@ These commands install the published package from PyPI, not an unreleased reposi
 Python 3.11–3.14 is supported. If uv selects an older system Python or your shell cannot find
 `a2l`, see [setup troubleshooting](https://github.com/ManagementMO/agent2learn/blob/main/docs/FAQ.md#setup-and-path).
 
-`install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.3), verify that `a2l`
-runs, and then **continue straight into interactive `a2l init`** in the same command. The
+`install.sh` and `install.ps1` install a pinned Agent2Learn release, verify that `a2l` runs,
+and then **continue straight into interactive `a2l init`** in the same command. The
 macOS/Linux launcher waits for a successful download and preserves your terminal for setup prompts.
 If a script runs without a terminal on both ends, such as in CI or a headless agent tool, it stops
 after verification and prints the next step instead of setting anything up.
