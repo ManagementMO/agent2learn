@@ -21,7 +21,7 @@ from typing import Annotated, Any, TypeVar
 
 import typer
 
-from agent2learn import __version__, clock, config, console, paths
+from agent2learn import __version__, clock, config, console, metadata_coverage, paths
 from agent2learn import calendar as calendar_module
 from agent2learn import check as check_module
 from agent2learn import doctor as doctor_module
@@ -303,7 +303,7 @@ def sync(
     if report.exit_code == SessionExpired.exit_code:
         typer.echo("session expired · run: a2l auth", err=True)
         raise typer.Exit(code=SessionExpired.exit_code)
-    typer.echo(pipeline_module.render_report(report), nl=False)
+    typer.echo(pipeline_module.render_report(report, include_metadata=False), nl=False)
     if report.exit_code:
         raise typer.Exit(code=report.exit_code)
 
@@ -1838,8 +1838,21 @@ def _print_metadata_summary(
     selected_count: int,
     include_grades: bool,
 ) -> None:
+    gaps = (
+        metadata_coverage.vault_quiz_gaps(Vault(root))
+        if report is None
+        else getattr(report, "gaps", ())
+    )
+    for gap in gaps:
+        typer.echo(
+            f"{console.GLYPH['warn']} {gap}; quiz/deadline coverage is not confirmed. "
+            "See .a2l/AUDIT.md and check quiz availability in LEARN.",
+            err=True,
+        )
     if report is None:
-        typer.echo(f"{console.GLYPH['ok']} metadata is ready for {_term_label(school, term)}")
+        typer.echo(
+            f"{console.GLYPH['ok']} available metadata is ready for {_term_label(school, term)}"
+        )
         return
     reports = getattr(report, "courses", ())
     course_count = len(reports) if isinstance(reports, Sequence) else selected_count
@@ -1852,6 +1865,7 @@ def _print_metadata_summary(
 
     assignment_count = 0
     quiz_count = 0
+    quizzes_complete = True
     deadlines: list[tuple[str, str, str]] = []
     if isinstance(reports, Sequence):
         for course_report in reports:
@@ -1862,6 +1876,8 @@ def _print_metadata_summary(
             code = str(getattr(course, "code", "course"))
             assignments = _read_metadata_rows(directory / "_meta" / "assignments.json")
             quizzes = _read_metadata_rows(directory / "_meta" / "quizzes.json")
+            coverage = metadata_coverage.read_quiz_coverage(directory)
+            quizzes_complete = quizzes_complete and coverage.status == "complete"
             assignment_count += len(assignments)
             quiz_count += len(quizzes)
             for row in [*assignments, *quizzes]:
@@ -1871,9 +1887,12 @@ def _print_metadata_summary(
                     deadlines.append((due, title, code))
 
     grade_text = "grades synced" if include_grades else "grades not synced"
-    detail = f"{deadline_count} deadlines"
+    detail = f"{deadline_count} {'deadlines' if quizzes_complete else 'known deadlines'}"
     if assignment_count or quiz_count:
-        detail = f"{assignment_count} assignments · {quiz_count} quizzes · {detail}"
+        quiz_inventory = (
+            f"{quiz_count} quizzes" if quizzes_complete else "quiz inventory unconfirmed"
+        )
+        detail = f"{assignment_count} assignments · {quiz_inventory} · {detail}"
     typer.echo(
         f"{console.GLYPH['ok']} {course_count} courses · {topic_count} topics · "
         f"{detail} · {grade_text}"
@@ -1881,8 +1900,8 @@ def _print_metadata_summary(
     for due, title, code in _first_value_deadlines(deadlines, school):
         typer.echo(f"  {code} · {title} — due {_format_deadline(due, school)}")
     if not deadlines:
-        typer.echo(f"  No upcoming deadlines recorded in {_term_label(school, term)} metadata.")
-    del root
+        qualifier = "No upcoming" if quizzes_complete else "No known"
+        typer.echo(f"  {qualifier} deadlines recorded in {_term_label(school, term)} metadata.")
 
 
 def _iter_report_topics(value: MetadataReport | Iterable[object] | None) -> Iterable[object]:

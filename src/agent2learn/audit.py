@@ -20,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent2learn import clock, paths
+from agent2learn import clock, metadata_coverage, paths
 from agent2learn import index as course_index
 from agent2learn.vault import Vault
 
@@ -78,6 +78,7 @@ class CourseAudit:
     metadata_gaps: tuple[str, ...] = ()
     outline_gaps: tuple[tuple[str, str], ...] = ()
     unmatched_assignments: tuple[AssignmentMatch, ...] = ()
+    quizzes_complete: bool = True
 
     @property
     def coverage_percent(self) -> int:
@@ -143,7 +144,10 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
         if row.get("status") == "outline_unavailable"
     )
     unmatched = _unmatched_assignments(assignments, titles)
-    metadata_gaps = tuple(gap for gap in (assignments_gap, quizzes_gap) if gap is not None)
+    quiz_coverage = metadata_coverage.read_quiz_coverage(course_dir)
+    metadata_gaps = tuple(
+        gap for gap in (assignments_gap, quizzes_gap, quiz_coverage.gap) if gap is not None
+    )
 
     first = next((row for row in rows if isinstance(row, Mapping)), {})
     return CourseAudit(
@@ -161,6 +165,7 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
         metadata_gaps=metadata_gaps,
         outline_gaps=outline_gaps,
         unmatched_assignments=unmatched,
+        quizzes_complete=quiz_coverage.status == "complete" and quizzes_gap is None,
     )
 
 
@@ -295,8 +300,8 @@ def _render(audits: Sequence[CourseAudit], stamp: str) -> str:
                 [
                     "### Metadata gaps",
                     "",
-                    "The local metadata projection could not be read completely; inventory "
-                    "counts below may be incomplete.",
+                    "Metadata coverage is incomplete or unknown; the records below may be "
+                    "cached and do not establish the current complete inventory.",
                     "",
                     *[f"- {gap}" for gap in audit.metadata_gaps],
                     "",
@@ -327,10 +332,16 @@ def _render(audits: Sequence[CourseAudit], stamp: str) -> str:
                 ["", "These are external or licensed targets. Open them in LEARN directly.", ""]
             )
 
+        quiz_inventory = (
+            f"- {_plural(audit.quizzes, 'quiz', 'quizzes')}"
+            f" ({audit.quizzes_with_due_dates} with due dates)"
+            if audit.quizzes_complete
+            else f"- Quiz inventory not confirmed; {audit.quizzes} cached quiz record(s)"
+            f" ({audit.quizzes_with_due_dates} with due dates)"
+        )
         counts = [
             f"- {_plural(audit.assignments, 'assignment')}",
-            f"- {_plural(audit.quizzes, 'quiz', 'quizzes')}"
-            f" ({audit.quizzes_with_due_dates} with due dates)",
+            quiz_inventory,
             f"- {_plural(audit.media, 'media file')}",
         ]
         lines.extend(["### Inventory", "", *counts, ""])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from datetime import UTC, datetime
@@ -12,7 +13,7 @@ from requests import PreparedRequest, Response
 from requests.adapters import HTTPAdapter
 
 import agent2learn
-from agent2learn import _release
+from agent2learn import _release, audit, calendar, doctor
 from agent2learn.api import DEFAULT_MAX_BYTES, Client, DownloadResult
 from agent2learn.calibrate import CourseRef
 from agent2learn.check import check
@@ -31,7 +32,8 @@ class _NoNetwork(HTTPAdapter):
 
 
 class _FixtureClient(Client):
-    def __init__(self) -> None:
+    def __init__(self, *, quiz_forbidden: bool = False) -> None:
+        self.quiz_forbidden = quiz_forbidden
         school = UWaterloo()
         super().__init__(
             school, Session(school.base_url, (), None, datetime(2026, 1, 1, tzinfo=UTC), None)
@@ -74,6 +76,23 @@ class _FixtureClient(Client):
         if path.endswith("/news/"):
             return []
         if path.endswith("/quizzes/"):
+            if self.quiz_forbidden:
+                response = Response()
+                response.status_code = 403
+                response.headers["Content-Type"] = "application/problem+json; charset=UTF-8"
+                response._content = json.dumps(
+                    {
+                        "type": "http://docs.valence.desire2learn.com/res/apiprop.html#not-authorized",
+                        "title": "Not Authorized",
+                        "status": 403,
+                        "detail": (
+                            "Not authorized for [ orgUnitId: 111111, "
+                            "securityVariableName: Quizzing.SeeQuizzing ]"
+                        ),
+                    }
+                ).encode()
+                response._content_consumed = True
+                return self._decode_json_response(response)
             return {"Objects": [], "Next": None}
         raise AssertionError("unexpected metadata endpoint in installed-core smoke")
 
@@ -117,8 +136,26 @@ def main() -> None:
         report = check(draft, pipeline.metadata.courses[0].directory, assignment="700001")
         assert report.findings[0].status == "evidence_found"
         assert not list(vault.root.rglob("*.part"))
+
+        restricted = Vault(Vault.claim(root / "restricted-vault"))
+        denied = run_pipeline(
+            _FixtureClient(quiz_forbidden=True), restricted, school, render_outlines=False
+        )
+        assert denied.files.downloaded == 1, (
+            "quiz denial blocked accessible installed-wheel content"
+        )
+        assert denied.exit_code == 0 and any("403" in gap for gap in denied.gaps)
+        entry = restricted.entry("uwaterloo:111111:topic:1")
+        assert entry is not None and (restricted.root / entry.path).read_bytes() == BODY
+        assert (restricted.root / entry.derived["markdown"].path).is_file()
+        assert any("403" in gap for gap in audit.audit_vault(restricted)[0].metadata_gaps)
+        today = calendar.render_today(calendar.build_today(restricted, school))
+        assert "Quizzing.SeeQuizzing" in today
+        diagnostics = doctor.report(doctor._vault(restricted))
+        assert "403" in diagnostics and "111111" not in diagnostics
     print(
-        "Installed base-wheel timezone, sync, preservation, grounding, and evidence checks passed."
+        "Installed base-wheel timezone, sync, permission-gap, preservation, grounding, "
+        "and evidence checks passed."
     )
 
 

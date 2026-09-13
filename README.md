@@ -9,12 +9,13 @@ quoting it.
 
 ## Install
 
-Three supported options. Pick one.
+For most students, use the command for your operating system. In a real terminal it installs
+Agent2Learn and starts guided setup immediately. If you already have uv, use the uv option below.
 
 **macOS and Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.sh | bash
+(installer="$(curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.sh)" && bash -c "$installer")
 ```
 
 **Windows (PowerShell)**
@@ -25,21 +26,35 @@ irm https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.ps1 
 
 **Already have [uv](https://docs.astral.sh/uv/)?**
 
+Bash or zsh:
+
 ```bash
-uv tool install agent2learn
-a2l init
+uv tool install agent2learn && uv tool run --from agent2learn a2l init
 ```
+
+Windows PowerShell:
+
+```powershell
+uv tool install agent2learn; if ($LASTEXITCODE -eq 0) { uv tool run --from agent2learn a2l init } else { throw "Agent2Learn installation failed" }
+```
+
+These uv commands start setup through uv itself, so a newly installed `a2l` does not need to be
+on the current shell's PATH first. `uv tool install agent2learn` remains the install-only command.
 
 These commands install the published package from PyPI, not an unreleased repository checkout.
 Python 3.11–3.14 is supported. If uv selects an older system Python or your shell cannot find
 `a2l`, see [setup troubleshooting](https://github.com/ManagementMO/agent2learn/blob/main/docs/FAQ.md#setup-and-path).
 
 `install.sh` and `install.ps1` install a pinned Agent2Learn (currently 0.1.3), verify that `a2l`
-runs, and then **continue straight into interactive `a2l init`** in the same command. If they are
-run without a terminal on both ends — in CI, or through a pipe — they stop after verifying and
-print the exact next step instead of setting anything up. Neither script needs administrator
-rights, and neither creates a vault, installs agent skills, or opens a browser by itself.
-Onboarding does those things, after showing you a preview and asking.
+runs, and then **continue straight into interactive `a2l init`** in the same command. The
+macOS/Linux launcher waits for a successful download and preserves your terminal for setup prompts.
+If a script runs without a terminal on both ends, such as in CI or a headless agent tool, it stops
+after verification and prints the next step instead of setting anything up.
+
+Neither script needs administrator rights or creates a vault, installs agent skills, or opens a
+browser by itself. Onboarding does those things after showing you a preview and asking; you still
+complete LEARN sign-in and Duo yourself. Already-open terminals or agents may need to be restarted
+to pick up the new executable path, but you do not need to repeat completed setup.
 
 ### Agent skills
 
@@ -146,8 +161,8 @@ external request Agent2Learn can make, is in [docs/PRIVACY.md](https://github.co
 
 Agent2Learn is available on [PyPI](https://pypi.org/project/agent2learn/).
 The latest [GitHub release](https://github.com/ManagementMO/agent2learn/releases/latest) carries the
-same verified wheel and source distribution. Install with `uv tool install agent2learn`, then
-run `a2l init` in your terminal.
+same verified wheel and source distribution. Use one install command above to start guided setup.
+If you are already installed or resuming setup, run `a2l init` in your terminal.
 
 The project remains in active development. Release checks are documented in
 [docs/LAUNCH.md](https://github.com/ManagementMO/agent2learn/blob/main/docs/LAUNCH.md), including same-device authentication and a fresh supervised upload

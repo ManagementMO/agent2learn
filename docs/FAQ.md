@@ -63,12 +63,24 @@ Clearing removes the saved session too, and your vault is unaffected.
 No. Run `a2l auth` on each machine. Never paste a session, cookie, or profile anywhere — see
 [AUTHENTICATION.md](AUTHENTICATION.md).
 
-**`a2l init` reported a metadata coverage gap.**
-One or more per-course metadata endpoints (for example assignments or quizzes) failed. The message
-names the failing categories, everything that did sync is kept, and initialization stops before the
-file phase so it cannot mark incomplete metadata as complete. Rerun `a2l init` to retry; it resumes
-where it stopped and reuses your saved session when it belongs to the same LEARN origin, instead of
-asking you to sign in again.
+**Quiz access is denied, but course files are accessible.**
+A quiz-list HTTP 403 means the account is not allowed to enumerate quizzes; it does **not** mean
+there are no quizzes. When LEARN supplies the reviewed permission `Quizzing.SeeQuizzing`, the
+message retains that code without exposing the response body or account identifiers. Agent2Learn
+records the quiz collection as unavailable and continues to the chosen file scope. It does not
+bypass the restriction or tell you to repeat login just because this one endpoint denied access.
+
+`a2l today`, the audit, and diagnostics show the coverage gap. Quiz counts are not presented as
+zero, and any retained quiz dates may be outdated. Check quiz availability and deadlines in LEARN.
+A later successful sync updates the coverage status; existing archived quiz records are preserved.
+Older vaults without a coverage record show unknown coverage until a new sync records it.
+
+**`a2l init` stopped during metadata sync.**
+Unclassified endpoint errors, malformed content discovery, and local-state failures still stop
+initialization before the file phase. The message names the failing categories, and everything
+already captured is kept. After resolving the reported problem, rerun `a2l init`; it resumes and
+reuses your saved session when it belongs to the same LEARN origin. An expired session is a separate
+failure requiring `a2l auth`, not a quiz permission gap.
 
 ## Content and conversion
 

@@ -285,7 +285,7 @@ def refresh_indexes(vault: Vault, school: School, metadata: MetadataReport) -> i
     return refreshed
 
 
-def render_report(report: PipelineReport) -> str:
+def render_report(report: PipelineReport, *, include_metadata: bool = True) -> str:
     """Render stable terminal counts without echoing course names, IDs, paths, or source errors."""
 
     lines = [
@@ -318,7 +318,7 @@ def render_report(report: PipelineReport) -> str:
         )
     else:
         lines.append("sync complete")
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines if include_metadata else lines[1:]) + "\n"
 
 
 def _offering_ids(value: object) -> tuple[int, ...] | None:
@@ -356,7 +356,7 @@ def _result_status(
     *,
     outline_failure: bool = True,
 ) -> tuple[tuple[str, ...], tuple[str, ...], int]:
-    gaps: list[str] = []
+    gaps: list[str] = list(metadata.gaps)
     errors: list[str] = []
     if metadata.errors or metadata.exit_code:
         errors.append("metadata incomplete")

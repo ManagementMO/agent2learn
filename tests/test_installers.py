@@ -48,6 +48,11 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _readme_install_command(heading: str, language: str) -> str:
+    section = _read(ROOT / "README.md").split(heading, 1)[1]
+    return section.split(f"```{language}\n", 1)[1].split("\n```", 1)[0]
+
+
 def _fake_bin(
     tmp_path: Path,
     *,
@@ -82,6 +87,14 @@ case "$1" in
   tool)
     case "$2" in
       dir) echo "{tool_bin}" ;;
+      run)
+        shift 2
+        [ "$1" = "--from" ] && [ "$2" = "agent2learn" ]
+        shift 2
+        command="$1"
+        shift
+        exec "{tool_bin}/$command" "$@"
+        ;;
       *) : ;;
     esac
     ;;
@@ -96,6 +109,11 @@ esac
         "curl",
         f'''set -eu
 echo "curl $*" >> "{record}"
+bootstrap="https://raw.githubusercontent.com/ManagementMO/agent2learn/main/install.sh"
+if [ "${{2:-}}" = "$bootstrap" ]; then
+  cat "{SH}"
+  exit 0
+fi
 target=""
 prev=""
 for arg in "$@"; do
@@ -151,7 +169,11 @@ fi
 
 
 def _run(
-    tmp_path: Path, *, uv_version: str | None, a2l_version: str | None = None
+    tmp_path: Path,
+    *,
+    uv_version: str | None,
+    a2l_version: str | None = None,
+    command: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     record = tmp_path / "calls.log"
     record.write_text("", encoding="utf-8")
@@ -162,7 +184,7 @@ def _run(
     }
     (tmp_path / "home").mkdir(exist_ok=True)
     result = subprocess.run(
-        ["bash", str(SH)],
+        ["bash", "-c", command] if command is not None else ["bash", str(SH)],
         capture_output=True,
         text=True,
         env=environment,
@@ -329,8 +351,12 @@ def test_the_installer_previews_before_it_changes_anything(tmp_path: Path) -> No
 
 
 @posix_shell_only
-def test_a_non_interactive_run_stops_after_verification(tmp_path: Path) -> None:
-    result, calls = _run(tmp_path, uv_version=UV_VERSION)
+@pytest.mark.parametrize("documented_command", [False, True])
+def test_a_non_interactive_run_stops_after_verification(
+    tmp_path: Path, documented_command: bool
+) -> None:
+    command = _readme_install_command("**macOS and Linux", "bash") if documented_command else None
+    result, calls = _run(tmp_path, uv_version=UV_VERSION, command=command)
 
     assert result.returncode == 0, result.stderr
     assert HANDOFF in result.stdout
@@ -356,7 +382,8 @@ def test_running_the_installer_twice_is_idempotent(tmp_path: Path) -> None:
 
 
 @posix_shell_only
-def test_an_interactive_run_proceeds_into_onboarding(tmp_path: Path) -> None:
+@pytest.mark.parametrize("entrypoint", ["script", "bootstrap", "uv"])
+def test_an_interactive_run_proceeds_into_onboarding(tmp_path: Path, entrypoint: str) -> None:
     """With a real terminal on both ends the installer hands straight to consentful onboarding."""
     # The collection-time POSIX marker prevents this import on Windows. Resolve it dynamically so
     # the same test module remains type-checkable under Windows' platform stubs.
@@ -366,10 +393,15 @@ def test_an_interactive_run_proceeds_into_onboarding(tmp_path: Path) -> None:
     record.write_text("", encoding="utf-8")
     binary = _fake_bin(tmp_path, uv_version=UV_VERSION, record=record)
     (tmp_path / "home").mkdir(exist_ok=True)
+    command = ["bash", str(SH)]
+    if entrypoint == "bootstrap":
+        command = ["bash", "-c", _readme_install_command("**macOS and Linux", "bash")]
+    elif entrypoint == "uv":
+        command = ["bash", "-c", _readme_install_command("**Already have", "bash")]
 
     primary, secondary = pty.openpty()
     process = subprocess.Popen(
-        ["bash", str(SH)],
+        command,
         stdin=secondary,
         stdout=secondary,
         stderr=secondary,
@@ -396,6 +428,99 @@ def test_an_interactive_run_proceeds_into_onboarding(tmp_path: Path) -> None:
     text = transcript.decode("utf-8", errors="replace")
     assert "ONBOARDING-STARTED" in text
     assert HANDOFF not in text
+
+
+@posix_shell_only
+@pytest.mark.parametrize("download", ["", "echo UNEXPECTED-DOWNLOAD-EXECUTION"])
+def test_documented_bootstrap_does_not_execute_a_failed_download(
+    tmp_path: Path, download: str
+) -> None:
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    curl = binary / "curl"
+    curl.write_text(
+        f"#!/usr/bin/env bash\nprintf '%s\\n' '{download}'\nexit 22\n", encoding="utf-8"
+    )
+    curl.chmod(0o755)
+    command = _readme_install_command("**macOS and Linux", "bash")
+
+    result = subprocess.run(
+        ["bash", "-c", command],
+        cwd=tmp_path,
+        env={"PATH": f"{binary}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 22
+    assert "UNEXPECTED-DOWNLOAD-EXECUTION" not in result.stdout
+
+
+@posix_shell_only
+def test_documented_uv_command_stops_if_installation_fails(tmp_path: Path) -> None:
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    for name, body in (("uv", "exit 9"), ("a2l", "echo UNEXPECTED-ONBOARDING")):
+        executable = binary / name
+        executable.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
+        executable.chmod(0o755)
+    command = _readme_install_command("**Already have", "bash")
+
+    result = subprocess.run(
+        ["bash", "-c", command],
+        cwd=tmp_path,
+        env={"PATH": f"{binary}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 9
+    assert "UNEXPECTED-ONBOARDING" not in result.stdout
+
+
+@pytest.mark.skipif(
+    shutil.which("powershell") is None and shutil.which("pwsh") is None,
+    reason="requires a PowerShell host",
+)
+@pytest.mark.parametrize("install_status", [0, 9])
+def test_documented_powershell_uv_command_guards_setup(tmp_path: Path, install_status: int) -> None:
+    shell = shutil.which("powershell") or shutil.which("pwsh")
+    assert shell is not None
+    calls = tmp_path / "calls.txt"
+    destination = str(calls).replace("'", "''")
+    command = _readme_install_command("**Already have", "powershell")
+    prefix = f"""
+$ErrorActionPreference = 'Stop'
+function uv {{
+    $invocation = $args -join ' '
+    if ($invocation -eq 'tool install agent2learn') {{
+        Add-Content -LiteralPath '{destination}' -Value 'install' -Encoding UTF8
+        $global:LASTEXITCODE = {install_status}
+    }} elseif ($invocation -eq 'tool run --from agent2learn a2l init') {{
+        Add-Content -LiteralPath '{destination}' -Value 'setup' -Encoding UTF8
+        $global:LASTEXITCODE = 0
+    }} else {{
+        throw 'unexpected uv invocation'
+    }}
+}}
+function a2l {{
+    Add-Content -LiteralPath '{destination}' -Value 'unexpected direct a2l' -Encoding UTF8
+}}
+"""
+
+    result = subprocess.run(
+        [shell, "-NoProfile", "-NonInteractive", "-Command", prefix + command],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert (result.returncode == 0) == (install_status == 0), result.stderr
+    expected = ["install", "setup"] if install_status == 0 else ["install"]
+    assert calls.read_text(encoding="utf-8-sig").splitlines() == expected
 
 
 def test_ci_smokes_both_installers_against_the_candidate_build() -> None:

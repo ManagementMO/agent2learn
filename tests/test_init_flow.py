@@ -100,6 +100,11 @@ def _metadata_report(world: InitWorld) -> MetadataReport:
         directory.joinpath("_meta", "quizzes.json").write_text(
             json.dumps(quizzes) + "\n", encoding="utf-8"
         )
+        directory.joinpath("_meta", "metadata_coverage.json").write_text(
+            json.dumps({"schema_version": 1, "collections": {"quizzes": {"status": "complete"}}})
+            + "\n",
+            encoding="utf-8",
+        )
         topics = (
             _topic_record(
                 course,

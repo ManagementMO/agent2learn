@@ -559,14 +559,47 @@ Submission remains disabled, and publication still requires the existing human r
 - Public examples still use synthetic data, and all privacy, authentication, and submission
   safeguards remain unchanged.
 
-## Documentation release — 0.1.3
+## Release candidate — 0.1.3
 
-- The owner authorized a documentation-only 0.1.3: update package/runtime/installer/skill versions,
-  remove the unwanted promotional-media requirements, and replace README document links with
-  absolute repository URLs so they work on both package indexes and GitHub.
+- The owner initially authorized a documentation-only 0.1.3: align all version references, remove
+  the unwanted promotional-media requirements, and use absolute README documentation URLs so the
+  links work on both package indexes and GitHub.
 - Commit and push the change, merge only after exact-head CI passes, create a fresh v0.1.3 tag,
   and promote the same verified artifacts through TestPyPI and PyPI using the existing approvals.
   Do not move older tags or replace older registry files. Past versions retain their historical
   metadata; the new release updates the current package page.
-- Runtime behavior, dependency bounds, and submission capability are unchanged. Do not describe
-  the candidate as published until registry uploads and public installation are verified.
+- The initial candidate kept runtime behavior unchanged. The owner later approved the quiz-coverage
+  runtime fix described below. Dependency bounds and submission capability remain unchanged. Do not
+  describe the candidate as published until registry uploads and public installation are verified.
+- The owner also requested one-paste install-to-setup entry points. Preserve the existing terminal
+  gate by keeping stdin attached when launching the macOS/Linux script, and use uv to run the
+  freshly installed command without relying on the parent shell's PATH. Headless use must remain
+  install-only; login, Duo, and local-write consent remain human steps.
+- Finish the local implementation and self-verification before waiting for one final PR CI/CD
+  pass. Do not stall each incremental change on GitHub checks. The owner requested a real cloud
+  Devin VM/Desktop test and will complete login there when needed; do not substitute local tests
+  or move browser sessions between devices.
+- A real-account 0.1.2 report now blocks the documentation-only candidate: quiz enumeration returned
+  JSON HTTP 403 for `Quizzing.SeeQuizzing` while topic fetching worked. A synthetic real-HTTP
+  regression reproduces the global bulk-sync stop. The spec and plan now distinguish that known
+  quiz permission gap from fatal discovery/auth failures and require persisted, truthful coverage.
+  The runtime fix has passed 1063 local tests (six platform/optional skips), the coverage gate,
+  and a fresh base-wheel smoke that fails against the previous candidate. The golden change adds
+  only two reviewed collection-coverage records; all 55 previous artifact hashes are unchanged.
+  The cloud Linux VM passed 1064 tests (five platform/optional skips), source checks, and installed
+  base-wheel checks; its independently built wheel matched the local wheel SHA-256 exactly.
+  Final CI/CD and real-account full-sync acceptance remain distinct: do not describe the fix as
+  published or the full live sync as complete until the corresponding evidence exists.
+- After these results, the owner explicitly approved including the runtime fix in 0.1.3 and
+  proceeding through final PR CI, merge, tagging, TestPyPI, and PyPI gates. PR #23 had already
+  merged the documentation-only commit; use a follow-up PR and retain the subsequent frontend
+  deployment and video-removal changes on main. No v0.1.3 tag or registry upload existed at this
+  scope approval. Do not fabricate a new real-account full-sync PASS from synthetic tests.
+- The owner approved only the new, verified coverage-fixture checksum as a secret-scan false
+  positive. The baseline change records that one digest and line-number bookkeeping; detector
+  settings, thresholds, and exclusions are unchanged.
+- Cloud verification must keep its tools, test home, and candidate artifacts under a persistent
+  home directory, not `/tmp`: a VM restart discarded the latter and its terminal process. With
+  an isolated HOME, preserve the VM's configured XAUTHORITY path for GUI access; do not copy its
+  contents or weaken X-server/browser security. Source checks must retain the selected Python,
+  all test extras, and uv on their subprocess PATH. These are test-environment requirements.

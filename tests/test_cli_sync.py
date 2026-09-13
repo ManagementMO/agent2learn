@@ -12,7 +12,10 @@ from typer.testing import CliRunner
 
 from agent2learn import cli, config
 from agent2learn.calibrate import Calibration, CourseRef
+from agent2learn.convert import ConversionReport
 from agent2learn.errors import SessionExpired
+from agent2learn.ingest import FileReport, MetadataReport, OutlineReport
+from agent2learn.pipeline import PipelineReport, render_report
 from agent2learn.vault import Vault
 
 
@@ -64,8 +67,44 @@ def _configured_sync(
         return SimpleNamespace(exit_code=0)
 
     monkeypatch.setattr(cli.pipeline_module, "run_pipeline", fake_run_pipeline)
-    monkeypatch.setattr(cli.pipeline_module, "render_report", lambda _report: "sync complete\n")
+    monkeypatch.setattr(
+        cli.pipeline_module, "render_report", lambda _report, **_kwargs: "sync complete\n"
+    )
     return root, calls
+
+
+def test_sync_prints_the_metadata_summary_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _configured_sync(monkeypatch, tmp_path)
+    report = PipelineReport(
+        scope="priority",
+        include_media=False,
+        include_grades=False,
+        include_discussions=False,
+        metadata=MetadataReport(courses=(), topic_count=62, deadline_count=7),
+        outlines=OutlineReport(),
+        files=FileReport(downloaded=1),
+        conversion=ConversionReport(converted=1),
+        indexed_courses=1,
+        snapshot_path=".a2l/snapshots/example.json",
+        audit_path=".a2l/AUDIT.md",
+    )
+
+    def completed(*_args: object, **kwargs: object) -> PipelineReport:
+        observer = kwargs["metadata_observer"]
+        assert callable(observer)
+        observer(report.metadata)
+        return report
+
+    monkeypatch.setattr(cli.pipeline_module, "run_pipeline", completed)
+    monkeypatch.setattr(cli.pipeline_module, "render_report", render_report)
+
+    result = CliRunner().invoke(cli.app, ["sync"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.count("metadata ·") == 1
+    assert "62 topics" in result.output and "1 downloaded" in result.output
 
 
 def test_top_level_help_exposes_sync() -> None:

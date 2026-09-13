@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from agent2learn import clock, paths, snapshot
+from agent2learn import clock, metadata_coverage, paths, snapshot
 from agent2learn.errors import A2LError
 from agent2learn.schools import School, parse_api_timestamp
 from agent2learn.vault import Vault
@@ -66,6 +66,7 @@ class TodayReport:
     overdue: tuple[CalendarEvent, ...]
     exam_countdowns: tuple[ExamCountdown, ...]
     changes: snapshot.SnapshotDiff
+    metadata_gaps: tuple[str, ...] = ()
 
 
 _DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -225,6 +226,7 @@ def build_today(
         overdue=tuple(overdue),
         exam_countdowns=tuple(exam_countdowns),
         changes=snapshot.diff_vault(vault, include_grades=include_grades),
+        metadata_gaps=metadata_coverage.vault_quiz_gaps(vault),
     )
 
 
@@ -235,6 +237,15 @@ def render_today(report: TodayReport, *, include_grades: bool = False) -> str:
         f"Today · {report.as_of.astimezone(_zone(report.timezone)).date()} ({report.timezone})",
         "",
     ]
+    if report.metadata_gaps:
+        lines.extend(
+            [
+                "Metadata coverage is incomplete:",
+                *[f"- {gap}" for gap in report.metadata_gaps],
+                "Deadlines may be missing, and cached quiz dates may be outdated.",
+                "",
+            ]
+        )
     if report.exam_countdowns:
         lines.append("Exam countdown:")
         for countdown in report.exam_countdowns:
@@ -251,7 +262,12 @@ def render_today(report: TodayReport, *, include_grades: bool = False) -> str:
         lines.extend(f"- {_display_event(event)}" for event in report.due_soon)
         lines.append("")
     if not report.overdue and not report.due_soon:
-        lines.extend(["No assignments or quizzes due within 7 days.", ""])
+        empty = (
+            "No known deadlines due within 7 days in the available local metadata."
+            if report.metadata_gaps
+            else "No assignments or quizzes due within 7 days."
+        )
+        lines.extend([empty, ""])
 
     change_text = snapshot.render_diff(report.changes, include_grades=include_grades).rstrip()
     if report.changes.has_baseline:
