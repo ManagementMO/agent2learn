@@ -413,6 +413,9 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
         artifact = entry.derived.get("markdown")
         if (
             artifact is not None
+            # A prior artifact can be intact while a newer conversion attempt failed.
+            # Only the converter may clear that failure after validating current settings.
+            and row.get("availability") not in {"conversion_gap", "unsupported_format"}
             and artifact.source_sha256 == entry.sha256
             and _artifact_bytes_are_current(vault, artifact.path, artifact.sha256)
         ):

@@ -1015,10 +1015,15 @@ def _safe_public_note(check: Check) -> str:
 
 
 def _install_method() -> str:
-    executable = str(Path(sys.executable)).casefold()
-    if "uv" in executable or "uv" in str(Path(sys.prefix)).casefold():
-        return "uv tool"
     if hasattr(sys, "real_prefix") or sys.prefix != sys.base_prefix:
+        # uv's tool directory is configurable; its name is not installation evidence.
+        # Inspect only the receipt marker, never its potentially private contents.
+        receipt = Path(sys.prefix) / "uv-receipt.toml"
+        try:
+            if not paths.is_link(receipt) and paths.long_path(receipt).is_file():
+                return "uv tool"
+        except OSError:
+            pass
         return "virtualenv"
     return "system"
 

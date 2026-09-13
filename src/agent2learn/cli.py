@@ -135,6 +135,14 @@ def _stream_is_tty(stream: object) -> bool:
         return False
 
 
+def _prompt_interrupted(exc: Exception) -> bool:
+    """Recognize Ctrl-C after the prompt library translates it to Abort."""
+
+    return isinstance(exc, typer.Abort) and isinstance(
+        exc.__cause__ or exc.__context__, KeyboardInterrupt
+    )
+
+
 def _local_vault() -> tuple[config.Config, Vault, UWaterloo]:
     """Load the configured local vault without opening a network or browser session."""
 
@@ -185,7 +193,15 @@ def init(
     except Exception as exc:
         # Interactive setup is a public boundary.  Never expose an arbitrary exception string,
         # which can contain a home path, response body, cookie, or other local secret.
-        _render_init_failure(_InitFailure("onboarding", "a2l init", detail=type(exc).__name__))
+        interrupted = _prompt_interrupted(exc)
+        _render_init_failure(
+            _InitFailure(
+                "onboarding",
+                "a2l init",
+                exit_code=130 if interrupted else 1,
+                detail="KeyboardInterrupt" if interrupted else type(exc).__name__,
+            )
+        )
 
 
 @app.command()
@@ -1319,6 +1335,8 @@ def _init_stage(stage: str, next_command: str, operation: Callable[[], _T]) -> _
     except KeyboardInterrupt:
         raise
     except Exception as exc:
+        if _prompt_interrupted(exc):
+            raise KeyboardInterrupt from None
         raise _InitFailure(stage, next_command, detail=type(exc).__name__) from None
 
 

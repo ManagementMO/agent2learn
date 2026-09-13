@@ -569,6 +569,10 @@ users who already manage skills that way.
 
 Auth is the highest-churn moment in the product. Expiry is a **state**, never an error.
 
+A missing supported browser is a fixed, actionable local prerequisite diagnostic. Its message
+must survive the public authentication boundary without exposing executable paths or arbitrary
+browser exception text. Unknown browser failures remain sanitized.
+
 **Authentication paths, in order:**
 
 1. **CDP against an already-installed Chrome or Edge, using a dedicated persistent profile.** No
@@ -1343,6 +1347,10 @@ Emits a markdown block for a GitHub issue.
   device, then opens a pre-filled issue for the user to review and submit.
 - The repository's bug-report issue template requires the report block.
 
+Install-method reporting uses the current virtual environment's `uv-receipt.toml` marker to
+identify a uv tool, including custom tool directories. Substrings in executable or directory
+names are not installation evidence; the report never includes the receipt's contents or path.
+
 ---
 
 ## Nice-touch features
@@ -1423,9 +1431,32 @@ file phase, based only on available remote metadata and conservative throughput 
 size is not knowable without downloading, it says `unknown` rather than inventing precision. The
 file phase is interruptible without losing the metadata.
 
+Ctrl-C during onboarding, including inside a confirmation prompt, exits with code `130`, retains
+completed stages, and gives one resume command. A prompt's EOF or declined consent is not
+misclassified as a keyboard interrupt, and no interrupted consent is recorded as accepted.
+
 ---
 
 ## Quality and verification
+
+Unreadable or undecodable output from the external OCR process is an explicit page-level OCR
+gap. It must not escalate into a successful text-only PDF fallback that hides the missing OCR
+coverage, and raw process output must not be copied into the vault or diagnostics.
+OCR input uses an application-owned private temporary image with a resolved path, preserves the
+white alpha matte, and is removed on success or failure. It never changes global temporary-directory
+settings to accommodate an external executable's path restrictions.
+
+Repeated conversion preserves an identical twin's bytes and filesystem timestamp. If its source,
+backend/version, OCR threshold, and page coverage are also identical, its recorded creation time
+is unchanged. A fallback remains eligible for retry with the preferred backend; success updates
+provenance even when the text is identical. A newly failed conversion keeps any old twin on disk
+but removes its citation eligibility: reconciliation must preserve the explicit conversion or
+unsupported-format gap until conversion succeeds or validates a cached artifact under the current
+conversion settings. Hash validity alone cannot erase a newer conversion failure.
+Neither cached nor regenerated local text can clear a download gap for an unserved remote revision;
+the remote validators must also agree with the captured source before it becomes citable. Conversion
+failures must retain that unresolved download condition and its fetch action too. An already-matching
+content-map update is a no-op, without rehashing the entire course or rewriting the map.
 
 A change may merge only if all of the following hold.
 

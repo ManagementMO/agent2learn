@@ -90,6 +90,40 @@ def test_exit_codes_are_zero_one_two() -> None:
     assert doctor.exit_code(fail) == 2
 
 
+@pytest.mark.parametrize(
+    ("directory", "receipt", "virtualenv", "expected"),
+    [
+        ("custom-tools/agent2learn", True, True, "uv tool"),
+        ("uv-project/.venv", False, True, "virtualenv"),
+        ("custom-tools/agent2learn", False, True, "virtualenv"),
+        ("uv-system-python", False, False, "system"),
+    ],
+)
+def test_report_identifies_installation_from_the_environment_not_its_path_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    directory: str,
+    receipt: bool,
+    virtualenv: bool,
+    expected: str,
+) -> None:
+    prefix = tmp_path / directory
+    prefix.mkdir(parents=True)
+    if receipt:
+        (prefix / "uv-receipt.toml").write_text(
+            '[tool]\nrequirements = [{ name = "agent2learn" }]\n', encoding="utf-8"
+        )
+    monkeypatch.setattr(doctor.sys, "prefix", str(prefix))
+    monkeypatch.setattr(doctor.sys, "base_prefix", str(tmp_path / "base" if virtualenv else prefix))
+    monkeypatch.setattr(doctor.sys, "executable", str(prefix / "bin" / "python"))
+    monkeypatch.delattr(doctor.sys, "real_prefix", raising=False)
+
+    rendered = doctor.report([])
+
+    assert f"- install: `{expected}`" in rendered
+    assert str(prefix) not in rendered
+
+
 def test_render_suggests_exactly_one_registered_command() -> None:
     """Manual repair prose stays in detail; the single command slot remains executable."""
     checks = [

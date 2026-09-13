@@ -376,17 +376,24 @@ def test_retry_budget_is_five_attempts_and_retry_after_is_capped(
         nonlocal attempts
         attempts += 1
         headers = {"Retry-After": "9999"} if status in {429, 503} else {}
-        return request.make_response("failure", status=status, headers=headers)
+        return WerkzeugResponse("failure", status=status, headers=headers)
 
     synthetic_api.server.expect_request(f"/retry-{status}").respond_with_handler(respond)
     monkeypatch.setattr(api.time, "sleep", waits.append)
 
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(requests.HTTPError) as raised:
         _client(synthetic_api).get_json(f"/retry-{status}")
 
+    # A failing fixture handler also returns HTTP 500. Check the actual wire response so
+    # an internal test-server error cannot masquerade as any of the intended statuses.
+    assert raised.value.response is not None
+    assert raised.value.response.status_code == status
+    assert raised.value.response.text == "failure"
     assert attempts == api.MAX_RETRIES
     assert waits
     assert max(waits) <= api.MAX_RETRY_AFTER
+    if status in {429, 503}:
+        assert max(waits) == 60.0
 
 
 def test_503_retry_after_is_honoured(

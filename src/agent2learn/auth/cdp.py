@@ -21,7 +21,7 @@ import requests
 import websocket
 
 from agent2learn import config, paths
-from agent2learn.errors import AuthenticationError
+from agent2learn.errors import AuthenticationError, BrowserNotFound
 from agent2learn.schools import School
 from agent2learn.session import Session
 
@@ -493,7 +493,7 @@ def locate_browser() -> Path:
     for candidate in candidates:
         if paths.long_path(candidate).is_file():
             return candidate
-    raise AuthenticationError(
+    raise BrowserNotFound(
         "Chrome or Edge was not found; install one or use the fallback: a2l auth --paste"
     )
 

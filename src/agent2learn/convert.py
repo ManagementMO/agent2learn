@@ -17,9 +17,11 @@ import json
 import os
 import re
 import shutil
+import tempfile
 import zipfile
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
+from hashlib import sha256
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
@@ -258,9 +260,21 @@ class PdfOxideBackend:
         if not _configure_tesseract(self._ocr_language):
             raise ConversionError("Tesseract is unavailable or lacks the requested language")
         try:
-            with Image.open(io.BytesIO(image_bytes)) as image:
-                text = pytesseract.image_to_string(image, lang=self._ocr_language)
-        except pytesseract.TesseractError as exc:
+            # Supplying a PIL image lets pytesseract create an unresolved temporary input.
+            # Some Leptonica builds reject aliases such as macOS /tmp. Resolve only our
+            # private scratch directory; never alter TMPDIR or other process-global state.
+            with tempfile.TemporaryDirectory(prefix="a2l-ocr-") as temporary:
+                image_path = Path(temporary).resolve() / "page.png"
+                # Match pytesseract's white alpha matte before using its file-path API.
+                with (
+                    Image.open(io.BytesIO(image_bytes)) as image,
+                    Image.new("RGB", image.size, "white") as prepared,
+                ):
+                    mask = image.getchannel("A") if "A" in image.getbands() else None
+                    prepared.paste(image, mask=mask)
+                    prepared.save(os.fspath(paths.long_path(image_path)), format="PNG")
+                text = pytesseract.image_to_string(os.fspath(image_path), lang=self._ocr_language)
+        except (pytesseract.TesseractError, UnicodeError) as exc:
             raise ConversionError("Tesseract could not OCR the rendered page") from exc
         normalized = _normalise_markdown(text)
         if not normalized:
@@ -557,6 +571,17 @@ def convert_vault(
                 expected_threshold,
             )
         ):
+            _update_content_map(
+                vault,
+                key,
+                availability="markdown_ready",
+                source_path=entry.path,
+                path=artifact.path,
+                sha256=entry.sha256,
+                source_sha256=entry.sha256,
+                size=entry.size,
+                next_action="ready for citation",
+            )
             skipped += 1
             continue
 
@@ -619,11 +644,13 @@ def convert_vault(
             ):
                 vault.preserve_revision(key, changed_at=clock.now())
                 local_modification = True
-        paths.ensure_dir(destination.parent, root=vault.root)
-        paths.atomic_write_text(destination, result.markdown, root=vault.root)
+        output_hash = sha256(result.markdown.encode("utf-8")).hexdigest()
+        unchanged_bytes = (
+            paths.long_path(destination).is_file() and _hash_file(destination)[0] == output_hash
+        )
         derived = DerivedArtifact(
             path=paths.rel_posix(destination, vault.root),
-            sha256=_hash_file(destination)[0],
+            sha256=output_hash,
             source_sha256=entry.sha256,
             tool=result.backend,
             tool_version=result.tool_version,
@@ -639,9 +666,26 @@ def convert_vault(
                 for page in result.page_coverage
             ),
         )
+        # A fallback must still retry the preferred backend, but an identical result is
+        # not a new artifact. Keep its bytes, timestamp, and recorded creation time.
+        unchanged_artifact = (
+            unchanged_bytes
+            and prior_artifact is not None
+            and replace(derived, created_at=prior_artifact.created_at) == prior_artifact
+        )
+        if unchanged_artifact:
+            assert prior_artifact is not None
+            derived = prior_artifact
+            skipped += 1
+        else:
+            if not unchanged_bytes:
+                paths.ensure_dir(destination.parent, root=vault.root)
+                paths.atomic_write_text(destination, result.markdown, root=vault.root)
+            converted += 1
         updated = replace(entry, derived={"markdown": derived})
-        vault.mark(key, updated)
-        vault.save_manifest()
+        if not unchanged_artifact:
+            vault.mark(key, updated)
+            vault.save_manifest()
         _update_content_map(
             vault,
             key,
@@ -655,7 +699,6 @@ def convert_vault(
         )
         if local_modification:
             warnings.append(f"{key}: preserved locally modified markdown twin")
-        converted += 1
     return ConversionReport(converted, skipped, gaps, tuple(warnings), tuple(errors))
 
 
@@ -1075,7 +1118,7 @@ def _configure_tesseract(language: str) -> bool:
     pytesseract.pytesseract.tesseract_cmd = os.fspath(executable)
     try:
         languages = pytesseract.get_languages(config="")
-    except (OSError, pytesseract.TesseractError):
+    except (OSError, pytesseract.TesseractError, UnicodeError):
         return False
     return language in languages
 
@@ -1163,8 +1206,6 @@ def _artifact_path(vault: Vault, artifact: DerivedArtifact) -> Path:
 
 
 def _hash_file(source: Path) -> tuple[str, int]:
-    from hashlib import sha256
-
     digest = sha256()
     size = 0
     try:
@@ -1192,7 +1233,21 @@ def _update_content_map(vault: Vault, key: str, **updates: object) -> None:
         rows: list[object] = raw_rows
         for row in rows:
             if isinstance(row, dict) and row.get("source_key") == key:
-                row.update(updates)
+                effective = updates
+                if row.get("availability") == "download_gap":
+                    # Neither local conversion success nor failure proves that a newer
+                    # remote revision arrived. Let the validator check resolve that first.
+                    resolved = course_index.reconcile_content_map(vault, [row])[0]
+                    if resolved.get("availability") == "download_gap":
+                        effective = {
+                            k: v
+                            for k, v in updates.items()
+                            if k not in {"availability", "next_action", "path"}
+                        }
+                        effective["path"] = None
+                if all(row.get(field) == value for field, value in effective.items()):
+                    continue
+                row.update(effective)
                 changed = True
         if changed:
             checked = course_index.reconcile_content_map(vault, rows)
