@@ -317,6 +317,7 @@ jobs:
           path: dist
 
       - name: Verify TestPyPI contains the exact released hashes
+        id: staging
         env:
           A2L_RELEASE_VERSION: ${{ needs.build.outputs.version }}
         run: |
@@ -325,6 +326,7 @@ jobs:
           import hashlib
           import json
           import os
+          import urllib.parse
           import urllib.request
           from pathlib import Path
 
@@ -358,6 +360,38 @@ jobs:
           for name, digest in expected.items():
               if published.get(name) != digest:
                   raise SystemExit(f"artifact hash mismatch: {name}")
+          wheels = [
+              item for item in payload["urls"]
+              if isinstance(item, dict) and str(item.get("filename", "")).endswith(".whl")
+          ]
+          if len(wheels) != 1 or not isinstance(wheels[0].get("url"), str):
+              raise SystemExit("TestPyPI must expose one exact wheel URL")
+          name = wheels[0]["filename"]
+          url = wheels[0]["url"]
+          location = urllib.parse.urlsplit(url)
+          if (
+              location.scheme != "https"
+              or location.hostname != "test-files.pythonhosted.org"
+              or location.port not in (None, 443)
+              or location.username is not None
+              or location.password is not None
+              or location.query
+              or location.fragment
+          ):
+              raise SystemExit("TestPyPI wheel URL is outside the reviewed artifact host")
+          size = (Path("dist") / name).stat().st_size
+          request = urllib.request.Request(url, headers={"Accept": "application/octet-stream"})
+          with urllib.request.urlopen(request, timeout=20) as response:
+              if response.geturl() != url:
+                  raise SystemExit("TestPyPI wheel download unexpectedly redirected")
+              wheel_bytes = response.read(size + 1)
+          if len(wheel_bytes) != size or hashlib.sha256(wheel_bytes).hexdigest() != expected[name]:
+              raise SystemExit(f"downloaded artifact hash mismatch: {name}")
+          destination = Path("testpypi-wheel") / name
+          destination.parent.mkdir(exist_ok=True)
+          destination.write_bytes(wheel_bytes)
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"wheel={destination.as_posix()}\n")
           print(f"TestPyPI hashes match {len(expected)} exact distributions")
           PY
 
@@ -366,10 +400,9 @@ jobs:
           set -euo pipefail
           uv venv .release-venv
           uv pip install --python .release-venv \
-            --index-url https://test.pypi.org/simple \
-            --extra-index-url https://pypi.org/simple \
+            --index-url https://pypi.org/simple \
             --index-strategy first-index \
-            "agent2learn==${{ needs.build.outputs.version }}"
+            "${{ steps.staging.outputs.wheel }}"
 
       - name: Verify the TestPyPI installation
         run: |

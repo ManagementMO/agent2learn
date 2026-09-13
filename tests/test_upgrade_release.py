@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import ast
+import base64
+import io
+import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import urllib.request
+import zipfile
 from hashlib import sha256
 from pathlib import Path
 
@@ -347,6 +353,192 @@ def _step_script(name: str) -> str:
 def _release_hash_program() -> str:
     script = _step_script("Record the artifact hashes")
     return script.split("<<'PY'", 1)[1].split("\n", 1)[1].rsplit("\nPY", 1)[0]
+
+
+def _index_wheel(index: Path, name: str, version: str, *, source: str, requires: str = "") -> Path:
+    index.mkdir(exist_ok=True)
+    stem = f"{name.replace('-', '_')}-{version}"
+    wheel = index / f"{stem}-py3-none-any.whl"
+    metadata = f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
+    if requires:
+        metadata += f"Requires-Dist: {requires}\n"
+    files = {
+        f"{name.replace('-', '_')}.py": f"SOURCE = {source!r}\n".encode(),
+        f"{stem}.dist-info/METADATA": metadata.encode(),
+        f"{stem}.dist-info/WHEEL": (
+            b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
+        ),
+    }
+    records: list[str] = []
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for filename, content in files.items():
+            archive.writestr(filename, content)
+            digest = base64.urlsafe_b64encode(sha256(content).digest()).decode().rstrip("=")
+            records.append(f"{filename},sha256={digest},{len(content)}")
+        records.append(f"{stem}.dist-info/RECORD,,")
+        archive.writestr(f"{stem}.dist-info/RECORD", "\n".join(records) + "\n")
+    package = index / "simple" / name
+    package.mkdir(parents=True)
+    (package / "index.html").write_text(
+        f'<a href="../../{wheel.name}">{wheel.name}</a>\n', encoding="utf-8"
+    )
+    return wheel
+
+
+def test_staging_install_uses_the_candidate_when_pypi_has_only_an_older_release(
+    tmp_path: Path,
+) -> None:
+    uv = shutil.which("uv")
+    assert uv is not None, "the release integration test requires uv"
+    production = tmp_path / "production index"
+    staging = tmp_path / "staging index"
+    _index_wheel(production, "agent2learn", "0.0.1", source="older production release")
+    candidate = _index_wheel(
+        staging,
+        "agent2learn",
+        __version__,
+        source="published candidate",
+        requires="a2l-staging-proof==1.0.0",
+    )
+    _index_wheel(production, "a2l-staging-proof", "1.0.0", source="production dependency")
+    _index_wheel(staging, "a2l-staging-proof", "1.0.0", source="untrusted staging dependency")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("UV_")}
+    environment.update(
+        UV_NO_CONFIG="true",
+        UV_CACHE_DIR=str(tmp_path / "cache"),
+        UV_PYTHON=sys.executable,
+    )
+    subprocess.run(
+        [uv, "venv", ".release-venv", "--python", sys.executable],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=20,
+    )
+    script = _step_script("Install the published candidate from TestPyPI")
+    script = script.replace("${{ needs.build.outputs.version }}", __version__)
+    script = script.replace("${{ steps.staging.outputs.wheel }}", candidate.as_posix())
+    script = script.replace("https://test.pypi.org/simple", (staging / "simple").as_uri())
+    script = script.replace("https://pypi.org/simple", (production / "simple").as_uri())
+    arguments = shlex.split(script.split("uv pip install", 1)[1].replace("\\\n", " "))
+
+    result = subprocess.run(
+        [uv, "pip", "install", *arguments],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    python = (
+        tmp_path / ".release-venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    )
+    installed = subprocess.check_output(
+        [
+            str(python),
+            "-c",
+            "import agent2learn, a2l_staging_proof; "
+            "from importlib.metadata import version; "
+            "print(version('agent2learn'), agent2learn.SOURCE, a2l_staging_proof.SOURCE)",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        text=True,
+        timeout=10,
+    )
+    assert installed.strip() == f"{__version__} published candidate production dependency"
+    assert "--index-strategy" in arguments
+    assert arguments[arguments.index("--index-strategy") + 1] == "first-index"
+    assert "--extra-index-url" not in arguments
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["valid", "corrupt", "oversized", "foreign-host", "http", "credentials", "redirect"],
+)
+def test_staging_download_verifies_source_and_bytes_before_exposing_the_wheel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str
+) -> None:
+    wheel_name = f"agent2learn-{__version__}-py3-none-any.whl"
+    sdist_name = f"agent2learn-{__version__}.tar.gz"
+    original = b"published wheel bytes"
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / wheel_name).write_bytes(original)
+    (dist / sdist_name).write_bytes(b"source archive")
+    expected = {
+        wheel_name: sha256(original).hexdigest(),
+        sdist_name: sha256(b"source archive").hexdigest(),
+    }
+    (dist / "SHA256SUMS.txt").write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in expected.items()), encoding="utf-8"
+    )
+    metadata_url = f"https://test.pypi.org/pypi/agent2learn/{__version__}/json"
+    wheel_url = f"https://test-files.pythonhosted.org/packages/fixture/{wheel_name}"
+    if scenario == "foreign-host":
+        wheel_url = f"https://untrusted.invalid/{wheel_name}"
+    elif scenario == "http":
+        wheel_url = wheel_url.replace("https:", "http:")
+    elif scenario == "credentials":
+        wheel_url = wheel_url.replace("https://", "https://unexpected:credentials@")
+    payload = {
+        "urls": [
+            {"filename": name, "digests": {"sha256": digest}, "url": wheel_url}
+            for name, digest in expected.items()
+        ]
+    }
+    body = b"corrupted wheel bytes" if scenario == "corrupt" else original
+    if scenario == "oversized":
+        body += b" unexpected additional bytes"
+    requests: list[str] = []
+    read_sizes: list[int | None] = []
+
+    class Response(io.BytesIO):
+        def __init__(self, value: bytes, url: str) -> None:
+            super().__init__(value)
+            self.url = url
+
+        def geturl(self) -> str:
+            return self.url
+
+        def read(self, size: int | None = -1) -> bytes:
+            if self.url != metadata_url:
+                read_sizes.append(size)
+            return super().read(size)
+
+    def open_url(request: urllib.request.Request, timeout: int) -> Response:
+        assert timeout == 20
+        requests.append(request.full_url)
+        if request.full_url == metadata_url:
+            return Response(json.dumps(payload).encode(), metadata_url)
+        assert request.full_url == wheel_url
+        final = "https://untrusted.invalid/redirected.whl" if scenario == "redirect" else wheel_url
+        return Response(body, final)
+
+    output = tmp_path / "output"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("A2L_RELEASE_VERSION", __version__)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setattr(urllib.request, "urlopen", open_url)
+    script = _step_script("Verify TestPyPI contains the exact released hashes")
+    program = script.split("<<'PY'", 1)[1].split("\n", 1)[1].rsplit("\nPY", 1)[0]
+
+    if scenario == "valid":
+        exec(compile(program, "release-testpypi-guard", "exec"), {})
+        wheel_path = output.read_text(encoding="utf-8").strip().removeprefix("wheel=")
+        assert Path(wheel_path).read_bytes() == original
+        assert requests == [metadata_url, wheel_url]
+        assert read_sizes == [len(original) + 1]
+    else:
+        with pytest.raises(SystemExit):
+            exec(compile(program, "release-testpypi-guard", "exec"), {})
+        assert not output.exists()
+        if scenario in {"foreign-host", "http", "credentials"}:
+            assert requests == [metadata_url]
 
 
 def test_release_hash_manifest_excludes_build_bookkeeping(tmp_path: Path) -> None:
