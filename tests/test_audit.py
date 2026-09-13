@@ -180,7 +180,8 @@ def test_unreadable_metadata_is_reported_instead_of_counted_as_empty(tmp_path: P
     report = audit.write_audit(vault, timestamp="2026-08-25T12:00:00Z").read_text(encoding="utf-8")
 
     assert result.assignments == 0
-    assert result.metadata_gaps == ("assignments.json has an invalid root",)
+    assert "assignments.json has an invalid root" in result.metadata_gaps
+    assert "quizzes coverage unknown" in result.metadata_gaps
     assert "Metadata gaps" in report
     assert "assignments.json has an invalid root" in report
 

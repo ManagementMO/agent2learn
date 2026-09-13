@@ -1468,10 +1468,31 @@ Steps:
       interactive confirmation, and does not weaken future sync limits.
 - [x] **Step 5:** Split the run into **two phases**, and make the split by *cost*, not by date:
 
-      **Phase A — metadata, always complete, for every course.** TOC, dropbox folders and due dates,
-      announcements, and quiz dates. Grade endpoints are called **only** when the student explicitly
-      opted in during onboarding or changed the setting later. JSON only, a few hundred KB, seconds.
-      This is what produces deadlines and the `INDEX.md` tree.
+      **Phase A — metadata first, with explicit collection coverage, for every selected course.**
+      TOC, dropbox folders and due dates, announcements, and quiz dates. Grade endpoints are called
+      **only** when the student explicitly opted in during onboarding or changed the setting later.
+      JSON only, a few hundred KB, seconds. This produces known deadlines and the `INDEX.md` tree.
+
+      **Permission-denial follow-up, September 12, 2026:** the published 0.1.2 report and a local
+      real-HTTP reproduction show that a quiz-list 403 (`Quizzing.SeeQuizzing`) currently blocks
+      unrelated file downloads. Before shipping the follow-up:
+      - [x] Reproduce the exact problem-JSON response and observe zero downloads with an accessible
+        content listing and file endpoint.
+      - [x] Classify only the reviewed quiz permission denial as a non-fatal coverage gap, retain
+        cached quizzes, and persist `_meta/metadata_coverage.json` without raw server details.
+      - [x] Prove that the real pipeline downloads the accessible source, generates its citable
+        Markdown twin, and reports the quiz gap. Preserve existing fatal discovery/auth safeguards.
+      - [x] Prove persistence, resumed onboarding, known-empty versus unknown/unavailable coverage,
+        safe diagnostics, cached-record preservation, and recovery after permission is restored.
+      - [x] Make `today`, audit, and doctor disclose the gap rather than claiming zero quizzes or
+        complete deadline coverage; remove the futile repeat-init recovery for this permission case.
+      - [x] Show the metadata summary once in `a2l sync`, and exercise quiz-denial behavior in the
+        installed base-wheel smoke rather than relying only on source-checkout tests.
+      - [x] Run focused and full local/cloud checks before the final exact-head CI/CD pass. Local:
+        1063 passed with six skips; cloud Linux: 1064 passed with five skips. Independently built
+        local/cloud wheels have identical SHA-256 and pass the installed permission-gap smoke.
+        Neither the initial generic onboarding error nor the grounding failure from the report
+        is diagnosed solely by this reproduction; real-account full-sync acceptance is not claimed.
 
       Persist typed endpoint-specific projections rather than raw response objects. Discard URL
       user-info, fragments, query parameters, LTI launch payloads, and transient signed values after

@@ -11,13 +11,19 @@ from types import SimpleNamespace
 from typing import Any, TypeVar
 
 import pytest
+from golden_support import CANONICAL_ORIGIN, FROZEN_NOW, GoldenSchool, _CanonicalOriginAdapter
 from ingest_support import FakeClient, course
+from pytest_httpserver import HTTPServer
+from pytest_httpserver.httpserver import RequestHandler
 
-from agent2learn import clock
+from agent2learn import audit, calendar, clock, doctor, metadata_coverage
 from agent2learn import ingest as ingest_module
+from agent2learn.api import Client
 from agent2learn.convert import ConversionReport
-from agent2learn.errors import AuthenticationError, NotConfigured
+from agent2learn.errors import AuthenticationError, NotConfigured, SessionExpired
+from agent2learn.index import read_content_map
 from agent2learn.ingest import FileReport, MetadataReport, OutlineReport
+from agent2learn.session import Session
 from agent2learn.vault import Vault
 
 
@@ -537,3 +543,324 @@ def test_malformed_toc_keeps_cache_but_blocks_success_and_downloads(
     assert report.metadata.topic_count == initial.topic_count == 1
     row = report.metadata.courses[0].topics[0]
     assert row.missing_since is None and row.withdrawn_at is None
+
+
+def _deny_quizzes(
+    handler: RequestHandler,
+    *,
+    detail: str = (
+        "Not authorized for [ orgUnitId: 111111, securityVariableName: Quizzing.SeeQuizzing ]"
+    ),
+) -> None:
+    handler.respond_with_json(
+        {
+            "type": "http://docs.valence.desire2learn.com/res/apiprop.html#not-authorized",
+            "title": "Not Authorized",
+            "status": 403,
+            "detail": detail,
+        },
+        status=403,
+        content_type="application/problem+json; charset=UTF-8",
+    )
+
+
+def _quiz_client(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Any, GoldenSchool, RequestHandler]:
+    monkeypatch.setattr("agent2learn.api.JITTER_MAX", 0.0)
+    school = GoldenSchool(CANONICAL_ORIGIN)
+    client: Any = Client(school, Session(CANONICAL_ORIGIN, (), None, FROZEN_NOW, None), workers=1)
+    client.lp_version = "1.62"
+    client.le_version = "1.97"
+    client.courses = [course()]
+    client.download_template = "{base}/content/reading.txt"
+    client._transport.mount(
+        CANONICAL_ORIGIN,
+        _CanonicalOriginAdapter(CANONICAL_ORIGIN, httpserver.url_for("")),
+    )
+    prefix = "/d2l/api/le/1.97/111111/"
+    httpserver.expect_request(prefix + "content/toc").respond_with_json(_reading_toc())
+    httpserver.expect_request(prefix + "dropbox/folders/").respond_with_json([])
+    httpserver.expect_request(prefix + "news/").respond_with_json([])
+    quiz_handler = httpserver.expect_request(prefix + "quizzes/")
+    _deny_quizzes(quiz_handler)
+    httpserver.expect_request("/content/reading.txt").respond_with_data(
+        "Readable course material.\n", content_type="text/plain"
+    )
+    return client, school, quiz_handler
+
+
+def _quiz_denied_pipeline(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[Any, Vault, GoldenSchool]:
+    client, school, _ = _quiz_client(httpserver, monkeypatch)
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+    return report, vault, school
+
+
+def test_quiz_permission_denial_keeps_accessible_content_citable(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    report, vault, _ = _quiz_denied_pipeline(httpserver, monkeypatch, tmp_path)
+
+    assert report.files.downloaded == 1
+    assert report.conversion.converted == 1
+    coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
+    assert coverage_file.is_file()
+    coverage = json.loads(coverage_file.read_text(encoding="utf-8"))
+    assert coverage == {
+        "schema_version": 1,
+        "collections": {
+            "quizzes": {
+                "status": "unavailable",
+                "http_status": 403,
+                "error_code": "not_authorized",
+                "permission": "Quizzing.SeeQuizzing",
+            }
+        },
+    }
+    rows = read_content_map(report.metadata.courses[0].directory)["topics"]
+    assert isinstance(rows, list)
+    row = rows[0]
+    assert row["availability"] == "markdown_ready"
+    assert "Readable course material." in (vault.root / row["path"]).read_text(encoding="utf-8")
+    assert report.exit_code == 0
+    summary = _pipeline().render_report(report)
+    assert "quizzes" in summary and "403" in summary
+    assert "Quizzing.SeeQuizzing" in summary
+
+
+def test_resumed_metadata_retains_the_quiz_permission_gap(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, vault, school = _quiz_denied_pipeline(httpserver, monkeypatch, tmp_path)
+
+    restored = ingest_module.load_metadata_report(vault, school, [course()])
+
+    assert len(restored.gaps) == 1
+    assert "quizzes" in restored.gaps[0] and "403" in restored.gaps[0]
+    assert "Quizzing.SeeQuizzing" in restored.gaps[0]
+    assert not restored.errors
+
+
+def test_audit_does_not_present_denied_quiz_inventory_as_zero(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    report, vault, _ = _quiz_denied_pipeline(httpserver, monkeypatch, tmp_path)
+
+    result = audit.audit_vault(vault)[0]
+    rendered = (vault.root / report.audit_path).read_text(encoding="utf-8")
+
+    assert any("quizzes" in gap and "403" in gap for gap in result.metadata_gaps)
+    assert "Quizzing.SeeQuizzing" in rendered
+    assert "- 0 quizzes" not in rendered
+    assert "unavailable" in rendered
+
+
+def test_today_warns_that_quiz_deadlines_are_unavailable(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, vault, school = _quiz_denied_pipeline(httpserver, monkeypatch, tmp_path)
+
+    rendered = calendar.render_today(calendar.build_today(vault, school, now=FROZEN_NOW))
+
+    assert "quizzes" in rendered and "403" in rendered
+    assert "Quizzing.SeeQuizzing" in rendered
+    assert "No assignments or quizzes due within 7 days." not in rendered
+
+
+def test_public_doctor_report_identifies_the_denied_collection_without_identifiers(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, vault, _ = _quiz_denied_pipeline(httpserver, monkeypatch, tmp_path)
+
+    checks = doctor._vault(vault)
+    rendered = doctor.report(checks)
+
+    assert any("quizzes" in check.name and check.status == "warn" for check in checks)
+    assert "quizzes" in rendered and "403" in rendered
+    assert "111111" not in rendered
+    assert "COURSE101" not in rendered
+    assert str(vault.root) not in rendered
+
+
+def test_quiz_denial_preserves_cache_and_recovery_replaces_coverage(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(clock, "stamp", lambda: "2026-08-25T12:00:00Z")
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch)
+    quiz_response.respond_with_json(
+        {"Next": None, "Objects": [{"QuizId": 77, "Name": "Recorded quiz", "DueDate": None}]}
+    )
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+    initial = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+    directory = initial.metadata.courses[0].directory
+    quiz_file = directory / "_meta" / "quizzes.json"
+    original_quizzes = quiz_file.read_bytes()
+    rows = read_content_map(directory)["topics"]
+    assert isinstance(rows, list)
+    row = rows[0]
+    twin = vault.root / row["path"]
+    original_twin = twin.read_bytes()
+
+    _deny_quizzes(quiz_response)
+    for _ in range(2):
+        denied = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+        assert denied.exit_code == 0 and denied.gaps
+        assert quiz_file.read_bytes() == original_quizzes
+        assert twin.read_bytes() == original_twin
+        assert metadata_coverage.read_quiz_coverage(directory).status == "unavailable"
+        cached = json.loads(quiz_file.read_text(encoding="utf-8"))[0]
+        assert not cached.get("missing_since") and not cached.get("withdrawn_at")
+
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    recovered = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+    cached = json.loads(quiz_file.read_text(encoding="utf-8"))[0]
+
+    assert recovered.exit_code == 0 and not recovered.gaps
+    assert metadata_coverage.read_quiz_coverage(directory).status == "complete"
+    assert cached.get("missing_since") and not cached.get("withdrawn_at")
+    assert "403" not in (vault.root / recovered.audit_path).read_text(encoding="utf-8")
+    assert "403" not in calendar.render_today(calendar.build_today(vault, school, now=FROZEN_NOW))
+    assert "403" not in doctor.report(doctor._vault(vault))
+
+
+def test_successfully_fetched_empty_quizzes_are_not_an_unavailable_inventory(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    assert report.exit_code == 0 and not report.gaps
+    assert (
+        metadata_coverage.read_quiz_coverage(report.metadata.courses[0].directory).status
+        == "complete"
+    )
+    assert "- 0 quizzes" in (vault.root / report.audit_path).read_text(encoding="utf-8")
+    assert not calendar.build_today(vault, school, now=FROZEN_NOW).metadata_gaps
+
+
+def test_failed_quiz_cache_write_cannot_publish_complete_coverage(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch)
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+    denied = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+    directory = denied.metadata.courses[0].directory
+    original = ingest_module._write_list
+
+    def fail_quiz_write(destination: Path, rows: Sequence[Any], **kwargs: Any) -> None:
+        if destination.name == "quizzes.json":
+            raise OSError("synthetic local write failure")
+        original(destination, rows, **kwargs)
+
+    monkeypatch.setattr(ingest_module, "_write_list", fail_quiz_write)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+
+    with pytest.raises(OSError, match="synthetic local write failure"):
+        _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    coverage = metadata_coverage.read_quiz_coverage(directory)
+    assert coverage.status == "unavailable" and coverage.http_status == 403
+
+
+def test_html_quiz_forbidden_still_requires_reauthentication(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch)
+    quiz_response.respond_with_data(
+        "<html><body>Sign in</body></html>", status=403, content_type="text/html"
+    )
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    with pytest.raises(SessionExpired):
+        _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    assert vault.entry("synthetic:111111:topic:1") is None
+
+
+@pytest.mark.parametrize("status", [401, 404])
+def test_other_quiz_http_failures_are_not_downgraded_to_permission_gaps(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch)
+    quiz_response.respond_with_json({"status": status}, status=status)
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    assert report.exit_code != 0 and report.metadata.errors
+    assert report.files.downloaded == 0
+    assert not report.metadata.gaps
+    assert vault.entry("synthetic:111111:topic:1") is None
+    restored = ingest_module.load_metadata_report(vault, school, [course()])
+    assert restored.errors
+
+
+@pytest.mark.parametrize(
+    "detail",
+    [
+        "PRIVATE-DIAGNOSTIC Not authorized for [ orgUnitId: 111111, "
+        "securityVariableName: Quizzing.SeeQuizzing ]",
+        "PRIVATE-DIAGNOSTIC securityVariableName: Unreviewed.Permission ]",
+        "PRIVATE-DIAGNOSTIC " * 600,
+    ],
+)
+def test_quiz_gap_never_persists_or_renders_arbitrary_problem_details(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, detail: str
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch)
+    _deny_quizzes(quiz_response, detail=detail)
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
+    rendered = "\n".join(
+        [
+            coverage_file.read_text(encoding="utf-8"),
+            _pipeline().render_report(report),
+            (vault.root / report.audit_path).read_text(encoding="utf-8"),
+            calendar.render_today(calendar.build_today(vault, school, now=FROZEN_NOW)),
+            doctor.report(doctor._vault(vault)),
+        ]
+    )
+    assert report.exit_code == 0 and report.files.downloaded == 1
+    assert "403" in rendered
+    assert "PRIVATE-DIAGNOSTIC" not in rendered
+    assert "Unreviewed.Permission" not in rendered
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        None,
+        "not json",
+        '{"schema_version": 99, "collections": {"quizzes": {"status": "complete"}}}',
+        '{"schema_version": 1, "collections": {"quizzes": {"status": "unavailable", '
+        '"http_status": 403, "permission": "UNREVIEWED-DIAGNOSTIC"}}}',
+    ],
+)
+def test_missing_or_invalid_coverage_cannot_be_presented_as_known_empty_quizzes(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stored: str | None
+) -> None:
+    report, vault, school = _quiz_denied_pipeline(httpserver, monkeypatch, tmp_path)
+    coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
+    if stored is None:
+        coverage_file.unlink()
+    else:
+        coverage_file.write_text(stored, encoding="utf-8")
+
+    today = calendar.render_today(calendar.build_today(vault, school, now=FROZEN_NOW))
+    audit_text = audit.write_audit(vault).read_text(encoding="utf-8")
+    diagnostics = doctor.report(doctor._vault(vault))
+
+    assert "quizzes coverage unknown" in today
+    assert "No assignments or quizzes due within 7 days." not in today
+    assert "- 0 quizzes" not in audit_text
+    assert "metadata.quizzes" in diagnostics and "warn" in diagnostics
+    assert "UNREVIEWED-DIAGNOSTIC" not in today + audit_text + diagnostics

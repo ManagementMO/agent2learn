@@ -29,7 +29,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from requests import RequestException
 
-from agent2learn import api, clock, locations, paths, snapshot, transactions
+from agent2learn import api, clock, locations, metadata_coverage, paths, snapshot, transactions
 from agent2learn import index as course_index
 from agent2learn.api import DownloadError, DownloadResult, FileTooLarge
 from agent2learn.calibrate import CourseRef, calibrate, load_calibration
@@ -140,6 +140,7 @@ class MetadataReport:
     deadline_count: int
     errors: tuple[str, ...] = ()
     exit_code: int = 0
+    gaps: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -243,6 +244,7 @@ def ingest_metadata(
     courses = _selected_courses(client, term=term, only=only)
     reports: list[CourseMetadata] = []
     errors: list[str] = []
+    gaps: list[str] = []
     deadline_count = 0
 
     for course in courses:
@@ -349,8 +351,11 @@ def ingest_metadata(
         quizzes, quizzes_complete, quizzes_error = _fetch_collection(
             client, _endpoint_path(client, course, "quizzes/")
         )
-        if quizzes_error is not None:
+        quiz_coverage = metadata_coverage.quiz_coverage(quizzes_complete, quizzes_error)
+        if quizzes_error is not None and quiz_coverage.status != "unavailable":
             errors.append(_safe_error("quizzes", quizzes_error))
+        if quiz_coverage.status == "unavailable" and quiz_coverage.gap is not None:
+            gaps.append(quiz_coverage.gap)
         quiz_rows = _project_quizzes(quizzes)
         quiz_rows = _merge_rows(
             _read_list(course_dir / "_meta" / "quizzes.json"),
@@ -359,6 +364,7 @@ def ingest_metadata(
             complete=quizzes_complete,
         )
         _write_list(course_dir / "_meta" / "quizzes.json", quiz_rows, root=vault.root)
+        metadata_coverage.write_quiz_coverage(course_dir, quiz_coverage, root=vault.root)
 
         if include_grades:
             grades, grades_complete, grades_error = _fetch_collection(
@@ -423,6 +429,7 @@ def ingest_metadata(
         topic_count=sum(len(report.topics) for report in reports),
         deadline_count=deadline_count,
         errors=tuple(errors),
+        gaps=tuple(sorted(set(gaps))),
     )
 
 
@@ -452,11 +459,16 @@ def load_metadata_report(
 ) -> MetadataReport:
     """Reconstruct a completed metadata report from validated local course projections."""
     reports: list[CourseMetadata] = []
+    errors: list[str] = []
+    gaps: list[str] = []
     deadline_count = 0
     for course in courses:
         course_dir = _course_directory(vault, school, course)
         topics = load_metadata_topics(vault, school, [course])
         module_tree = tuple(_read_toc_modules(course_dir))
+        coverage = metadata_coverage.read_quiz_coverage(course_dir)
+        if coverage.gap is not None:
+            (errors if coverage.status == "incomplete" else gaps).append(coverage.gap)
         deadline_count += sum(
             1
             for row in [
@@ -477,6 +489,8 @@ def load_metadata_report(
         courses=tuple(reports),
         topic_count=sum(len(report.topics) for report in reports),
         deadline_count=deadline_count,
+        errors=tuple(sorted(set(errors))),
+        gaps=tuple(sorted(set(gaps))),
     )
 
 

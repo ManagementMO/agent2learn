@@ -834,6 +834,32 @@ content topics that get hidden, dropbox folders that close, quizzes that are wit
   middle one removed twice, assert all three remain and the middle is marked withdrawn only after
   the second complete absence.
 
+### Permission-denied quiz coverage
+
+A September 12, 2026 real-account report from the published 0.1.2 wheel established that an
+otherwise usable account can receive `403 application/problem+json` for quiz enumeration, with
+`Not Authorized` and the reviewed permission `Quizzing.SeeQuizzing`. The same account could list
+content and fetch a topic. A synthetic real-HTTP reproduction confirmed that classifying this
+quiz denial as a fatal metadata error skipped every file and conversion phase.
+
+- Metadata still runs before file work. A quiz-list HTTP 403 is an explicit unavailable-collection
+  result, not an empty collection and not a fatal failure of independently accessible course files.
+  Preserve cached quizzes without adding missing/withdrawn markers. A later successful response
+  replaces the coverage status, including a successfully fetched empty list.
+- Persist versioned collection coverage in `_meta/metadata_coverage.json`. Distinguish complete,
+  unavailable, incomplete, and unknown coverage; missing legacy coverage is unknown, not evidence
+  that zero quizzes exist. Resume, `today`, the coverage audit, and diagnostics read this state.
+- Routine diagnostics expose only the collection category, HTTP status, a reviewed error code,
+  and a reviewed permission name. Raw response bodies, course identifiers, URLs with parameters,
+  and arbitrary server-provided strings do not enter these messages or the coverage record.
+- An unavailable quiz collection produces a recorded gap while accessible content is downloaded
+  and converted. Onboarding reaches the file-scope choice rather than looping on `a2l init`.
+  Summaries do not claim complete quiz/deadline coverage or present unavailable quiz counts as zero.
+- This is not a general ignore-errors rule: expired-session signals, malformed/incomplete content
+  discovery, unsafe local paths, and other unclassified metadata failures retain their existing
+  failure behavior. It does not retry through an alternate quiz endpoint, broaden permissions,
+  collect declined grades/discussions, or enable submissions.
+
 ### Source identity, content integrity, and revisions
 
 A path-only manifest cannot detect a Learn file that changes in place. The public manifest is a

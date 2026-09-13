@@ -33,7 +33,7 @@ from urllib.parse import urlencode
 
 import requests
 
-from agent2learn import __version__, console, paths
+from agent2learn import __version__, console, metadata_coverage, paths
 from agent2learn import config as config_module
 from agent2learn import session as session_module
 from agent2learn import skills as skills_module
@@ -89,7 +89,11 @@ class DoctorClient(Protocol):
 _COURSE_SOURCE_DIRECTORIES = frozenset(
     {"announcements", "assignments", "content", "quizzes", "outlines"}
 )
-_SAFE_PUBLIC_NOTES = {"fs.vault": "vault root `~`"}
+_SAFE_PUBLIC_NOTES = {
+    "fs.vault": "vault root `~`",
+    "metadata.quizzes": "Quiz collection coverage is incomplete or unknown.",
+    "metadata.quizzes.forbidden": "Quiz collection unavailable (HTTP 403 Forbidden).",
+}
 _PUBLIC_CHECK_NAMES = frozenset(
     {
         "config.load",
@@ -105,6 +109,8 @@ _PUBLIC_CHECK_NAMES = frozenset(
         "fs.longest_path",
         "fs.unavailable",
         "fs.vault",
+        "metadata.quizzes",
+        "metadata.quizzes.forbidden",
         "session.age",
         "session.api_versions",
         "session.backend",
@@ -630,6 +636,8 @@ def _vault(vault: Vault | None) -> list[Check]:
     gaps = 0
     empty_twins = 0
     unreadable_maps = 0
+    quiz_gaps: set[str] = set()
+    quizzes_forbidden = False
     term_stats: dict[str, list[int]] = {}
     try:
         map_paths = sorted(
@@ -650,6 +658,10 @@ def _vault(vault: Vault | None) -> list[Check]:
             unreadable_maps += 1
             continue
         courses += 1
+        coverage = metadata_coverage.read_quiz_coverage(map_path.parent.parent)
+        if coverage.gap is not None:
+            quiz_gaps.add(coverage.gap)
+        quizzes_forbidden = quizzes_forbidden or coverage.status == "unavailable"
         term = map_path.parent.parent.parent.name
         stats = term_stats.setdefault(term, [0, 0, 0, 0, 0])
         stats[0] += 1
@@ -730,6 +742,17 @@ def _vault(vault: Vault | None) -> list[Check]:
             None if gaps == 0 else "see .a2l/AUDIT.md",
         ),
     ]
+    quiz_check = "metadata.quizzes.forbidden" if quizzes_forbidden else "metadata.quizzes"
+    checks.append(
+        Check(
+            "Vault",
+            quiz_check,
+            "warn" if quiz_gaps else "ok",
+            "; ".join(sorted(quiz_gaps)) if quiz_gaps else "quiz collection coverage is complete",
+            "see .a2l/AUDIT.md; check quiz availability in LEARN" if quiz_gaps else None,
+            public=_SAFE_PUBLIC_NOTES[quiz_check] if quiz_gaps else None,
+        )
+    )
     checks.append(
         Check(
             "Vault",
