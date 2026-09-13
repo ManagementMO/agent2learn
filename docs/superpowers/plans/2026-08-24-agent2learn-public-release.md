@@ -2598,9 +2598,9 @@ Steps:
       notice, create provenance attestations, then promote those exact hashes—never rebuild between
       TestPyPI and PyPI.
 - [ ] **Step 4:** Implement `a2l completions {bash,zsh,fish,powershell}`.
-- [ ] **Step 5:** Use a fresh matching release tag (`v0.1.4` for the current candidate); leave the
-      historical `v0.1.0`, `v0.1.1`, `v0.1.2`, and `v0.1.3` tags untouched. Record checksums only for wheel
-      and source distributions, not build bookkeeping such as `dist/.gitignore`. Publish the candidate
+- [ ] **Step 5:** Use a fresh matching release tag (`v0.1.5` for the current candidate); leave all
+      historical tags through `v0.1.4` untouched. Record checksums only for wheel and source
+      distributions, not build bookkeeping such as `dist/.gitignore`. Publish the candidate
       to **TestPyPI first**. Verify its filename/hash set, download its exact wheel from the reviewed
       TestPyPI file host, and check the downloaded bytes before installation. Install that explicit
       wheel with dependencies resolved only from PyPI, preserving `first-index`; do not combine

@@ -183,6 +183,14 @@ def test_readme_links_resolve_the_same_on_package_indexes_and_github(index: str)
             assert urljoin(package_page, link) == urljoin(repository_page, link), link
 
 
+def test_readme_current_installer_version_matches_the_package() -> None:
+    readme = _read(ROOT / "README.md")
+    block = readme.split("## Install", 1)[1].split("\n## ", 1)[0]
+    claimed_versions = set(re.findall(r"\bcurrently\s+(\d+\.\d+\.\d+)\b", block))
+
+    assert claimed_versions <= {__version__}, claimed_versions
+
+
 def test_the_readme_says_the_scripts_continue_into_onboarding() -> None:
     readme = _read(ROOT / "README.md")
     block = readme.split("## Install", 1)[1].split("\n## ", 1)[0].casefold()

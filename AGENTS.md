@@ -630,3 +630,20 @@ Submission remains disabled, and publication still requires the existing human r
   will complete. Its target is the eventual published 0.1.4, not the staging-only 0.1.3. Preserve
   existing user data, keep uploads disabled, and report real-account versus synthetic evidence
   separately rather than claiming universal success.
+
+## Final documentation correction — 0.1.5
+
+- PR #27 merged as 4b98c64 after all 17 required checks passed in run 34736768908. A fresh clean
+  checkout also passed 1071 tests with six skips. The old temporary worktree was found incomplete
+  and was preserved rather than used for release operations.
+- The v0.1.4 tag remains on 4b98c64. Its release run 34738091012 passed build, attestation, and all
+  installer jobs, then was stopped at the unapproved TestPyPI gate after a final README review
+  found a stale `currently 0.1.3` parenthetical. Neither registry received 0.1.4.
+- The owner explicitly chose a fresh 0.1.5 rather than ship the stale package description or move
+  v0.1.4. Remove the hardcoded README version note, align package/runtime/installer/skill versions,
+  and retain a regression against stale current-version claims. Runtime behavior, dependency
+  versions, artifact-source protections, and submission capability remain unchanged.
+- Finalize through a normal PR and all required checks, then a fresh v0.1.5 tag and the existing
+  protected TestPyPI/PyPI workflow. Preserve every earlier tag/artifact. The independent QA prompt
+  must target the final published 0.1.5 and continue to distinguish live-account evidence from
+  synthetic verification.

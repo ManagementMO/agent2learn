@@ -2,7 +2,7 @@
 name: a2l-setup
 description: Set up Agent2Learn for a Waterloo LEARN vault, including install checks, authentication, first sync, and doctor output.
 metadata:
-  version: 0.1.4
+  version: 0.1.5
 ---
 
 # Agent2Learn Setup
