@@ -374,6 +374,7 @@ def _result_status(
         errors.append("outline renderer incomplete")
     if files.download_gaps:
         gaps.append("download gaps")
+    gaps.extend(files.gaps)
     if files.failed or files.errors or files.exit_code:
         errors.append("file sync incomplete")
     if conversion.errors:

@@ -75,6 +75,14 @@ zero, and any retained quiz dates may be outdated. Check quiz availability and d
 A later successful sync updates the coverage status; existing archived quiz records are preserved.
 Older vaults without a coverage record show unknown coverage until a new sync records it.
 
+The same boundary applies to an optional collection route that LEARN does not provide. A
+collection HTTP 404 for assignments, announcements, opt-in grades, discussions, or quizzes is
+recorded as unavailable—not as an empty collection—and the independent course-content phase
+continues. Cached rows are retained, and summaries/audit/doctor show the coverage gap. A successful
+empty response is different: it is a confirmed empty collection. Other status codes, malformed
+responses, expired sessions, and local-state errors remain failures so a real outage cannot be
+mistaken for a missing feature.
+
 **`a2l init` stopped during metadata sync.**
 Unclassified endpoint errors, malformed content discovery, and local-state failures still stop
 initialization before the file phase. The message names the failing categories, and everything

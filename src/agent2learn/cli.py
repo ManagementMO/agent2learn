@@ -390,8 +390,9 @@ def calendar(
         else:
             written = calendar_module.write_ics(vault, school, output)
             typer.echo(f"calendar exported: {_display_path(written)}")
-        if metadata_coverage.vault_quiz_gaps(vault):
-            typer.echo(f"Warning: {calendar_module.QUIZ_COVERAGE_WARNING}", err=True)
+        metadata_gaps = metadata_coverage.vault_metadata_gaps(vault)
+        if metadata_gaps:
+            typer.echo(f"Warning: {calendar_module.coverage_warning(metadata_gaps)}", err=True)
     except A2LError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=exc.exit_code) from None
@@ -1862,14 +1863,14 @@ def _print_metadata_summary(
     include_grades: bool,
 ) -> None:
     gaps = (
-        metadata_coverage.vault_quiz_gaps(Vault(root))
+        metadata_coverage.vault_metadata_gaps(Vault(root))
         if report is None
         else getattr(report, "gaps", ())
     )
     for gap in gaps:
         typer.echo(
-            f"{console.GLYPH['warn']} {gap}; quiz/deadline coverage is not confirmed. "
-            "See .a2l/AUDIT.md and check quiz availability in LEARN.",
+            f"{console.GLYPH['warn']} {gap}; metadata/deadline coverage is not confirmed. "
+            "See .a2l/AUDIT.md and check the affected collection in LEARN.",
             err=True,
         )
     if report is None:
@@ -1888,6 +1889,7 @@ def _print_metadata_summary(
 
     assignment_count = 0
     quiz_count = 0
+    assignments_complete = True
     quizzes_complete = True
     deadlines: list[tuple[str, str, str]] = []
     if isinstance(reports, Sequence):
@@ -1900,6 +1902,13 @@ def _print_metadata_summary(
             assignments = _read_metadata_rows(directory / "_meta" / "assignments.json")
             quizzes = _read_metadata_rows(directory / "_meta" / "quizzes.json")
             coverage = metadata_coverage.read_quiz_coverage(directory)
+            assignment_coverage = metadata_coverage.read_collection_coverage(
+                directory, "assignments"
+            )
+            if metadata_coverage.has_collection_coverage(directory, "assignments"):
+                assignments_complete = assignments_complete and (
+                    assignment_coverage.status == "complete"
+                )
             quizzes_complete = quizzes_complete and coverage.status == "complete"
             assignment_count += len(assignments)
             quiz_count += len(quizzes)
@@ -1911,11 +1920,16 @@ def _print_metadata_summary(
 
     grade_text = "grades synced" if include_grades else "grades not synced"
     detail = f"{deadline_count} {'deadlines' if quizzes_complete else 'known deadlines'}"
-    if assignment_count or quiz_count:
+    if assignment_count or quiz_count or not assignments_complete:
+        assignment_inventory = (
+            f"{assignment_count} assignments"
+            if assignments_complete
+            else "assignment inventory unconfirmed"
+        )
         quiz_inventory = (
             f"{quiz_count} quizzes" if quizzes_complete else "quiz inventory unconfirmed"
         )
-        detail = f"{assignment_count} assignments · {quiz_inventory} · {detail}"
+        detail = f"{assignment_inventory} · {quiz_inventory} · {detail}"
     typer.echo(
         f"{console.GLYPH['ok']} {course_count} courses · {topic_count} topics · "
         f"{detail} · {grade_text}"

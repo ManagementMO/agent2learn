@@ -155,6 +155,7 @@ class FileReport:
     interrupted: bool = False
     errors: tuple[str, ...] = ()
     exit_code: int = 0
+    gaps: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -223,6 +224,53 @@ class IngestClient(Protocol):
     ) -> DownloadResult: ...
 
 
+def _record_optional_collection(
+    course_dir: Path,
+    vault: Vault,
+    collection: metadata_coverage.CollectionName,
+    *,
+    complete: bool,
+    error: BaseException | None,
+    errors: list[str],
+    gaps: list[str],
+) -> metadata_coverage.CollectionCoverage:
+    """Persist safe coverage for an optional collection and classify its failure.
+
+    A 404 means that the optional D2L tool or collection is not available for this course. It is
+    not evidence of an empty list, but it also must not prevent independent content from syncing.
+    All other failures remain metadata errors. A successful retry clears a prior recorded gap.
+    """
+
+    coverage = metadata_coverage.collection_coverage(collection, complete, error)
+    if error is not None:
+        if coverage.status == "unavailable":
+            if (gap := coverage.gap(collection)) is not None:
+                gaps.append(gap)
+        else:
+            errors.append(_safe_error(collection, error))
+    if error is not None or metadata_coverage.has_collection_coverage(course_dir, collection):
+        metadata_coverage.write_collection_coverage(
+            course_dir, collection, coverage, root=vault.root
+        )
+    return coverage
+
+
+def _discussion_failure(
+    course_dir: Path,
+    vault: Vault,
+    error: BaseException,
+) -> tuple[str | None, str | None]:
+    """Persist a discussion failure and return ``(error, recorded_gap)``."""
+
+    coverage = metadata_coverage.collection_coverage("discussions", False, error)
+    metadata_coverage.write_collection_coverage(
+        course_dir, "discussions", coverage, root=vault.root
+    )
+    if coverage.status == "unavailable":
+        return None, coverage.gap("discussions")
+    return _safe_error("discussions", error), None
+
+
 def ingest_metadata(
     client: IngestClient,
     vault: Vault,
@@ -272,8 +320,15 @@ def ingest_metadata(
         assignments, assignments_complete, assignments_error = _fetch_collection(
             client, _endpoint_path(client, course, "dropbox/folders/")
         )
-        if assignments_error is not None:
-            errors.append(_safe_error("assignments", assignments_error))
+        _record_optional_collection(
+            course_dir,
+            vault,
+            "assignments",
+            complete=assignments_complete,
+            error=assignments_error,
+            errors=errors,
+            gaps=gaps,
+        )
         existing_map = _read_content_map(course_dir)
         attachment_topics = _assignment_attachment_topics(assignments, course=course, school=school)
         merged_topics = _merge_topic_records(
@@ -334,8 +389,15 @@ def ingest_metadata(
         news, news_complete, news_error = _fetch_collection(
             client, _endpoint_path(client, course, "news/")
         )
-        if news_error is not None:
-            errors.append(_safe_error("news", news_error))
+        _record_optional_collection(
+            course_dir,
+            vault,
+            "news",
+            complete=news_complete,
+            error=news_error,
+            errors=errors,
+            gaps=gaps,
+        )
         news_rows = _project_news(news)
         news_rows = _merge_rows(
             _read_list(course_dir / "_meta" / "news.json"),
@@ -370,8 +432,15 @@ def ingest_metadata(
             grades, grades_complete, grades_error = _fetch_collection(
                 client, _endpoint_path(client, course, "grades/values/myGradeValues/")
             )
-            if grades_error is not None:
-                errors.append(_safe_error("grades", grades_error))
+            _record_optional_collection(
+                course_dir,
+                vault,
+                "grades",
+                complete=grades_complete,
+                error=grades_error,
+                errors=errors,
+                gaps=gaps,
+            )
             grades_path = course_dir / "_meta" / "my_grades.json"
             if grades_complete:
                 grade_rows = _merge_rows(
@@ -393,7 +462,8 @@ def ingest_metadata(
                         complete=False,
                     )
                     _write_list(grades_path, grade_rows, root=vault.root)
-                errors.append("grades: incomplete response")
+                if grades_error is None:
+                    errors.append("grades: incomplete response")
 
         merged_topics = course_index.reconcile_content_map(vault, merged_topics)
         _write_content_map(course_dir, merged_topics, root=vault.root)
@@ -469,6 +539,16 @@ def load_metadata_report(
         coverage = metadata_coverage.read_quiz_coverage(course_dir)
         if coverage.gap is not None:
             (errors if coverage.status == "incomplete" else gaps).append(coverage.gap)
+        for collection in ("assignments", "news", "grades", "discussions"):
+            collection_name: metadata_coverage.CollectionName = collection
+            if not metadata_coverage.has_collection_coverage(course_dir, collection_name):
+                continue
+            collection_state = metadata_coverage.read_collection_coverage(
+                course_dir, collection_name
+            )
+            collection_gap = collection_state.gap(collection_name)
+            if collection_gap is not None:
+                (errors if collection_state.status == "incomplete" else gaps).append(collection_gap)
         deadline_count += sum(
             1
             for row in [
@@ -546,6 +626,7 @@ def ingest_files(
     selected = _selected_courses(client, term=term, only=only)
     downloaded = skipped = failed = metadata_only = download_gaps = 0
     errors: list[str] = []
+    gaps: list[str] = []
 
     for course in selected:
         course_dir = _course_directory(vault, school, course)
@@ -569,7 +650,7 @@ def ingest_files(
             else list(planned)
         )
         if include_discussions:
-            discussion_error = _ingest_discussions(
+            discussion_error, discussion_gap = _ingest_discussions(
                 client,
                 course,
                 course_dir,
@@ -578,6 +659,8 @@ def ingest_files(
             )
             if discussion_error is not None:
                 errors.append(discussion_error)
+            if discussion_gap is not None:
+                gaps.append(discussion_gap)
 
         for topic in chosen:
             if topic.availability == "external_link":
@@ -651,6 +734,7 @@ def ingest_files(
                     interrupted=True,
                     errors=tuple(errors),
                     exit_code=130,
+                    gaps=tuple(sorted(set(gaps))),
                 )
             except SessionExpired:
                 raise
@@ -695,6 +779,7 @@ def ingest_files(
         metadata_only=metadata_only,
         download_gaps=download_gaps,
         errors=tuple(errors),
+        gaps=tuple(sorted(set(gaps))),
     )
 
 
@@ -2982,27 +3067,39 @@ def _ingest_discussions(
     vault: Vault,
     *,
     include_authors: bool,
-) -> str | None:
-    """Fetch opt-in discussions while keeping raw author identity out of the vault."""
+) -> tuple[str | None, str | None]:
+    """Fetch opt-in discussions while keeping raw author identity out of the vault.
+
+    The return value is ``(error, gap)``.  A missing optional discussion tool is a recorded gap;
+    malformed data, authentication failures, and other unexpected failures remain errors.
+    """
 
     values, complete, error = _fetch_collection(
         client, _endpoint_path(client, course, "discussions/forums/")
     )
     if error is not None:
-        return _safe_error("discussions", error)
+        return _discussion_failure(course_dir, vault, error)
     if not complete:
-        return _safe_error("discussions", A2LError("incomplete response"))
+        return _discussion_failure(course_dir, vault, A2LError("incomplete response"))
     if any(
         not isinstance(value, dict) or not _discussion_forum_is_valid(value) for value in values
     ):
-        return _safe_error("discussions", A2LError("metadata endpoint returned an invalid forum"))
+        return _discussion_failure(
+            course_dir,
+            vault,
+            A2LError("metadata endpoint returned an invalid forum"),
+        )
     forum_ids = [value["ForumId"] for value in values if isinstance(value, dict)]
     if len({str(value) for value in forum_ids}) != len(forum_ids):
-        return _safe_error("discussions", A2LError("metadata endpoint returned duplicate forums"))
+        return _discussion_failure(
+            course_dir,
+            vault,
+            A2LError("metadata endpoint returned duplicate forums"),
+        )
     try:
         existing_rows = _read_discussion_rows(course_dir / "_meta" / "discussions.json")
     except A2LError as exc:
-        return _safe_error("discussions", exc)
+        return _discussion_failure(course_dir, vault, exc)
     key = _discussion_key(vault)
     posts = [
         post for value in values if isinstance(value, dict) for post in _discussion_posts(value)
@@ -3067,7 +3164,13 @@ def _ingest_discussions(
     paths.atomic_write_text(
         discussion_dir / "discussions.md", "\n".join(markdown_lines), root=vault.root
     )
-    return None
+    metadata_coverage.write_collection_coverage(
+        course_dir,
+        "discussions",
+        metadata_coverage.CollectionCoverage("complete"),
+        root=vault.root,
+    )
+    return None, None
 
 
 def _discussion_key(vault: Vault) -> bytes:

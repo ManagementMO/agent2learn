@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -25,6 +27,37 @@ else:
 _KEYRING_SERVICE = "agent2learn"
 _KEYRING_USERNAME = "session"
 _SESSION_FILENAME = "session.json"
+_KEYRING_TIMEOUT_SECONDS = 3.0
+_KEYRING_HELPER = """
+import json
+import sys
+
+request = json.load(sys.stdin)
+result = {"ok": False}
+try:
+    import keyring
+
+    operation = request.get("operation")
+    service = request.get("service")
+    username = request.get("username")
+    if operation == "get":
+        value = keyring.get_password(service, username)
+        if value is not None and not isinstance(value, str):
+            raise TypeError
+        result = {"ok": True, "value": value}
+    elif operation == "set":
+        password = request.get("password")
+        if not isinstance(password, str):
+            raise TypeError
+        keyring.set_password(service, username, password)
+        result = {"ok": True}
+    elif operation == "delete":
+        keyring.delete_password(service, username)
+        result = {"ok": True}
+except Exception:
+    result = {"ok": False}
+sys.stdout.write(json.dumps(result, separators=(",", ":")))
+"""
 _SCHEMA_KEYS = frozenset({"base_url", "cookies", "harvested_at", "user_id", "xsrf"})
 _COOKIE_KEYS = frozenset({"domain", "name", "path", "secure", "value"})
 _ALLOWED_COOKIE_NAMES = frozenset(
@@ -124,17 +157,15 @@ def store(value: Session) -> str:
     blob = _encode(validated)
 
     if keyring is not None:
-        try:
-            keyring.set_password(_KEYRING_SERVICE, _KEYRING_USERNAME, blob)
-        except Exception:
-            # Keyring backends commonly fail because SecretService/D-Bus is unavailable.  This
-            # is an expected storage choice, not an error to surface or log.  Remove a stale
-            # keyring value when possible so a later process cannot prefer it over the fallback.
-            _delete_keyring_quietly()
-        else:
+        succeeded, _ = _keyring_call("set", blob)
+        if succeeded:
             _remove_file_quietly(_session_path())
             _last_backend = "keyring"
             return _last_backend
+        # Keyring backends commonly fail because SecretService/D-Bus is unavailable.  This is an
+        # expected storage choice, not an error to surface or log.  Remove a stale keyring value
+        # when possible so a later process cannot prefer it over the fallback.
+        _delete_keyring_quietly()
 
     paths.atomic_write_text(_session_path(), blob)
     _last_backend = "file"
@@ -146,11 +177,8 @@ def load() -> Session | None:
 
     global _last_backend
     if keyring is not None:
-        try:
-            blob = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
-        except Exception:
-            blob = None
-        if blob is not None:
+        succeeded, blob = _keyring_call("get")
+        if succeeded and blob is not None:
             loaded = _decode(blob)
             _last_backend = "keyring"
             return loaded
@@ -186,11 +214,95 @@ def backend_name() -> str:
         return "file"
     if keyring is None:
         return "file"
-    try:
-        keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
-    except Exception:
+    succeeded, _ = _keyring_call("get")
+    if not succeeded:
         return "file"
     return "keyring"
+
+
+def _keyring_call(operation: str, password: str | None = None) -> tuple[bool, object]:
+    """Run one keyring operation without allowing a native backend to hang the CLI.
+
+    macOS Keychain calls can wait indefinitely for an OS-level access decision when the same
+    account is used by a newly installed virtual environment.  Run the native backend in a
+    short-lived child so a missing/unavailable keychain falls back to the protected local file;
+    killing the child also prevents a late write or delete after the caller has continued.  Test
+    and custom in-process backends keep their existing synchronous behavior.
+    """
+
+    if keyring is None:
+        return False, None
+    if operation not in {"get", "set", "delete"}:
+        raise ValueError("unsupported keyring operation")
+    if _keyring_requires_isolation():
+        return _keyring_subprocess(operation, password)
+    try:
+        if operation == "get":
+            return True, keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+        if operation == "set":
+            if password is None:
+                raise ValueError("keyring password is required")
+            keyring.set_password(_KEYRING_SERVICE, _KEYRING_USERNAME, password)
+        else:
+            keyring.delete_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+    except Exception:
+        return False, None
+    return True, None
+
+
+def _keyring_requires_isolation() -> bool:
+    """Return whether the selected OS keyring must be bounded in a child process."""
+
+    if sys.platform != "darwin" or keyring is None:
+        return False
+    try:
+        backend = keyring.get_keyring()
+    except Exception:
+        return False
+    # The module-function check keeps tests and integrations that deliberately replace keyring
+    # calls in-process on the synchronous path; it also avoids a subprocess silently bypassing a
+    # caller's explicit backend override.
+    return (
+        type(backend).__module__ == "keyring.backends.macOS"
+        and getattr(keyring.get_password, "__module__", None) == "keyring.core"
+        and getattr(keyring.set_password, "__module__", None) == "keyring.core"
+        and getattr(keyring.delete_password, "__module__", None) == "keyring.core"
+    )
+
+
+def _keyring_subprocess(operation: str, password: str | None) -> tuple[bool, object]:
+    request = json.dumps(
+        {
+            "operation": operation,
+            "password": password,
+            "service": _KEYRING_SERVICE,
+            "username": _KEYRING_USERNAME,
+        },
+        separators=(",", ":"),
+    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", _KEYRING_HELPER],
+            input=request,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=_KEYRING_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False, None
+    if completed.returncode != 0:
+        return False, None
+    try:
+        result = json.loads(completed.stdout)
+    except (TypeError, ValueError):
+        return False, None
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        return False, None
+    if operation == "get":
+        value = result.get("value")
+        return (True, value) if value is None or isinstance(value, str) else (False, None)
+    return True, None
 
 
 def _encode(value: Session) -> str:
@@ -357,10 +469,7 @@ def _remove_file(path: Path) -> None:
 def _delete_keyring_quietly() -> None:
     if keyring is None:
         return
-    try:
-        keyring.delete_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
-    except Exception:
-        return
+    _keyring_call("delete")
 
 
 __all__ = [

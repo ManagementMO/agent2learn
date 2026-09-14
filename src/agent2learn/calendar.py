@@ -87,6 +87,18 @@ QUIZ_COVERAGE_WARNING = (
     "Quiz coverage is incomplete or unknown; deadlines may be missing and cached quiz dates "
     "are not confirmed current. Check LEARN."
 )
+METADATA_COVERAGE_WARNING = (
+    "Metadata coverage is incomplete or unavailable; deadlines may be missing and cached "
+    "dates are not confirmed current. Check LEARN."
+)
+
+
+def coverage_warning(gaps: Sequence[str]) -> str:
+    """Return a stable warning without echoing server-provided diagnostics."""
+
+    if gaps and all(gap.startswith("quizzes ") for gap in gaps):
+        return QUIZ_COVERAGE_WARNING
+    return METADATA_COVERAGE_WARNING
 
 
 def collect_events(vault: Vault, school: School) -> tuple[CalendarEvent, ...]:
@@ -153,8 +165,9 @@ def render_ics(vault: Vault, school: School, *, now: datetime | None = None) -> 
         "METHOD:PUBLISH",
         f"X-WR-TIMEZONE:{_escape_text(school.timezone)}",
     ]
-    if metadata_coverage.vault_quiz_gaps(vault):
-        lines.append(f"X-A2L-COVERAGE-WARNING:{_escape_text(QUIZ_COVERAGE_WARNING)}")
+    metadata_gaps = metadata_coverage.vault_metadata_gaps(vault)
+    if metadata_gaps:
+        lines.append(f"X-A2L-COVERAGE-WARNING:{_escape_text(coverage_warning(metadata_gaps))}")
     for event in collect_events(vault, school):
         lines.extend(_event_lines(event, timezone, stamp))
     lines.append("END:VCALENDAR")
@@ -236,7 +249,7 @@ def build_today(
         overdue=tuple(overdue),
         exam_countdowns=tuple(exam_countdowns),
         changes=snapshot.diff_vault(vault, include_grades=include_grades),
-        metadata_gaps=metadata_coverage.vault_quiz_gaps(vault),
+        metadata_gaps=metadata_coverage.vault_metadata_gaps(vault),
     )
 
 
@@ -252,7 +265,7 @@ def render_today(report: TodayReport, *, include_grades: bool = False) -> str:
             [
                 "Metadata coverage is incomplete:",
                 *[f"- {gap}" for gap in report.metadata_gaps],
-                "Deadlines may be missing, and cached quiz dates may be outdated.",
+                "Deadlines may be missing, and cached metadata dates may be outdated.",
                 "",
             ]
         )

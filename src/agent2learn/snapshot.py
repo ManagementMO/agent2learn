@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
-from agent2learn import paths
+from agent2learn import metadata_coverage, paths
 from agent2learn.vault import Vault
 
 SNAPSHOT_SCHEMA_VERSION = 1
@@ -22,6 +22,7 @@ class _CourseSnapshot(TypedDict):
     announcement_ids: set[str]
     due_dates: tuple[str, ...]
     grades: dict[str, dict[str, object]]
+    grades_coverage: str
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,17 @@ def write_snapshot(
             ),
         }
         if include_grades:
-            item["grades"] = _object_rows(_read_json(meta / "my_grades.json", None), "grades")
+            grade_coverage = metadata_coverage.read_collection_coverage(course, "grades")
+            if (
+                metadata_coverage.has_collection_coverage(course, "grades")
+                and grade_coverage.status != "complete"
+            ):
+                # An unavailable or incomplete opt-in collection is not an empty grade result.
+                # Keep the snapshot structurally comparable while carrying the bounded status.
+                item["grades"] = []
+                item["grades_coverage"] = grade_coverage.status
+            else:
+                item["grades"] = _object_rows(_read_json(meta / "my_grades.json", None), "grades")
         courses.append(item)
     payload = {
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
@@ -212,7 +223,7 @@ def compare_snapshots(
                 }
             )
 
-        if include_grades:
+        if include_grades and current_row["grades_coverage"] == "complete":
             old_grades = previous_row["grades"]
             for grade_id, grade in sorted(current_row["grades"].items()):
                 if old_grades.get(grade_id) != grade:
@@ -355,6 +366,7 @@ def _course_map(
             "announcement_ids": _str_set(raw.get("announcement_ids"), "announcement_ids"),
             "due_dates": tuple(sorted(_str_set(raw.get("due_dates"), "due_dates"))),
             "grades": _grade_map(raw.get("grades")),
+            "grades_coverage": _coverage_status(raw.get("grades_coverage")),
         }
     return courses
 
@@ -387,6 +399,19 @@ def _grade_map(value: object) -> dict[str, dict[str, object]]:
             raise ValueError("snapshot contains duplicate grades")
         result[identifier] = dict(raw)
     return result
+
+
+def _coverage_status(value: object) -> str:
+    if value is None:
+        return "complete"
+    if not isinstance(value, str) or value not in {
+        "complete",
+        "unavailable",
+        "incomplete",
+        "unknown",
+    }:
+        raise ValueError("snapshot grades coverage is invalid")
+    return value
 
 
 __all__ = [

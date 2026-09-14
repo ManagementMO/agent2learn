@@ -92,7 +92,10 @@ _COURSE_SOURCE_DIRECTORIES = frozenset(
 )
 _SAFE_PUBLIC_NOTES = {
     "fs.vault": "vault root `~`",
-    "metadata.quizzes": "Quiz collection coverage is incomplete or unknown.",
+    "metadata.collections": (
+        "One or more optional metadata collections are unavailable or incomplete."
+    ),
+    "metadata.quizzes": "Quiz collection coverage is incomplete, unavailable, or unknown.",
     "metadata.quizzes.forbidden": "Quiz collection unavailable (HTTP 403 Forbidden).",
 }
 _PUBLIC_CHECK_NAMES = frozenset(
@@ -110,6 +113,7 @@ _PUBLIC_CHECK_NAMES = frozenset(
         "fs.longest_path",
         "fs.unavailable",
         "fs.vault",
+        "metadata.collections",
         "metadata.quizzes",
         "metadata.quizzes.forbidden",
         "session.age",
@@ -640,8 +644,10 @@ def _vault(vault: Vault | None) -> list[Check]:
     unusable_twins = 0
     unreadable_maps = 0
     quiz_gaps: set[str] = set()
+    collection_gaps: set[str] = set()
     quizzes_forbidden = False
     quiz_sync_needed = False
+    collection_sync_needed = False
     term_stats: dict[str, list[int]] = {}
     try:
         map_paths = sorted(
@@ -665,8 +671,25 @@ def _vault(vault: Vault | None) -> list[Check]:
         coverage = metadata_coverage.read_quiz_coverage(map_path.parent.parent)
         if coverage.gap is not None:
             quiz_gaps.add(coverage.gap)
-        quizzes_forbidden = quizzes_forbidden or coverage.status == "unavailable"
+        quizzes_forbidden = quizzes_forbidden or (
+            coverage.status == "unavailable" and coverage.http_status == 403
+        )
         quiz_sync_needed = quiz_sync_needed or coverage.status in {"unknown", "incomplete"}
+        for collection in ("assignments", "news", "grades", "discussions"):
+            collection_name: metadata_coverage.CollectionName = collection
+            if not metadata_coverage.has_collection_coverage(
+                map_path.parent.parent, collection_name
+            ):
+                continue
+            collection_coverage = metadata_coverage.read_collection_coverage(
+                map_path.parent.parent, collection_name
+            )
+            if (gap := collection_coverage.gap(collection)) is not None:
+                collection_gaps.add(gap)
+            collection_sync_needed = collection_sync_needed or collection_coverage.status in {
+                "unknown",
+                "incomplete",
+            }
         term = map_path.parent.parent.parent.name
         stats = term_stats.setdefault(term, [0, 0, 0, 0, 0, 0])
         stats[0] += 1
@@ -786,6 +809,22 @@ def _vault(vault: Vault | None) -> list[Check]:
             public=_SAFE_PUBLIC_NOTES[quiz_check] if quiz_gaps else None,
         )
     )
+    if collection_gaps:
+        collection_fix = (
+            "run: a2l sync"
+            if collection_sync_needed
+            else "see .a2l/AUDIT.md; check the affected collection in LEARN"
+        )
+        checks.append(
+            Check(
+                "Vault",
+                "metadata.collections",
+                "warn",
+                "; ".join(sorted(collection_gaps)),
+                collection_fix,
+                public=_SAFE_PUBLIC_NOTES["metadata.collections"],
+            )
+        )
     checks.append(
         Check(
             "Vault",
@@ -927,7 +966,8 @@ def next_command(checks: Sequence[Check]) -> str | None:
                 return f"run: {candidate}"
     if any(
         check.status == "warn"
-        and check.name in {"vault.terms", "vault.citable", "metadata.quizzes.forbidden"}
+        and check.name
+        in {"vault.terms", "vault.citable", "metadata.quizzes.forbidden", "metadata.collections"}
         for check in checks
     ):
         # All actionable fixes were considered above. Viewing cached information is useful;
