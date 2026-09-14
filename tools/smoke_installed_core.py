@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import io
 import json
 import sys
 import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from zoneinfo import ZoneInfo, reset_tzpath
 
 from requests import PreparedRequest, Response
 from requests.adapters import HTTPAdapter
 
 import agent2learn
-from agent2learn import _release, audit, calendar, doctor
+from agent2learn import _release, audit, calendar, cli, config, doctor
 from agent2learn.api import DEFAULT_MAX_BYTES, Client, DownloadResult
 from agent2learn.calibrate import CourseRef
 from agent2learn.check import check
@@ -160,6 +163,25 @@ def main() -> None:
         assert "X-A2L-COVERAGE-WARNING:" not in calendar.render_ics(vault, school), (
             "a successfully enumerated empty quiz collection was mislabeled unknown"
         )
+        # Exercise installed CLI output, not only the serializer: a Windows-style text
+        # stream used to turn the calendar's CRLF into CRCRLF even with a valid serializer.
+        raw_stdout = io.BytesIO()
+        stderr = io.StringIO()
+        with (
+            io.TextIOWrapper(raw_stdout, encoding="cp1252", newline="\r\n") as stdout,
+            patch.object(config, "load", return_value=config.Config(vault=restricted.root)),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            cli.calendar(output=None)
+            stdout.flush()
+            raw_calendar = raw_stdout.getvalue()
+        assert raw_calendar.startswith(b"BEGIN:VCALENDAR\r\n")
+        assert raw_calendar.endswith(b"END:VCALENDAR\r\n")
+        assert b"\r" not in raw_calendar.replace(b"\r\n", b"")
+        assert b"\n" not in raw_calendar.replace(b"\r\n", b"")
+        assert b"Warning:" not in raw_calendar
+        assert stderr.getvalue().count("Warning: Quiz coverage") == 1
         assert doctor.next_command(doctor._vault(restricted)) == "run: a2l today", (
             "doctor suggested a futile repeat sync when only quiz permission is unavailable"
         )

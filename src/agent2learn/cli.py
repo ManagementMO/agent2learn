@@ -384,7 +384,9 @@ def calendar(
     try:
         _cfg, vault, school = _local_vault()
         if output is None:
-            typer.echo(calendar_module.render_ics(vault, school), nl=False)
+            # ICS is already UTF-8/CRLF protocol data. Text-mode stdout can double CRs on
+            # Windows or re-encode titles through a legacy console code page.
+            typer.echo(calendar_module.render_ics(vault, school).encode("utf-8"), nl=False)
         else:
             written = calendar_module.write_ics(vault, school, output)
             typer.echo(f"calendar exported: {_display_path(written)}")
