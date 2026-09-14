@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+from agent2learn import cli as cli_module
 from agent2learn import config, metadata_coverage
 from agent2learn.cli import app
 from agent2learn.vault import Vault
@@ -79,12 +82,44 @@ def test_calendar_cli_warns_on_partial_coverage_without_corrupting_export(
         assert "not confirmed current" in result.stderr
     assert str(root) not in result.stderr
     assert "COURSE101" not in result.stderr
-    exported = destination.read_text(encoding="utf-8") if output_file else result.stdout
-    assert exported.startswith("BEGIN:VCALENDAR\n")
-    assert exported.endswith("END:VCALENDAR\n")
-    assert exported.count("BEGIN:VEVENT") == 1
-    assert "Warning:" not in exported
+    exported = destination.read_bytes() if output_file else result.stdout_bytes
+    assert exported.startswith(b"BEGIN:VCALENDAR\r\n")
+    assert exported.endswith(b"END:VCALENDAR\r\n")
+    assert b"\r" not in exported.replace(b"\r\n", b"")
+    assert b"\n" not in exported.replace(b"\r\n", b"")
+    assert exported.count(b"BEGIN:VEVENT") == 1
+    assert b"Warning:" not in exported
     assert {path.name: path.read_bytes() for path in (course / "_meta").iterdir()} == before
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("encoding", ["utf-8", "cp1252"])
+def test_calendar_stdout_preserves_utf8_crlf_across_text_stream_translation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    newline: str,
+    encoding: str,
+) -> None:
+    _root, course = _configured_vault(tmp_path, monkeypatch)
+    (course / "_meta" / "assignments.json").write_text(
+        '[{"id": 1, "title": "Résumé 雪", "due_date": "2026-09-15"}]\n', encoding="utf-8"
+    )
+    buffer = io.BytesIO()
+    with (
+        io.TextIOWrapper(buffer, encoding=encoding, newline=newline) as stream,
+        monkeypatch.context() as scoped,
+    ):
+        scoped.setattr(sys, "stdout", stream)
+        cli_module.calendar(output=None)
+        stream.flush()
+        exported = buffer.getvalue()
+
+    assert exported.startswith(b"BEGIN:VCALENDAR\r\n")
+    assert exported.endswith(b"END:VCALENDAR\r\n")
+    assert "Résumé 雪".encode() in exported
+    assert b"\r" not in exported.replace(b"\r\n", b"")
+    assert b"\n" not in exported.replace(b"\r\n", b"")
+    assert b"Warning:" not in exported
 
 
 def test_where_and_open_are_local_and_redaction_safe(

@@ -5,11 +5,11 @@ the full suite with branch coverage on one representative matrix entry (Ubuntu, 
 enforces the floor in `pyproject.toml`. The other matrix entries still run the full test suite.
 
 The latest local measurement was taken on macOS, Python 3.11.15, on 2026-09-14 UTC,
-for the student-validation and calendar/diagnostic coverage repairs (see `AGENTS.md`):
+for the student-validation, calendar/diagnostic coverage, and stdout byte repairs (see `AGENTS.md`):
 
 ```
 uv run pytest --cov=agent2learn --cov-branch --cov-report=term-missing -W error
-1308 passed, 6 skipped
+1312 passed, 6 skipped
 TOTAL: 80.99% branch-aware coverage (12,424 statements; 4,688 branches)
 ```
 
