@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -103,6 +104,28 @@ def test_keyring_failure_falls_back_silently_to_a_working_file_session(
     assert session.store(original) == "file"
     assert session.load() == original
     assert capsys.readouterr() == ("", "")
+
+
+def test_hanging_native_keyring_falls_back_without_blocking(
+    isolated_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+
+    def timeout(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        calls.append("keyring")
+        raise subprocess.TimeoutExpired(["python"], timeout=0.1)
+
+    monkeypatch.setattr(session, "_keyring_requires_isolation", lambda: True)
+    monkeypatch.setattr(session.subprocess, "run", timeout)
+    original = _sample_session()
+
+    assert session.store(original) == "file"
+    assert session.load() == original
+    session.clear()
+
+    assert not (isolated_state / "session.json").is_file()
+    assert len(calls) == 4
 
 
 def test_stored_blob_has_no_password_key(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -185,4 +186,21 @@ def test_malformed_snapshot_is_not_silently_treated_as_empty(tmp_path: Path) -> 
     destination.write_bytes(b"not json")
 
     with pytest.raises(ValueError, match="snapshot"):
+        snapshot.diff_vault(Vault(tmp_path))
+
+
+def test_malformed_grade_coverage_is_reported_as_snapshot_error(tmp_path: Path) -> None:
+    Vault.claim(tmp_path)
+    payload = _payload(
+        "2026-08-28T12:00:00Z",
+        topic_ids=[1],
+        due_dates=[],
+        announcement_ids=[],
+    )
+    courses = cast(list[object], payload["courses"])
+    course = cast(dict[str, object], courses[0])
+    course["grades_coverage"] = ["complete"]
+    _snapshot(tmp_path, "20260828T120000Z.json", payload)
+
+    with pytest.raises(ValueError, match="snapshot grades coverage"):
         snapshot.diff_vault(Vault(tmp_path))

@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import pytest
 from golden_support import CANONICAL_ORIGIN, FROZEN_NOW, GoldenSchool, _CanonicalOriginAdapter
@@ -565,7 +565,14 @@ def _deny_quizzes(
 
 
 def _quiz_client(
-    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch
+    httpserver: HTTPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    assignment_status: int | None = None,
+    news_status: int | None = None,
+    grades_status: int | None = None,
+    discussion_status: int | None = None,
+    handler_sink: dict[str, RequestHandler] | None = None,
 ) -> tuple[Any, GoldenSchool, RequestHandler]:
     monkeypatch.setattr("agent2learn.api.JITTER_MAX", 0.0)
     school = GoldenSchool(CANONICAL_ORIGIN)
@@ -580,14 +587,230 @@ def _quiz_client(
     )
     prefix = "/d2l/api/le/1.97/111111/"
     httpserver.expect_request(prefix + "content/toc").respond_with_json(_reading_toc())
-    httpserver.expect_request(prefix + "dropbox/folders/").respond_with_json([])
-    httpserver.expect_request(prefix + "news/").respond_with_json([])
+    assignments_handler = httpserver.expect_request(prefix + "dropbox/folders/")
+    if assignment_status is None:
+        assignments_handler.respond_with_json([])
+    else:
+        assignments_handler.respond_with_json(
+            {"status": assignment_status}, status=assignment_status
+        )
+    if handler_sink is not None:
+        handler_sink["assignments"] = assignments_handler
+    news_handler = httpserver.expect_request(prefix + "news/")
+    if news_status is None:
+        news_handler.respond_with_json([])
+    else:
+        news_handler.respond_with_json({"status": news_status}, status=news_status)
+    if grades_status is not None:
+        httpserver.expect_request(prefix + "grades/values/myGradeValues/").respond_with_json(
+            {"status": grades_status}, status=grades_status
+        )
+    if discussion_status is not None:
+        httpserver.expect_request(prefix + "discussions/forums/").respond_with_json(
+            {"status": discussion_status}, status=discussion_status
+        )
     quiz_handler = httpserver.expect_request(prefix + "quizzes/")
     _deny_quizzes(quiz_handler)
     httpserver.expect_request("/content/reading.txt").respond_with_data(
         "Readable course material.\n", content_type="text/plain"
     )
     return client, school, quiz_handler
+
+
+def test_missing_opt_in_discussion_collection_is_a_recorded_gap_without_blocking_files(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, discussion_status=404)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(
+        client,
+        vault,
+        school,
+        include_discussions=True,
+        render_outlines=False,
+    )
+
+    assert report.exit_code == 0
+    assert report.files.downloaded == 1
+    assert not report.files.errors
+    assert report.files.gaps == ("discussions unavailable (HTTP 404)",)
+    assert "discussions unavailable (HTTP 404)" in report.gaps
+    coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
+    coverage = json.loads(coverage_file.read_text(encoding="utf-8"))
+    assert coverage["collections"]["discussions"] == {
+        "status": "unavailable",
+        "http_status": 404,
+    }
+
+
+def test_missing_assignment_collection_is_a_recorded_gap_not_a_metadata_stop(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, assignment_status=404)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    assert report.exit_code == 0
+    assert not report.metadata.errors
+    assert report.files.downloaded == 1
+    assert any("assignments" in gap and "404" in gap for gap in report.gaps)
+    coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
+    coverage = json.loads(coverage_file.read_text(encoding="utf-8"))
+    assert coverage["collections"]["assignments"] == {
+        "status": "unavailable",
+        "http_status": 404,
+    }
+    rendered_audit = (vault.root / report.audit_path).read_text(encoding="utf-8")
+    assert "assignments" in rendered_audit and "404" in rendered_audit
+    assert "- 0 assignments" not in rendered_audit
+    today = calendar.build_today(vault, school, now=FROZEN_NOW)
+    assert "assignments unavailable (HTTP 404)" in today.metadata_gaps
+    assert "No assignments or quizzes due within 7 days." not in calendar.render_today(today)
+    checks = doctor._vault(vault)
+    collection_check = next(check for check in checks if check.name == "metadata.collections")
+    assert collection_check.status == "warn"
+    assert "assignments unavailable (HTTP 404)" in collection_check.detail
+    assert doctor.next_command(checks) == "run: a2l today"
+    public = doctor.report(checks)
+    assert "metadata.collections" in public and "111111" not in public
+
+
+def test_assignment_404_preserves_cache_until_a_confirmed_empty_response(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    handlers: dict[str, RequestHandler] = {}
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, handler_sink=handlers)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    assignment = {
+        "Id": 700001,
+        "Name": "Problem Set",
+        "DueDate": "2026-02-06T04:59:00.000Z",
+    }
+    handlers["assignments"].respond_with_json([assignment])
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    first = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+    directory = first.metadata.courses[0].directory
+    assignment_path = directory / "_meta" / "assignments.json"
+    original = assignment_path.read_bytes()
+    assert json.loads(original)[0]["id"] == 700001
+
+    handlers["assignments"].respond_with_json({"status": 404}, status=404)
+    denied = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+    cached = json.loads(assignment_path.read_text(encoding="utf-8"))[0]
+
+    assert denied.exit_code == 0
+    assert assignment_path.read_bytes() == original
+    assert cached.get("missing_since") is None and cached.get("withdrawn_at") is None
+    assert "assignments unavailable (HTTP 404)" in denied.gaps
+
+    handlers["assignments"].respond_with_json([])
+    recovered = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+    restored = json.loads(assignment_path.read_text(encoding="utf-8"))[0]
+
+    assert recovered.exit_code == 0
+    assert "assignments unavailable (HTTP 404)" not in recovered.gaps
+    assert restored.get("missing_since") and not restored.get("withdrawn_at")
+    assert metadata_coverage.read_collection_coverage(directory, "assignments").status == "complete"
+
+
+def test_missing_news_collection_is_a_recorded_gap_without_blocking_files(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, news_status=404)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    assert report.exit_code == 0
+    assert not report.metadata.errors
+    assert report.files.downloaded == 1
+    assert any("news" in gap and "404" in gap for gap in report.gaps)
+    assert "news unavailable (HTTP 404)" in report.metadata.gaps
+
+
+def test_missing_opt_in_grade_collection_is_a_recorded_gap_without_blocking_files(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, grades_status=404)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(
+        client, vault, school, include_grades=True, render_outlines=False
+    )
+
+    assert report.exit_code == 0
+    assert not report.metadata.errors
+    assert report.files.downloaded == 1
+    assert "grades unavailable (HTTP 404)" in report.metadata.gaps
+    coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
+    coverage = json.loads(coverage_file.read_text(encoding="utf-8"))
+    assert coverage["collections"]["grades"] == {
+        "status": "unavailable",
+        "http_status": 404,
+    }
+
+
+@pytest.mark.parametrize(
+    ("collection_kwargs", "include_grades"),
+    [
+        ({"assignment_status": 401}, False),
+        ({"news_status": 401}, False),
+        ({"grades_status": 401}, True),
+    ],
+)
+def test_unexpected_optional_metadata_failures_remain_fatal(
+    httpserver: HTTPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    collection_kwargs: dict[str, int],
+    include_grades: bool,
+) -> None:
+    client, school, quiz_response = _quiz_client(
+        httpserver, monkeypatch, **cast(dict[str, Any], collection_kwargs)
+    )
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(
+        client,
+        vault,
+        school,
+        include_grades=include_grades,
+        render_outlines=False,
+    )
+
+    assert report.exit_code != 0
+    assert report.metadata.errors
+    assert report.files.downloaded == 0
+    assert not report.metadata.gaps
+
+
+def test_unexpected_opt_in_discussion_failure_remains_fatal_after_other_files_download(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, discussion_status=401)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(
+        client,
+        vault,
+        school,
+        include_discussions=True,
+        render_outlines=False,
+    )
+
+    assert report.exit_code != 0
+    assert report.files.downloaded == 1
+    assert report.files.errors == ("discussions: HTTPError",)
+    assert not report.files.gaps
 
 
 def _quiz_denied_pipeline(
@@ -641,6 +864,20 @@ def test_resumed_metadata_retains_the_quiz_permission_gap(
     assert len(restored.gaps) == 1
     assert "quizzes" in restored.gaps[0] and "403" in restored.gaps[0]
     assert "Quizzing.SeeQuizzing" in restored.gaps[0]
+    assert not restored.errors
+
+
+def test_resumed_metadata_retains_optional_collection_gaps(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, assignment_status=404)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+    _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    restored = ingest_module.load_metadata_report(vault, school, [course()])
+
+    assert "assignments unavailable (HTTP 404)" in restored.gaps
     assert not restored.errors
 
 
@@ -783,7 +1020,7 @@ def test_html_quiz_forbidden_still_requires_reauthentication(
     assert vault.entry("synthetic:111111:topic:1") is None
 
 
-@pytest.mark.parametrize("status", [401, 404])
+@pytest.mark.parametrize("status", [401])
 def test_other_quiz_http_failures_are_not_downgraded_to_permission_gaps(
     httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
 ) -> None:
@@ -799,6 +1036,26 @@ def test_other_quiz_http_failures_are_not_downgraded_to_permission_gaps(
     assert vault.entry("synthetic:111111:topic:1") is None
     restored = ingest_module.load_metadata_report(vault, school, [course()])
     assert restored.errors
+
+
+def test_missing_quiz_collection_is_unavailable_not_empty_or_fatal(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch)
+    quiz_response.respond_with_json({"status": 404}, status=404)
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    assert report.exit_code == 0
+    assert not report.metadata.errors
+    assert report.files.downloaded == 1
+    assert report.gaps == ("quizzes unavailable (HTTP 404)",)
+    coverage = metadata_coverage.read_quiz_coverage(report.metadata.courses[0].directory)
+    assert coverage.status == "unavailable" and coverage.http_status == 404
+    rendered = (vault.root / report.audit_path).read_text(encoding="utf-8")
+    assert "Quiz inventory not confirmed" in rendered
+    assert "- 0 quizzes" not in rendered
 
 
 @pytest.mark.parametrize(

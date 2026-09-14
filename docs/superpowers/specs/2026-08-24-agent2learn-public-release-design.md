@@ -730,8 +730,8 @@ hosts. The README states this exact boundary: the tool prevents automatic third-
 does not claim that a finite provider list can classify every future link perfectly.
 
 Persisted metadata is a typed projection, never a raw API-response dump. Malformed JSON, an invalid
-root shape, an invalid stable-ID row, or a malformed nested collection is a surfaced category gap,
-never an empty successful response. URL fields are normalized
+root shape, an invalid stable-ID row, or a malformed nested collection is a surfaced category
+failure, never an empty successful response. URL fields are normalized
 to the minimum first-party route needed by the product. External URL credentials, fragments, query
 strings, LTI launch data, and transient signed values are discarded after in-memory policy
 classification. This keeps a local archive or accidental screenshot from becoming a token archive.
@@ -836,7 +836,7 @@ content topics that get hidden, dropbox folders that close, quizzes that are wit
 - This merge rule applies to grades when explicitly enabled, discussion forums/topics/posts when
   explicitly enabled, and nested assignment attachments as well as the ordinary announcement,
   content-topic, dropbox, and quiz collections. An incomplete grade response preserves the prior
-  opt-in snapshot; malformed discussion or attachment nesting records a category gap and cannot
+  opt-in snapshot; malformed discussion or attachment nesting records a category failure and cannot
   replace captured data or mark files missing.
 - An item previously captured and absent from one complete response is retained with
   `"missing_since": <iso>`. Only after it is absent from two consecutive successful complete syncs
@@ -869,6 +869,12 @@ quiz denial as a fatal metadata error skipped every file and conversion phase.
 - An unavailable quiz collection produces a recorded gap while accessible content is downloaded
   and converted. Onboarding reaches the file-scope choice rather than looping on `a2l init`.
   Summaries do not claim complete quiz/deadline coverage or present unavailable quiz counts as zero.
+- The same narrow rule applies to an optional collection route that the selected LEARN course does
+  not expose: HTTP 404 for assignments, announcements, opt-in grades, discussions, or quizzes is
+  recorded as `unavailable`, never treated as an empty collection, and never blocks independent
+  course-content downloads. Cached rows and quiz/grade snapshot state are retained. A successful
+  empty response remains a confirmed empty collection. Discussion 404s are recorded during the
+  opt-in file phase and do not block other files.
 - This is not a general ignore-errors rule: expired-session signals, malformed/incomplete content
   discovery, unsafe local paths, and other unclassified metadata failures retain their existing
   failure behavior. It does not retry through an alternate quiz endpoint, broaden permissions,

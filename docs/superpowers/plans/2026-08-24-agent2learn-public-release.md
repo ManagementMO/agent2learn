@@ -1505,6 +1505,17 @@ Steps:
         Neither the initial generic onboarding error nor the grounding failure from the report
         is diagnosed solely by this reproduction; real-account full-sync acceptance is not claimed.
 
+      **Optional collection 404 follow-up, September 14, 2026:** a real same-device retry exposed
+      a second metadata boundary: both selected courses returned HTTP 404 for the Dropbox-folder
+      collection, which made the shipped initializer stop before any file work. The fix records
+      an unavailable gap for missing optional routes (assignments, news, opt-in grades,
+      discussions, and quizzes), preserves cached rows, and continues independent content. Other
+      HTTP statuses, malformed discovery, session expiry, and local-state failures remain fatal.
+      The behavior is covered by real-HTTP pipeline and resumed-report fixtures, including a
+      discussion 404 in the opt-in file phase. A separate macOS runtime hardening bounds native
+      Keychain calls so an access prompt cannot hang onboarding indefinitely; it falls back to the
+      protected local session file without exposing keychain contents.
+
       Persist typed endpoint-specific projections rather than raw response objects. Discard URL
       user-info, fragments, query parameters, LTI launch payloads, and transient signed values after
       in-memory exclusion classification. External stubs route back through a deterministic,

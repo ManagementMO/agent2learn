@@ -33,9 +33,9 @@ jobs:
     name: ${{ matrix.os }} · py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     # A hang guard, not a performance budget. Measured 2026-09-02: Windows runners take 16-17 min
-    # (POSIX runners 1-4 min), and each additional full-pipeline test costs Windows ~1.3 min. At 20
-    # minutes a single new pipeline-backed test tipped all four Windows jobs into the timeout.
-    timeout-minutes: 30
+    # (POSIX runners 1-4 min); Windows runners can exceed 30 minutes for the full suite, so give the
+    # Windows matrix a bounded 45-minute guard while retaining 30 minutes on POSIX runners.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 30 }}
     strategy:
       fail-fast: false # one OS failing must not hide the others
       matrix:

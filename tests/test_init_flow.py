@@ -19,7 +19,7 @@ from typing import cast
 import pytest
 from typer.testing import CliRunner
 
-from agent2learn import cli, clock, config
+from agent2learn import cli, clock, config, metadata_coverage
 from agent2learn import index as course_index
 from agent2learn.calibrate import Calibration, CourseRef
 from agent2learn.errors import A2LError
@@ -349,6 +349,36 @@ def test_init_runs_consent_and_sync_stages_in_order_and_persists_defaults(
     assert result.stdout.index("dedicated local browser") < result.stdout.index("Spring 2026")
     assert result.stdout.index("Spring 2026") < result.stdout.index("reading 2 courses")
     assert result.stdout.index("reading 2 courses") < result.stdout.index("Files:")
+
+
+def test_init_reaches_file_choice_after_recorded_optional_metadata_gap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    world = _prepare_world(monkeypatch, tmp_path)
+
+    def partial_metadata(*args: object, **kwargs: object) -> MetadataReport:
+        del args, kwargs
+        report = _metadata_report(world)
+        for course_report in report.courses:
+            metadata_coverage.write_collection_coverage(
+                course_report.directory,
+                "assignments",
+                metadata_coverage.CollectionCoverage("unavailable", 404),
+                root=world.root,
+            )
+        return replace(report, gaps=("assignments unavailable (HTTP 404)",))
+
+    monkeypatch.setattr(cli, "ingest_metadata", partial_metadata)
+
+    result = CliRunner().invoke(cli.app, ["init"], input="y\ny\nn\ny\ny\npriority\n")
+
+    assert result.exit_code == 0, result.output
+    assert "assignment inventory unconfirmed" in result.stdout
+    assert "assignments unavailable (HTTP 404)" in result.stderr
+    assert world.file_calls
+    assert world.file_calls[0]["scope"] == "priority"
+    assert _state(world.root)["metadata_complete"] is True
+    assert _state(world.root)["file_complete"] is True
 
 
 @pytest.mark.parametrize("boundary", ["vault", "browser profile"])

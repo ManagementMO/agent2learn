@@ -79,6 +79,7 @@ class CourseAudit:
     outline_gaps: tuple[tuple[str, str], ...] = ()
     unmatched_assignments: tuple[AssignmentMatch, ...] = ()
     quizzes_complete: bool = True
+    assignments_complete: bool = True
 
     @property
     def coverage_percent(self) -> int:
@@ -145,8 +146,21 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
     )
     unmatched = _unmatched_assignments(assignments, titles)
     quiz_coverage = metadata_coverage.read_quiz_coverage(course_dir)
-    metadata_gaps = tuple(
-        gap for gap in (assignments_gap, quizzes_gap, quiz_coverage.gap) if gap is not None
+    collection_gaps: list[str | None] = [assignments_gap, quizzes_gap, quiz_coverage.gap]
+    assignment_coverage: metadata_coverage.CollectionCoverage | None = None
+    for collection in ("assignments", "news", "grades", "discussions"):
+        collection_name: metadata_coverage.CollectionName = collection
+        if not metadata_coverage.has_collection_coverage(course_dir, collection_name):
+            continue
+        collection_coverage = metadata_coverage.read_collection_coverage(
+            course_dir, collection_name
+        )
+        if collection == "assignments":
+            assignment_coverage = collection_coverage
+        collection_gaps.append(collection_coverage.gap(collection))
+    metadata_gaps = tuple(gap for gap in collection_gaps if gap is not None)
+    assignments_complete = assignments_gap is None and (
+        assignment_coverage is None or assignment_coverage.status == "complete"
     )
 
     first = next((row for row in rows if isinstance(row, Mapping)), {})
@@ -166,6 +180,7 @@ def _audit_course(vault: Vault, course_dir: Path, rows: Sequence[object]) -> Cou
         outline_gaps=outline_gaps,
         unmatched_assignments=unmatched,
         quizzes_complete=quiz_coverage.status == "complete" and quizzes_gap is None,
+        assignments_complete=assignments_complete,
     )
 
 
@@ -339,8 +354,16 @@ def _render(audits: Sequence[CourseAudit], stamp: str) -> str:
             else f"- Quiz inventory not confirmed; {audit.quizzes} cached quiz record(s)"
             f" ({audit.quizzes_with_due_dates} with due dates)"
         )
+        assignment_inventory = (
+            f"- {_plural(audit.assignments, 'assignment')}"
+            if audit.assignments_complete
+            else (
+                f"- Assignment inventory not confirmed; {audit.assignments} cached assignment "
+                "record(s)"
+            )
+        )
         counts = [
-            f"- {_plural(audit.assignments, 'assignment')}",
+            assignment_inventory,
             quiz_inventory,
             f"- {_plural(audit.media, 'media file')}",
         ]
