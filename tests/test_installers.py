@@ -515,7 +515,9 @@ function a2l {{
         cwd=tmp_path,
         capture_output=True,
         text=True,
-        timeout=20,
+        # Windows hosted runners can take longer to start Windows PowerShell under Python 3.14;
+        # keep a bounded guard without making a correct documented command flaky.
+        timeout=60,
     )
 
     assert (result.returncode == 0) == (install_status == 0), result.stderr

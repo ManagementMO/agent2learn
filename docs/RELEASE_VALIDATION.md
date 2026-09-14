@@ -1,6 +1,6 @@
-# Agent2Learn 0.1.6 validation scope
+# Agent2Learn 0.1.7 validation scope
 
-This patch repairs defects reproduced while using the production 0.1.5 wheel. Source, local
+This patch release repairs defects reproduced while using the production 0.1.5 and 0.1.6 wheels. Source, local
 candidate, CI, and registry publication are separate evidence: a passing source checkout does
 not prove that a released package contains the fixes. Publication must still pass the protected
 one-build TestPyPI-to-PyPI workflow and exact-artifact verification.
@@ -8,7 +8,7 @@ one-build TestPyPI-to-PyPI workflow and exact-artifact verification.
 ## Release decision
 
 On 2026-09-14, the owner approved proceeding with the current frozen private PDF baseline and
-an explicitly limited, macOS-validated release scope after the remaining executable checks.
+an explicitly limited, macOS-validated 0.1.7 release scope after the remaining executable checks.
 This records a replacement-baseline decision, **not reproduction of the lost historical
 benchmark**. Windows/Linux graphical login and the outstanding human visual/semantic comparison
 remain unverified; they are not converted into passing results by this decision.
@@ -37,6 +37,10 @@ submission, artifact-source, or branch-protection safeguard is relaxed for publi
 - Doctor could recommend a futile repeat sync for deliberately excluded links. It now separates
   informational restrictions from repairable gaps; missing or unusable local twins still receive
   actionable recovery. Redacted support reports retain their allowlisted category/status format.
+- Optional D2L collections can be absent on a course or installation. HTTP 404 for assignments,
+  news, quizzes, opt-in grades, or opt-in discussions is now recorded as unavailable coverage;
+  independent course content still downloads, converts, indexes, and audits. Unexpected response
+  shapes, authentication failures, server failures, and local integrity failures remain fatal.
 
 These fixes do not modify the immutable 0.1.5 package or authorize access to denied resources.
 
