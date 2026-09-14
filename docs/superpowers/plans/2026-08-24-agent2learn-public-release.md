@@ -8,6 +8,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-24-agent2learn-public-release-design.md`
 
+**0.1.6 release-scope addendum (owner approved 2026-09-14):** follow the matching design addendum
+and [release validation scope](../../RELEASE_VALIDATION.md). Use the preserved current 262-PDF
+baseline as an explicitly reviewed replacement, not a reproduced historical benchmark. Keep
+eight unresolved pages and the unexecuted human visual/semantic and Windows/Linux graphical-login
+checks visible. This limited macOS-validated read-only patch still requires normal exact-head CI,
+installed-wheel checks, one-build protected TestPyPI/PyPI promotion, and post-publication
+identity verification. Do not enable submissions, weaken safeguards, or mark manual gaps passed.
+
 **Goal:** Ship `agent2learn` v0.1 to PyPI — a cross-platform CLI (`a2l`) that ingests a University
 of Waterloo LEARN course set into a local markdown-twinned vault, installs agent skills into every
 user-approved detected AI agent, and runs an experimental cited evidence scan over student drafts.

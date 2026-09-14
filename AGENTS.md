@@ -712,3 +712,17 @@ Submission remains disabled, and publication still requires the existing human r
   stable, and all twins were hash-linked. Direct-source HTML differs from the bundle's rewritten
   HTML, so identical raw bytes are not a valid quality claim. The bounded paragraph comparison
   and the historical PDF baseline still require their separately recorded interpretation.
+
+## Owner-approved limited release scope — 2026-09-14
+
+- The owner approved the current frozen PDF baseline and an explicitly limited macOS-validated
+  0.1.6 release, with remaining human/platform checks reported as unverified. This is a replacement
+  baseline decision, not reproduction of the historical harness. See `docs/RELEASE_VALIDATION.md`
+  and the aligned design/plan addenda; keep detailed private corpus evidence outside Git.
+- Complete all executable checks, investigate actual failures, and proceed through normal PR,
+  merge, fresh tag, protected TestPyPI/PyPI approvals, and exact-artifact verification. Keep the
+  historical timeout failures visible even if unchanged retries pass. No skipped tests, security
+  weakening, moved tags, session transfers, or live submission enablement are authorized.
+- Do not call unavailable Windows/Linux graphical login or human visual/semantic comparison
+  complete. The eight unresolved corpus pages are explicit limitations, not successful text
+  recovery. Final published-release claims require current registry and provenance evidence.

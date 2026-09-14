@@ -11,6 +11,16 @@
 
 ## Purpose
 
+**0.1.6 release-scope addendum (owner approved 2026-09-14):** this patch may proceed as an
+explicitly limited, macOS-validated read-only release using the frozen current 262-PDF baseline.
+The historical acceptance denominator was not recovered; this is a reviewed replacement, not
+a claim that the old benchmark was reproduced. The eight current unresolved pages and outstanding
+human visual/semantic and Windows/Linux graphical-login checks remain disclosed as gaps.
+The broader cross-platform product contract remains the goal, not a completed manual gate.
+Required automated CI, preservation, privacy/authentication/submission controls, protected
+publication, and exact-artifact checks are unchanged. See [release validation scope](../../RELEASE_VALIDATION.md)
+for acceptance evidence, boundaries, and the frozen-baseline policy.
+
 Ship the private `agentic-learn` system as **Agent2Learn**: a public, open-source tool that turns a
 University of Waterloo student's LEARN (D2L Brightspace) courses into a local, markdown-twinned
 vault that any AI agent can read, cite, and study from.
