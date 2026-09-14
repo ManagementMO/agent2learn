@@ -419,6 +419,10 @@ def _verify(
     entry = manifest.get(source_key)
     if entry is None:
         return None
+    if course_index.html_source_requires_repair(
+        vault, entry, kind=row.get("kind"), url_path=row.get("url_path")
+    ):
+        return None
     artifact = entry.derived.get("markdown")
     if artifact is None or artifact.source_sha256 != entry.sha256:
         return None

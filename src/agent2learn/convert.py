@@ -45,6 +45,8 @@ CONVERTER_VERSION = "1"
 RICH_TEXT_TOOL = "richtext-sanitizer"
 RICH_TEXT_TOOL_VERSION = "1"
 OCR_SETUP_ACTION = "install Tesseract with the 'eng' language pack, then rerun: a2l sync"
+OCR_EMPTY_ACTION = "inspect the original PDF's unrecognized pages; OCR returned no text"
+_EMPTY_OCR_WARNING_PREFIX = "OCR returned no text on page "
 MAX_ZIP_MEMBERS = 1_000
 MAX_ZIP_UNCOMPRESSED = 64 * 1024 * 1024
 MAX_ZIP_MEMBER = 32 * 1024 * 1024
@@ -93,6 +95,10 @@ _BLOCK_TAGS = frozenset(
 
 class ConversionError(A2LError):
     """A source could not be converted by the selected backend."""
+
+
+class _EmptyOCRResult(ConversionError):
+    """Recognition succeeded but returned no text; page content remains unresolved."""
 
 
 @dataclass(frozen=True)
@@ -223,7 +229,10 @@ class PdfOxideBackend:
                         )
                         ocr_text = self._read_ocr(image_bytes)
                     except (ConversionError, OSError, RuntimeError) as exc:
-                        warning = f"OCR unavailable on page {page + 1}: {type(exc).__name__}"
+                        if isinstance(exc, _EmptyOCRResult):
+                            warning = f"{_EMPTY_OCR_WARNING_PREFIX}{page + 1}"
+                        else:
+                            warning = f"OCR unavailable on page {page + 1}: {type(exc).__name__}"
                         warnings.append(warning)
                         markdown = f"[a2l conversion gap: {warning}]"
                         mode = "unresolved"
@@ -255,7 +264,7 @@ class PdfOxideBackend:
         if self._ocr_reader is not None:
             normalized = _normalise_markdown(self._ocr_reader(image_bytes))
             if not normalized:
-                raise ConversionError("OCR returned no text")
+                raise _EmptyOCRResult("OCR returned no text")
             return normalized
         if not _configure_tesseract(self._ocr_language):
             raise ConversionError("Tesseract is unavailable or lacks the requested language")
@@ -278,7 +287,7 @@ class PdfOxideBackend:
             raise ConversionError("Tesseract could not OCR the rendered page") from exc
         normalized = _normalise_markdown(text)
         if not normalized:
-            raise ConversionError("Tesseract returned no text")
+            raise _EmptyOCRResult("Tesseract returned no text")
         return normalized
 
 
@@ -512,7 +521,22 @@ def convert_vault(
     converted = skipped = gaps = 0
     warnings: list[str] = []
     errors: list[str] = []
+    repair_keys = course_index.html_repair_source_keys(vault, entries)
     for key, entry in sorted(entries.items()):
+        if key in repair_keys:
+            # Neither an intact cached twin nor reconversion proves that document bytes arrived.
+            # Stop before classification (which can inspect ZIP members) or any twin access.
+            gaps += 1
+            _update_content_map(
+                vault,
+                key,
+                availability="download_gap",
+                path=None,
+                next_action=(
+                    f"HTML document requires source repair; retry: a2l fetch {entry.source_id}"
+                ),
+            )
+            continue
         source = vault.materialized(entry)
         if not paths.long_path(source).is_file():
             gaps += 1
@@ -619,6 +643,8 @@ def convert_vault(
             )
             if any("ocr unavailable" in warning for warning in lowered):
                 next_action = OCR_SETUP_ACTION
+            elif any(warning.startswith(_EMPTY_OCR_WARNING_PREFIX) for warning in result.warnings):
+                next_action = OCR_EMPTY_ACTION
             else:
                 next_action = result.warnings[0] if result.warnings else "conversion gap"
             _update_content_map(
@@ -1263,6 +1289,7 @@ __all__ = [
     "DEFAULT_OCR_WORDS_PER_PAGE",
     "MIN_PDF_CHARS",
     "OCR_SETUP_ACTION",
+    "OCR_EMPTY_ACTION",
     "ConversionError",
     "ConversionReport",
     "ConversionResult",

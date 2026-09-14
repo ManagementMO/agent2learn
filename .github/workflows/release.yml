@@ -408,6 +408,10 @@ jobs:
         run: |
           set -euo pipefail
           uv run --python .release-venv --no-project a2l --version
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN=".release-venv/Scripts"; else BIN=".release-venv/bin"; fi
+          "$BIN/python" -I tools/smoke_installed_cli.py
+          "$BIN/python" -I tools/smoke_installed_core.py
+          "$BIN/python" -I tools/smoke_installed_skills.py
 
   github-release:
     name: attach GitHub release artifacts

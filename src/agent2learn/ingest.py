@@ -1210,6 +1210,14 @@ def _topic_to_row(record: TopicRecord) -> dict[str, object]:
 def _topic_from_row(row: object, *, course: CourseRef) -> TopicRecord:
     if not isinstance(row, dict):
         raise A2LError("content_map contains an invalid topic row")
+    url_path = row.get("url_path")
+    if url_path is not None:
+        try:
+            if not isinstance(url_path, str):
+                raise ValueError
+            urlsplit(url_path)
+        except ValueError as exc:
+            raise A2LError("content_map contains an invalid source URL") from exc
     source_key = row.get("source_key")
     source_id = row.get("source_id")
     topic_id = row.get("topic_id")
@@ -1234,7 +1242,7 @@ def _topic_from_row(row: object, *, course: CourseRef) -> TopicRecord:
         module_ids=tuple(value for value in row.get("module_ids", []) if isinstance(value, int)),
         view_url=str(row.get("view_url", "")),
         outline_url=row.get("outline_url") if isinstance(row.get("outline_url"), str) else None,
-        url_path=row.get("url_path") if isinstance(row.get("url_path"), str) else None,
+        url_path=url_path,
         external_host=row.get("external_host")
         if isinstance(row.get("external_host"), str)
         else None,
@@ -1707,15 +1715,28 @@ def _ingest_one_topic(
     destination = _destination_for_topic(vault, course_dir, topic, prior)
     paths.ensure_dir(destination.parent, root=vault.root)
     pending = _find_pending_install(vault, destination, topic)
+    retried = None
     if pending is not None:
         persisted = Vault(vault.root).entry(key)
         retried = _retry_pending_install(
             vault, course_dir, school, topic, destination, persisted, pending
         )
         prior = vault.entry(key)
-        if retried is not None:
-            return retried
-    if prior is not None and _unchanged_local(prior, topic, vault):
+    repair_html_zip = prior is not None and course_index.html_source_requires_repair(
+        vault, prior, kind=topic.kind, url_path=topic.url_path
+    )
+    if repair_html_zip:
+        # A verified old bundle is intact, but is not the document representation. Revalidate
+        # its source route even after journal recovery, and retain prior for revision history.
+        # Explicit fetch has no metadata pass: persist non-citability before any request fails.
+        _mark_topic_source_only(vault, course_dir, topic, school)
+        assert prior is not None
+        if course_index.has_zip_signature(vault.materialized(prior)) is None:
+            raise DownloadError("HTML source is unsafe or unreadable; inspect it before retrying")
+        _download_candidates(client, school, topic)
+    elif retried is not None:
+        return retried
+    if not repair_html_zip and prior is not None and _unchanged_local(prior, topic, vault):
         _mark_topic_source_only(vault, course_dir, topic, school)
         return "skipped"
 
@@ -1738,7 +1759,11 @@ def _ingest_one_topic(
         # later writer can use a parent that was swapped to a link in the meantime.
         if paths.has_link_component(temporary, root=vault.root):
             raise A2LError("download temporary path contains a link component")
-        conditional = prior if prior is not None and _source_bytes_match(prior, vault) else None
+        conditional = (
+            prior
+            if not repair_html_zip and prior is not None and _source_bytes_match(prior, vault)
+            else None
+        )
         result = _download_with_candidates(
             client,
             school,
@@ -1749,6 +1774,8 @@ def _ingest_one_topic(
             root=vault.root,
         )
         if result.not_modified:
+            if repair_html_zip:
+                raise DownloadError("HTML source repair requires document bytes, not 304")
             if prior is not None and _source_bytes_match(prior, vault):
                 _mark_topic_source_only(vault, course_dir, topic, school)
                 return "skipped"
@@ -1762,6 +1789,12 @@ def _ingest_one_topic(
         actual_hash, actual_size = _hash_file(result.temp)
         if actual_size <= 0 or result.sha256 != actual_hash or result.size != actual_size:
             raise DownloadError("download integrity validation failed")
+        if _is_html_topic(topic):
+            signature = course_index.has_zip_signature(result.temp)
+            if signature is None:
+                raise DownloadError("HTML source could not be safely inspected")
+            if signature:
+                raise DownloadError("HTML source returned an asset bundle instead of a document")
         pending = _PendingInstall(
             marker=_pending_marker_path(temporary),
             part=temporary,
@@ -1769,10 +1802,12 @@ def _ingest_one_topic(
             destination=paths.rel_posix(destination, vault.root),
             sha256=actual_hash,
             size=actual_size,
-            etag=result.etag or topic.etag or (prior.etag if prior else None),
+            etag=result.etag
+            or topic.etag
+            or (prior.etag if prior and not repair_html_zip else None),
             last_modified=result.last_modified
             or topic.last_modified
-            or (prior.last_modified if prior else None),
+            or (prior.last_modified if prior and not repair_html_zip else None),
             prior_sha256=(
                 prior.sha256 if prior is not None and actual_hash != prior.sha256 else None
             ),
@@ -1805,7 +1840,9 @@ def _ingest_one_topic(
         )
         vault.mark(key, entry)
         vault.save_manifest()
-        _mark_topic_source_only(vault, course_dir, topic, school)
+        _mark_topic_source_only(
+            vault, course_dir, topic, school, document_installed=_is_html_topic(topic)
+        )
         _remove_pending_install(pending)
         return "downloaded"
     except BaseException:
@@ -2042,6 +2079,9 @@ def _retry_pending_install(
     already_installed = _installed_pending_matches(pending, destination)
     if already_installed and prior is not None and prior.sha256 == pending.sha256:
         vault.mark(topic.source_key, prior)
+        _mark_topic_source_only(
+            vault, course_dir, topic, school, document_installed=_is_html_topic(topic)
+        )
         _remove_pending_install(pending)
         return None
     if pending.prior_sha256 is None:
@@ -2077,7 +2117,9 @@ def _retry_pending_install(
     )
     vault.mark(topic.source_key, entry)
     vault.save_manifest()
-    _mark_topic_source_only(vault, course_dir, topic, school)
+    _mark_topic_source_only(
+        vault, course_dir, topic, school, document_installed=_is_html_topic(topic)
+    )
     _remove_pending_install(pending)
     return (
         None if already_installed and not _pending_matches_topic(pending, topic) else "downloaded"
@@ -2124,8 +2166,7 @@ def _download_with_candidates(
         try:
             kwargs: dict[str, object] = {
                 "prior": prior,
-                "is_html_topic": topic.kind.casefold() == "html"
-                or (topic.url_path or "").casefold().endswith((".html", ".htm")),
+                "is_html_topic": _is_html_topic(topic),
             }
             kwargs["max_bytes"] = max_bytes
             kwargs["root"] = root
@@ -2151,8 +2192,22 @@ def _download_with_candidates(
     raise DownloadError("no first-party download route was available")
 
 
+def _is_html_topic(topic: TopicRecord) -> bool:
+    return course_index.is_html_document(topic.kind, topic.url_path)
+
+
 def _download_candidates(client: IngestClient, school: School, topic: TopicRecord) -> list[str]:
     base = school.base_url.rstrip("/")
+    source_path = _first_party_path(topic.url_path, base)
+    if topic.url_path is not None and source_path is None:
+        # Cached content maps are not authority to turn an unvetted URL into a route request.
+        raise DownloadError("topic has no usable first-party source URL")
+    if _is_html_topic(topic):
+        # HTML download endpoints can return ZIPs containing linked PDFs and media. Archive
+        # only the document: neither calibration nor a source failure permits a bundle fallback.
+        if topic_is_excluded(topic.kind, topic.url_path, school.topic_exclusion_policy()):
+            raise DownloadError("HTML source is excluded by the school topic policy")
+        return [urljoin(base + "/", source_path)] if source_path is not None else []
     le = getattr(client, "le_version", None)
     ou = topic.course_org_unit_id
     tid = topic.topic_id
@@ -2215,8 +2270,17 @@ def _mark_topic_source_only(
     course_dir: Path,
     topic: TopicRecord,
     school: School,
+    *,
+    document_installed: bool = False,
 ) -> None:
     rows = _map_topics(_read_content_map(course_dir))
+    if document_installed:
+        # A verified install proves bytes arrived even when HTTP and TOC validators differ.
+        # Only install/journal-commit callers may clear the old gap, never a skip or 304.
+        # Reconciliation below still rejects a recovered legacy ZIP by its representation.
+        for row in rows:
+            if isinstance(row, dict) and row.get("source_key") == topic.source_key:
+                row.update(availability="source_only", path=None)
     # A manifest artifact record is not proof that the current twin bytes are still trusted.
     # Reconcile through the same source-and-derived hash checks used by metadata sync.
     reconciled = course_index.reconcile_content_map(vault, rows)
@@ -2679,13 +2743,16 @@ def _safe_hostname(value: str | None) -> str | None:
 
 
 def _first_party_path(value: str | None, base_url: str) -> str | None:
-    if not value:
+    if not value or "\\" in value or any(ord(char) < 32 or ord(char) == 127 for char in value):
         return None
     try:
         candidate = urljoin(base_url.rstrip("/") + "/", value)
         parsed = urlsplit(candidate)
         base = urlsplit(base_url)
-        if parsed.scheme.casefold() not in {"http", "https"}:
+        if (
+            parsed.scheme.casefold() not in {"http", "https"}
+            or parsed.scheme.casefold() != base.scheme.casefold()
+        ):
             return None
         if parsed.username is not None or parsed.password is not None:
             return None

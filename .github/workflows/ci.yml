@@ -118,6 +118,30 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
           "$BIN/python" tools/smoke_installed_core.py
 
+      - name: Installed base-wheel CLI contract smoke
+        if: matrix.python == '3.12'
+        run: |
+          set -euo pipefail
+          SMOKE="$RUNNER_TEMP/a2l-smoke-${{ matrix.os }}-${{ matrix.python }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
+          "$BIN/python" -I tools/smoke_installed_cli.py
+
+      # Exercise the declared Typer floor, not only the newest resolution. The original >=0.15
+      # range installed successfully with modern Click but crashed on help/argument rendering.
+      - name: Minimum Typer installed-wheel CLI compatibility
+        if: matrix.python == '3.12'
+        run: |
+          set -euo pipefail
+          SMOKE="$RUNNER_TEMP/a2l-smoke-${{ matrix.os }}-${{ matrix.python }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="$SMOKE/Scripts"; else BIN="$SMOKE/bin"; fi
+          minimum_typer="$("$BIN/python" -I -c 'from importlib.metadata import requires; from packaging.requirements import Requirement; req = next(Requirement(value) for value in requires("agent2learn") or [] if Requirement(value).name == "typer"); floors = [item.version for item in req.specifier if item.operator == ">="]; assert len(floors) == 1, floors; print(floors[0])' | tr -d '\r')"
+          WHEEL="$(uv run python -c 'import glob; paths = glob.glob("dist/*.whl"); assert len(paths) == 1, paths; print(paths[0])' | tr -d '\r')"
+          CLI_MIN_SMOKE="$RUNNER_TEMP/a2l-minimum-typer-${{ matrix.os }}"
+          uv venv "$CLI_MIN_SMOKE" --python ${{ matrix.python }}
+          uv pip install --python "$CLI_MIN_SMOKE" "$WHEEL" "typer==$minimum_typer"
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="$CLI_MIN_SMOKE/Scripts"; else BIN="$CLI_MIN_SMOKE/bin"; fi
+          "$BIN/python" -I tools/smoke_installed_cli.py
+
   installers:
     # Proves the published one-command install path against the candidate wheel, never against
     # PyPI. The local index is configured only in this process, and the installers themselves

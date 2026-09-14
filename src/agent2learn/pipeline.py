@@ -288,10 +288,14 @@ def refresh_indexes(vault: Vault, school: School, metadata: MetadataReport) -> i
 def render_report(report: PipelineReport, *, include_metadata: bool = True) -> str:
     """Render stable terminal counts without echoing course names, IDs, paths, or source errors."""
 
+    deadline_label = (
+        "known deadlines" if report.metadata.gaps or report.metadata.errors else "deadlines"
+    )
     lines = [
         (
             f"metadata · {len(report.metadata.courses)} courses · "
-            f"{report.metadata.topic_count} topics · {report.metadata.deadline_count} deadlines"
+            f"{report.metadata.topic_count} topics · "
+            f"{report.metadata.deadline_count} {deadline_label}"
         ),
         (
             f"outlines · {report.outlines.rendered} rendered · "
@@ -310,6 +314,10 @@ def render_report(report: PipelineReport, *, include_metadata: bool = True) -> s
     ]
     if report.errors:
         lines.append("sync incomplete · " + ", ".join(report.errors))
+        if report.gaps:
+            lines.append(
+                "recorded gaps · " + ", ".join(report.gaps) + f" · details: {report.audit_path}"
+            )
     elif report.gaps:
         lines.append(
             "sync completed with recorded gaps · "

@@ -138,7 +138,8 @@ The load-bearing details:
 
 ## 4. Download route candidates
 
-Four, tried in order, first success wins. Duplicates are skipped via a seen-set.
+For non-HTML topics, four candidates are tried in order; first success wins and duplicates are
+skipped via a seen-set. HTML documents use the exception below, before consulting calibration.
 
 1. **The calibrated template**, if calibration has proven one for this instance, with `{ou}` and
    `{tid}` substituted.
@@ -149,19 +150,73 @@ Four, tried in order, first success wins. Duplicates are skipped via a seen-set.
 
 Calibration exists so that route 1 removes three failed round-trips per file on a known instance.
 
+### HTML document source exception — 2026-09-13
+
+Reported live evidence from the original installed 0.1.5 invalidates uniform route ordering:
+50 File topics with `.html` URLs and no `Size` returned ZIP asset bundles from the download
+routes, saved as `.html`. Their central directories contained 50 main HTML members in total
+(579,466 bytes from bounded main-member reads); ten bundles also contained 25 PDF members and
+13 MP4 members (about 1.54 GB of media) despite media exclusion. Fifteen bundles hit the existing
+archive filename/member-size safeguards. These are aggregate observations,
+not public fixtures or evidence of a successful candidate run. D2L's
+[content topic contract](https://docs.valence.desire2learn.com/res/content.html) supplies a File
+topic's underlying document in `Url`, already candidate 4 above.
+
+For a downloadable topic whose parsed URL **path** ends in `.html` or `.htm` (case-insensitive),
+or whose type is `html`/`htmlfile`, use **only** its vetted underlying source URL. Query strings
+and fragments do not determine the extension and are discarded by the existing metadata
+projection. Revalidate cached source references; malformed references, credentials, excluded
+targets, or a different scheme/host/port must never become a direct request. A missing or unusable
+HTML source remains an explicit gap. Do not probe calibrated/UI/API bundle routes, fetch embedded
+assets, or retry a denied/expired source through an alternate route. The normal streaming ceiling,
+free-disk reserve, login detection, and revision preservation still apply. The non-HTML fallback
+order, archive validation/extraction limits, and media opt-in remain unchanged.
+
+**Legacy representation repair:** matching remote validators do not make a ZIP stored as an HTML
+source reusable. For a vetted HTML topic, inspect only the fixed-size ZIP signature of an existing
+manifest-verified source; do not enumerate, read, or extract archive members. A detected legacy ZIP
+must bypass the local unchanged shortcut and send no inherited conditional headers to the document
+URL. Keep the actual prior manifest entry for source/twin preservation before installing different
+bytes. Pending-install recovery must still reach this decision. Refuse an unexpected ZIP from the
+document URL before installation and report a download gap; failed repairs preserve the existing
+source and twins. This exception does not invalidate healthy HTML or any non-HTML cache.
+
+Derive the same representation requirement during metadata reconciliation and before conversion:
+HTML identity comes from the row's URL path/type, never just the local filename. A source whose
+SHA matches its manifest and whose four-byte header is ZIP remains `download_gap` and
+non-citable, with its existing twin untouched, despite matching/absent validators or prior status.
+A mismatched recorded size does not negate that byte identity or make the ZIP a healthy document.
+No persistent flag is needed: reload and metadata rewrite rederive it until a successful direct
+non-ZIP replacement. Ordinary archive File URLs such as `.html.zip` do not meet this HTML rule.
+Persist this gap before an explicit fetch's network attempt, and apply the same local eligibility
+check in grounding without requiring a preceding sync. Signature inspection distinguishes a
+confirmed non-ZIP header from an unsafe/unreadable probe. The latter retains the gap and refuses
+conversion/replacement; it is not permission to trust a hard-linked or otherwise uninspectable
+source. Missing sources retain the ordinary integrity/re-fetch behavior.
+
+This archives the source topic, not all resources it references. Original HTML retains its links;
+referenced PDFs and other assets remain link-only/unverified, without independent source IDs for
+an asset crawl. No PDF topics in that observation does **not** mean no PDF resources exist.
+Neither the HTML route exception nor conversion authorizes crawling those links or extracting
+bundled assets by relaxing archive safeguards.
+
 ### The `is_html_topic` exception
 
 The client treats an HTML response body as an expired session. That heuristic destroys **genuinely
 HTML topics**, so it is suppressed for them:
 
 ```python
-is_html_topic = str(url_field).lower().endswith((".html", ".htm")) or ttype == "html"
+is_html_topic = (
+    urlsplit(url_field).path.casefold().endswith((".html", ".htm"))
+    or ttype.casefold() in {"html", "htmlfile"}
+)
 if "text/html" in content_type and not is_html_topic:
     ...treat as a login page and fail this candidate...
 ```
 
-A topic counts as legitimately HTML when its URL ends `.html`/`.htm` **or** its type identifier is
-`html`. For those, an HTML body is the expected payload.
+A topic counts as legitimately HTML when its parsed URL path ends `.html`/`.htm` **or** its type
+identifier is `html`/`htmlfile`. Parse only validated references; malformed cached URLs fail closed.
+For those topics an HTML body is the expected payload, with login detection still required.
 
 > This heuristic is genuinely weak: a login page served for a real `.html` topic passes straight
 > through and is archived as course content. Strengthen it on implementation — the login page is

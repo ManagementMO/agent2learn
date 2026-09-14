@@ -2,8 +2,8 @@
 """Fail if THIRD_PARTY_NOTICES.md has drifted from the resolved environment.
 
 A notices file that is written once and never rechecked becomes fiction the first time
-a dependency moves. This compares the versions and licences recorded in the document
-against the distributions actually installed, and against the package count in uv.lock.
+a dependency moves. This compares recorded versions against the distributions actually
+installed, and checks the package count in uv.lock. Licence review remains a manual release gate.
 
 Developer tool. Not shipped in the wheel; not imported by the package.
 """
@@ -21,6 +21,7 @@ LOCK = ROOT / "uv.lock"
 # Distributions the notices file is required to account for by name.
 TRACKED = [
     "typer",
+    "click",
     "rich",
     "requests",
     "platformdirs",
@@ -30,6 +31,7 @@ TRACKED = [
     "pytesseract",
     "pillow",
     "pypdfium2",
+    "tzdata",
     "markitdown",
     "nbformat",
 ]

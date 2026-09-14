@@ -1,7 +1,7 @@
 """Shared pytest fixtures.
 
-Every test in this suite runs offline. No test may reach the network, and no test may
-write outside the ``tmp_path`` fixture.
+Tests default to temporary machine state, an in-memory credential backend, and loopback-only
+Python connection/DNS guards. Subprocesses and browser doubles still need explicit isolation.
 
 ``synthetic_api`` serves the authored fixture corpus over a real local HTTP server
 rather than monkeypatching ``requests``. That distinction matters: it exercises the
@@ -16,9 +16,15 @@ import re
 import socket
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+import keyring.core
 import pytest
+from keyring.backend import KeyringBackend
+from keyring.errors import PasswordDeleteError
+
+from agent2learn import config, session
 
 FIXTURES = Path(__file__).parent / "fixtures"
 API = FIXTURES / "api"
@@ -31,6 +37,53 @@ COURSE_A_OU = 111111
 COURSE_B_OU = 222222
 
 _ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+
+
+class _MemoryKeyring(KeyringBackend):
+    """A fresh backend for each test; never discover or call an OS credential store."""
+
+    priority = 1
+
+    def __init__(self) -> None:
+        self._passwords: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self._passwords.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self._passwords[service, username] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        try:
+            del self._passwords[service, username]
+        except KeyError:
+            raise PasswordDeleteError("no synthetic credential") from None
+
+
+@pytest.fixture(autouse=True)
+def isolated_machine_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Redirect all machine-state defaults without eagerly creating setup directories."""
+    root = tmp_path / "machine"
+    home = root / "home"
+    monkeypatch.setattr(
+        config,
+        "DIRS",
+        SimpleNamespace(
+            user_config_path=root / "config",
+            user_state_path=root / "state",
+            user_data_path=root / "data",
+            user_log_path=root / "logs",
+        ),
+    )
+    monkeypatch.setattr(config, "DEFAULT_VAULT", home / "agent2learn")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    # Replace the already-imported backend slot, without get_keyring() discovering a real one.
+    # Public keyring APIs and direct get_keyring() callers now share this same in-memory store.
+    monkeypatch.setattr(keyring.core, "_keyring_backend", _MemoryKeyring())
+    monkeypatch.setattr(session, "keyring", keyring)
+    monkeypatch.setattr(session, "_last_backend", None)
 
 
 def strip_ansi(value: str) -> str:
@@ -205,19 +258,36 @@ def synthetic_api(httpserver: Any) -> Iterator[SyntheticAPI]:
     yield SyntheticAPI(httpserver)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make any connection to a non-loopback address raise.
+    """Reject non-loopback Python connections and DNS resolution by default.
 
     ``synthetic_api`` binds to localhost, so loopback stays permitted; anything reaching
     for the real internet fails the test rather than quietly succeeding in CI.
     """
     real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+    real_getaddrinfo = socket.getaddrinfo
+
+    def require_loopback(host: object) -> None:
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            raise RuntimeError(f"network access attempted to {host!r}; tests must be offline")
 
     def guarded(self: socket.socket, address: Any) -> Any:
         host = address[0] if isinstance(address, tuple) else address
-        if host not in ("127.0.0.1", "::1", "localhost"):
-            raise RuntimeError(f"network access attempted to {host!r}; tests must be offline")
+        require_loopback(host)
         return real_connect(self, address)
 
+    def guarded_ex(self: socket.socket, address: Any) -> int:
+        host = address[0] if isinstance(address, tuple) else address
+        require_loopback(host)
+        return real_connect_ex(self, address)
+
+    def guarded_resolve(host: Any, *args: Any, **kwargs: Any) -> Any:
+        if host is not None:  # None is used for local passive/bind address discovery.
+            require_loopback(host)
+        return real_getaddrinfo(host, *args, **kwargs)
+
     monkeypatch.setattr(socket.socket, "connect", guarded)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_ex)
+    monkeypatch.setattr(socket, "getaddrinfo", guarded_resolve)

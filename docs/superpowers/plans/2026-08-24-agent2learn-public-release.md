@@ -1441,7 +1441,8 @@ Steps:
 - [x] **Step 4:** Implement the ingester from the approved spec, using the reference only to confirm
       observable D2L edge cases. **Route every destination through
       `paths.safe_name` + `paths.unique_path` + `paths.long_path`.** Preserve: four download-route
-      candidates with a previously proven calibrated one first when present; the `is_html_topic`
+      candidates for non-HTML topics with a previously proven calibrated one first when present
+      (HTML source exception below); the `is_html_topic`
       exception so real `.html` topics
       are not rejected by the login-HTML heuristic; guaranteed `response.close()`; size > 0 before
       marking done. Canonical school/course/entity keys define identity. An existing key reuses its
@@ -1588,6 +1589,52 @@ Steps:
       git commit -m "feat: revision-safe metadata-first ingest with explicit fetch"
       ```
 
+**HTML route correction, September 13, 2026 (release/v0.1.6):** apply the aligned design addendum
+and algorithm reference section 4 exception before changing ingestion. Public regression fixtures
+must remain synthetic; only aggregate/redacted live acceptance evidence belongs in this repository.
+
+- Reproduce the old route defect first with an unsized synthetic File topic: loopback download
+  routes serve a small ZIP with media, while the underlying first-party URL serves HTML.
+- Drive bulk ingestion and explicit fetch through the real transport and converter. Assert exact
+  source bytes, a hash-linked Markdown twin, and no bundle/asset requests after the correction.
+  Include HTML links to PDFs and media; linked resources remain link-only/unverified, not new
+  source identities or automatically fetched assets.
+- Prove denied/expired sources never fall back; retain size/disk/session stops, non-HTML route
+  ordering, cached-reference validation, and stable-ID source/twin preservation on repeat/refresh.
+- Reproduce same-vault upgrade failure in bulk/fetch with an actual ZIP stored as `.html`,
+  matching Last-Modified metadata, no ETag, and a locally edited twin. Make a stale conditional
+  request return 304. Require an unconditional document fetch, exact HTML replacement under the
+  same identity/path, and byte-exact preservation of the old ZIP and edited twin in history.
+- Restrict repair to verified legacy HTML ZIP signatures without reading/extracting members.
+  Cover pending-install recovery and unchanged healthy HTML/non-HTML shortcuts. Denied, expired,
+  oversized, and disk-refused repairs retain the original source/twin; unexpected ZIP responses
+  from the HTML URL are explicit gaps before installation, never accepted as repaired sources.
+- Reproduce failed legacy repair through the entire production pipeline before correcting its
+  downstream state: intact/edited twins, matching/absent validators, denied or ZIP responses,
+  and unsolicited 304. Assert `download_gap`, null citation path, zero citable sources, unchanged
+  source/twin bytes and timestamps, and persistence through reload and metadata-only sync.
+  Derive this invariant from the metadata HTML URL/type and verified ZIP signature, not a new
+  schema/status/flag. Conversion must stop before touching the twin or inspecting archive members.
+  Prove successful non-ZIP direct repair clears the condition while preserving history; genuine
+  `.html.zip`/archive File topics remain citable, generic gaps remain non-fatal, and snapshots
+  retain their existing privacy-bounded projection.
+- Reproduce explicit fetch without metadata first: denied/304/bundle responses must leave a
+  persisted gap and no citation after reload, without modifying originals or twins. Apply the
+  shared invariant to read-only grounding of an old ready map too. Reproduce a synthetic
+  hard-linked source: an unsafe/unreadable signature probe must not count as non-ZIP or clear
+  the gap, and neither conversion nor fetch may overwrite it. Keep missing-file integrity
+  handling and unsafe-path refusals intact. Seed historical twins independently with the actual
+  `html-sanitizer` tool/page coverage, plus a cache-path control; do not weaken the new policy
+  merely to generate pre-upgrade fixtures.
+- Seed a legacy HTML ZIP with its correct source SHA but recorded size one byte too large.
+  Independently drive reconciliation, grounding, and conversion: each must remain non-citable
+  without source/twin writes. Keep SHA verification for representation repair, but do not let
+  inconsistent size metadata bypass it; no general integrity-policy rewrite is required.
+- Review the exact red/green evidence and use a freshly installed candidate wheel for live
+  acceptance. Compare underlying HTML with bounded main-member hashes/lengths from the original
+  bundles privately, without filesystem extraction or reading/fetching other assets. Report any
+  representation differences explicitly; synthetic success alone does not prove live equivalence.
+
 **Task 10 automated implementation completed 2026-08-25.** The metadata phase is typed,
 merge-not-replace, and complete before any file transfer; the file phase is explicit, resumable,
 revision-safe, and refuses excluded, media, broken, lock-file, and oversized sources until the
@@ -1708,6 +1755,18 @@ Steps:
       text-only fallback. Pass a private, resolved temporary-image path to Tesseract, preserving
       the white alpha matte and cleaning the scratch image on success or failure. Test aliased
       temporary roots without changing global environment settings.
+
+      **PDF empty-OCR recovery addendum — 2026-09-13:** first reproduce successful but empty
+      (also whitespace-only) recognition through the real synthetic PDF converter-to-vault path:
+      the old recovery action incorrectly prescribes installing Tesseract. Apply the aligned PDF
+      design correction before runtime changes. Use a typed empty-result classification and a
+      static page warning to recommend inspecting the original PDF's unrecognized pages. Retain
+      setup advice for missing/unusable OCR, with priority when a document contains both outcomes.
+      Test both external OCR and the injected-reader seam; keep empty pages unresolved and the
+      document a non-citable gap, without claiming blankness or native-text completeness. Prove no
+      partial twin is installed, prior source/twin bytes and timestamps survive, reconciliation
+      cannot restore citation eligibility, and raw exception text cannot leak or impersonate the
+      empty-result category. Do not change thresholds, backends, schemas, or native/OCR replacement.
 - [x] **Step 4c:** Implement notebook conversion directly on `nbformat.read(..., as_version=4)`;
       do not recreate nbconvert's exporter/template stack. Keep the renderer small and auditable
       (the validated spike was 64 implementation lines). Preserve markdown cells; fence code with
@@ -2618,8 +2677,8 @@ Steps:
       notice, create provenance attestations, then promote those exact hashes—never rebuild between
       TestPyPI and PyPI.
 - [ ] **Step 4:** Implement `a2l completions {bash,zsh,fish,powershell}`.
-- [ ] **Step 5:** Use a fresh matching release tag (`v0.1.5` for the current candidate); leave all
-      historical tags through `v0.1.4` untouched. Record checksums only for wheel and source
+- [ ] **Step 5:** Use a fresh matching release tag (`v0.1.6` for the current candidate); leave all
+      historical tags through `v0.1.5` untouched. Record checksums only for wheel and source
       distributions, not build bookkeeping such as `dist/.gitignore`. Publish the candidate
       to **TestPyPI first**. Verify its filename/hash set, download its exact wheel from the reviewed
       TestPyPI file host, and check the downloaded bytes before installation. Install that explicit

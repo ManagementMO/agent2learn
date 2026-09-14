@@ -647,3 +647,68 @@ Submission remains disabled, and publication still requires the existing human r
   protected TestPyPI/PyPI workflow. Preserve every earlier tag/artifact. The independent QA prompt
   must target the final published 0.1.5 and continue to distinguish live-account evidence from
   synthetic verification.
+
+## Validation hardening and release preparation — 0.1.6
+
+- Production 0.1.5 was published from `dc2e55d`. Its wheel SHA-256 remains
+  `aec6f8d1642acf1c1d1101a5393e724210ddc13e800de2f1d702f81904748594`; preserve that release and
+  every older tag/artifact. Do not label a locally rebuilt 0.1.5 wheel as the published artifact.
+- PR #29 merged the validation fixes as `25d6b3f`; its exact main CI run `34784211929` passed
+  all 17 jobs. The fixes cover explicit missing-browser diagnostics, interrupted consent exit
+  codes, OCR error/path handling, unchanged-twin preservation, truthful conversion/download gaps,
+  and custom uv-tool installation detection. These are source fixes, not proof of a completed
+  real-student sync or of package publication.
+- The owner now explicitly authorizes finishing remaining validation and publishing the next
+  patch, including normal PR/merge and protected TestPyPI/PyPI approvals. Prepare fresh 0.1.6;
+  do not move old tags, enable submissions, bypass protections, or copy browser/session state.
+- The five outstanding dependency proposals are integrated on the current release candidate with
+  targeted lock updates, not by blindly merging stale branches. See `docs/DEPENDABOT_REVIEW.md`.
+  Release review also fixed a falsely green notices check that omitted direct Click/tzdata rows;
+  its completeness and missing-row regressions were observed failing before the repair.
+- An allowed older-dependency resolution exposed another defect: Typer 0.15.0 with current Click
+  installed but crashed on help. The candidate raises the Typer floor to 0.16, retains the locked
+  0.27.1, and tests installed CLI behavior with both default and floor resolutions. Do not replace
+  this with a version-only smoke: `--version` passed even when help and argument rendering failed.
+- Live same-machine authentication with the original installed 0.1.5 wheel passed on this Mac,
+  and `auth --check`, resumed setup, and subsequent diagnostics reused the saved session. The
+  owner delegated approval of a new private non-Git vault and exactly one current-term course.
+  Grades, discussions, and submissions stayed off. The first metadata attempt failed with an
+  unreproduced cause; resuming the saved setup completed without broadening selection.
+- The real quiz denial was observed: HTTP 403 / `not_authorized` / `Quizzing.SeeQuizzing`.
+  Accessible content still downloaded, so that original blocker was resolved in its narrow live
+  sense. Full archive acceptance nevertheless failed at a separate HTML route boundary: all 50
+  HTML File topics downloaded as asset ZIPs; ten containers included about 1.54 GB of media,
+  and 15 hit existing archive safeguards. Do not weaken those safeguards or treat absent PDF
+  topics as absent PDF resources. The aligned source-only HTML exception and upgrade-preservation
+  contract are in the design spec and algorithm reference section 4.
+- Priority selected zero topic files because every document size was unknown. The safety budget
+  was correct, but its explanation was missing. The CLI now explains empty priority plans,
+  qualifies partially known deadlines, and retains quiz-gap disclosure alongside conversion
+  errors. Live grounding by one assignment's exact title and ID worked; a private lexical scan's
+  five cited excerpts matched their local lines and excluded draft/report/answer canaries.
+- Current-corpus QA located 262 primary PDFs and two differing alternate copies. Its first run
+  converted every input with eight explicitly unresolved pages, but the original historical
+  denominator/harness was not recovered. A bounded follow-up found empty Tesseract output on all
+  eight pages; the candidate distinguishes that from missing OCR and recommends original-page
+  inspection. Do not infer blankness, completeness, or semantic correctness from output counts.
+  Native/OCR union and partial-citable twins are not part of this repair. Keep all source files,
+  fingerprints, corpus results, and detailed validation reports private and outside Git.
+- The test suite now defaults to per-test machine paths, an in-memory keyring, and loopback-only
+  Python networking. Its isolation regression runs behind synthetic host-state sentinels, so
+  removing a test guard cannot touch real credentials/configuration. Installed-wheel smoke
+  scripts remain a separate gate and do not substitute for the real student workflow.
+- Do not merge a new installer pin into main and leave it pointing at an unavailable release.
+  Land reviewed source/dependency/test fixes separately while retaining the published installer
+  pin; keep the fresh version bump separate until publication can proceed through the existing
+  protected workflow. A green automated run does not waive the design specification's manual
+  evidence, the unreproduced historical corpus baseline, or untested graphical OS workflows.
+- The final source-fix local gate on 2026-09-14 passed 1,262 tests with six explicit skips and
+  80.86% branch-aware coverage. Ruff, formatting, strict mypy, fixtures, and notices passed.
+  Independent review additionally found a recorded-size mismatch could re-admit a hash-matching
+  HTML ZIP; three consumer regressions failed before removing that erroneous prerequisite.
+- An isolated base-wheel candidate repaired the same live vault in 65 seconds: all 50 HTML
+  topics became citable, 12 external links remained excluded, and quiz coverage stayed unavailable
+  and disclosed. All 50 old source containers were preserved in history; IDs and paths stayed
+  stable, and all twins were hash-linked. Direct-source HTML differs from the bundle's rewritten
+  HTML, so identical raw bytes are not a valid quality claim. The bounded paragraph comparison
+  and the historical PDF baseline still require their separately recorded interpretation.
