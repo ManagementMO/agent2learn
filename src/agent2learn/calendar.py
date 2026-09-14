@@ -12,7 +12,7 @@ import json
 import os
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -40,6 +40,7 @@ class CalendarEvent:
     start: datetime | date
     end: datetime | date | None = None
     location: str | None = None
+    quiz_coverage: metadata_coverage.CoverageStatus = "unknown"
 
     @property
     def all_day(self) -> bool:
@@ -82,6 +83,10 @@ _CALENDAR_CONTAINER_KEYS = {
     "exam": "exams",
     "office_hour": "office_hours",
 }
+QUIZ_COVERAGE_WARNING = (
+    "Quiz coverage is incomplete or unknown; deadlines may be missing and cached quiz dates "
+    "are not confirmed current. Check LEARN."
+)
 
 
 def collect_events(vault: Vault, school: School) -> tuple[CalendarEvent, ...]:
@@ -109,12 +114,15 @@ def collect_events(vault: Vault, school: School) -> tuple[CalendarEvent, ...]:
             raise A2LError("content_map.json must not be a symlink")
         course_dir = content_map.parent.parent
         context = _course_context(content_map, course_dir)
+        quiz_coverage = metadata_coverage.read_quiz_coverage(course_dir)
         for filename, kind in _SOURCE_FILES:
             rows = _read_rows(course_dir / "_meta" / filename)
             for row in rows:
                 event = _event_from_row(row, kind, context, school)
                 if event is None or event.uid in seen_uids:
                     continue
+                if kind == "quiz":
+                    event = replace(event, quiz_coverage=quiz_coverage.status)
                 seen_uids.add(event.uid)
                 events.append(event)
 
@@ -145,6 +153,8 @@ def render_ics(vault: Vault, school: School, *, now: datetime | None = None) -> 
         "METHOD:PUBLISH",
         f"X-WR-TIMEZONE:{_escape_text(school.timezone)}",
     ]
+    if metadata_coverage.vault_quiz_gaps(vault):
+        lines.append(f"X-A2L-COVERAGE-WARNING:{_escape_text(QUIZ_COVERAGE_WARNING)}")
     for event in collect_events(vault, school):
         lines.extend(_event_lines(event, timezone, stamp))
     lines.append("END:VCALENDAR")
@@ -285,9 +295,16 @@ def _event_lines(event: CalendarEvent, timezone: ZoneInfo, stamp: datetime) -> l
         f"SUMMARY:{_escape_text(event.summary)}",
         f"X-A2L-KIND:{event.kind}",
         "SEQUENCE:0",
-        "STATUS:CONFIRMED",
-        "TRANSP:TRANSPARENT",
     ]
+    if event.kind == "quiz" and event.quiz_coverage != "complete":
+        description = (
+            f"Cached quiz date; quiz coverage is {event.quiz_coverage}. "
+            "This date is not confirmed current. Check LEARN."
+        )
+        lines.append(f"DESCRIPTION:{_escape_text(description)}")
+    else:
+        lines.append("STATUS:CONFIRMED")
+    lines.append("TRANSP:TRANSPARENT")
     if event.all_day:
         lines.append(f"DTSTART;VALUE=DATE:{event.start.strftime('%Y%m%d')}")
         if isinstance(event.end, date) and not isinstance(event.end, datetime):

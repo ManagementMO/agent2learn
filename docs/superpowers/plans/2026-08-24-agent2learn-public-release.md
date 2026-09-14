@@ -8,6 +8,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-24-agent2learn-public-release-design.md`
 
+**0.1.6 release-scope addendum (owner approved 2026-09-14):** follow the matching design addendum
+and [release validation scope](../../RELEASE_VALIDATION.md). Use the preserved current 262-PDF
+baseline as an explicitly reviewed replacement, not a reproduced historical benchmark. Keep
+eight unresolved pages and the unexecuted human visual/semantic and Windows/Linux graphical-login
+checks visible. This limited macOS-validated read-only patch still requires normal exact-head CI,
+installed-wheel checks, one-build protected TestPyPI/PyPI promotion, and post-publication
+identity verification. Do not enable submissions, weaken safeguards, or mark manual gaps passed.
+
 **Goal:** Ship `agent2learn` v0.1 to PyPI — a cross-platform CLI (`a2l`) that ingests a University
 of Waterloo LEARN course set into a local markdown-twinned vault, installs agent skills into every
 user-approved detected AI agent, and runs an experimental cited evidence scan over student drafts.
@@ -1976,6 +1984,21 @@ Steps:
       git commit -m "feat: a2l doctor with redacted, one-click issue reports"
       ```
 
+**Coverage recovery reporting follow-up (2026-09-13):** First reproduce with synthetic maps and
+snapshots that 50 ready topics plus 12 excluded links still warn truthfully but do not suggest a
+futile sync. Pin real source gaps, empty twins, unreadable maps, unknown/incomplete quiz metadata,
+mixed-course coverage, and session-failure priority to their actionable commands. Then implement
+explicit excluded counts and a local `a2l today` informational fallback only after actionable
+fixes are exhausted. Keep exactly one registered command, warning exit status, and the public
+report allowlist. No auth, ingestion, or persisted schema changes.
+
+**Cached-ready recovery regression:** Seed positive coverage fixtures with actual original and
+Markdown twin files and vault-relative paths. Remove a twin after recording ready metadata, with
+complete quiz coverage and a completed snapshot, and observe the false `today` fallback RED.
+Pin malformed/out-of-bounds, linked, nonregular, and inaccessible paths too. Then add a bounded
+filesystem usability diagnostic: unusable twins are repair gaps, not empty twins or citable
+sources; no full content hashing, manifest reconciliation, or metadata writes.
+
 **Post-Task 14 hardening completed 2026-08-26.** A repository-wide review found and closed the
 remaining trust-boundary and cross-platform gaps that a green first pass did not expose: report
 check identifiers/statuses are now allowlisted as well as public notes; `doctor` contains malformed
@@ -2184,6 +2207,14 @@ Steps:
 - [x] **Step 3:** Implement `calendar.py` from the documented `.ics` contract and deterministic
       tests, using the private generator only as behavioural evidence. Generalise it over Dropbox
       due dates, quiz dates, and exams.
+      **Coverage reporting follow-up (2026-09-13):** Observe offline RED tests for missing,
+      malformed, incomplete, and unavailable quiz coverage, including zero cached quizzes and
+      mixed courses. Add the static calendar-level `X-A2L-COVERAGE-WARNING` and course-scoped
+      cached-quiz `DESCRIPTION`; omit confirmation status only for affected quiz events. Prove
+      complete/known-empty behavior, stable UIDs/dates/export timestamps, valid text folding, and
+      absence of raw coverage diagnostics. Pin the same static CLI warning to stderr for stdout
+      and file exports, preserving successful exit and clean ICS. No metadata writes, fetching,
+      or new verification claim.
 - [x] **Step 4:** Implement `today` — due within 7 days, overdue, what changed since last sync,
       and an exam countdown during the exam period. Show grade postings only when grade sync is
       enabled; do not reveal them in logs or non-interactive diagnostic output.

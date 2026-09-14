@@ -384,10 +384,14 @@ def calendar(
     try:
         _cfg, vault, school = _local_vault()
         if output is None:
-            typer.echo(calendar_module.render_ics(vault, school), nl=False)
+            # ICS is already UTF-8/CRLF protocol data. Text-mode stdout can double CRs on
+            # Windows or re-encode titles through a legacy console code page.
+            typer.echo(calendar_module.render_ics(vault, school).encode("utf-8"), nl=False)
         else:
             written = calendar_module.write_ics(vault, school, output)
             typer.echo(f"calendar exported: {_display_path(written)}")
+        if metadata_coverage.vault_quiz_gaps(vault):
+            typer.echo(f"Warning: {calendar_module.QUIZ_COVERAGE_WARNING}", err=True)
     except A2LError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=exc.exit_code) from None

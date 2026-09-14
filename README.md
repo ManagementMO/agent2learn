@@ -9,6 +9,10 @@ quoting it.
 
 ## Install
 
+For the measured macOS workflow, repaired defects, PDF coverage gaps, and still-unverified
+human/platform checks, see the [release validation scope](https://github.com/ManagementMO/agent2learn/blob/main/docs/RELEASE_VALIDATION.md).
+Automated cross-platform tests are not a claim that every live login or course conversion works.
+
 For most students, use the command for your operating system. In a real terminal it installs
 Agent2Learn and starts guided setup immediately. If you already have uv, use the uv option below.
 
