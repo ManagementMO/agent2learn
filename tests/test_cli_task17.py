@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from agent2learn import config
+from agent2learn import config, metadata_coverage
 from agent2learn.cli import app
 from agent2learn.vault import Vault
 
@@ -47,6 +47,44 @@ def _configured_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[
         lambda: config.Config(vault=root, include_grades=False),
     )
     return root, course
+
+
+@pytest.mark.parametrize("output_file", [False, True])
+@pytest.mark.parametrize("status", ["complete", "unknown", "unavailable"])
+def test_calendar_cli_warns_on_partial_coverage_without_corrupting_export(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    output_file: bool,
+    status: metadata_coverage.CoverageStatus,
+) -> None:
+    root, course = _configured_vault(tmp_path, monkeypatch)
+    (course / "_meta" / "assignments.json").write_text(
+        '[{"id": 1, "title": "Essay", "due_date": "2026-09-15"}]\n', encoding="utf-8"
+    )
+    (course / "_meta" / "quizzes.json").write_text("[]\n", encoding="utf-8")
+    metadata_coverage.write_quiz_coverage(
+        course,
+        metadata_coverage.QuizCoverage(status, 403 if status == "unavailable" else None),
+        root=root,
+    )
+    before = {path.name: path.read_bytes() for path in (course / "_meta").iterdir()}
+    destination = root / "deadlines.ics"
+    args = ["calendar", "--output", str(destination)] if output_file else ["calendar"]
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0, result.output
+    assert ("Warning: Quiz coverage" in result.stderr) == (status != "complete")
+    if status != "complete":
+        assert "not confirmed current" in result.stderr
+    assert str(root) not in result.stderr
+    assert "COURSE101" not in result.stderr
+    exported = destination.read_text(encoding="utf-8") if output_file else result.stdout
+    assert exported.startswith("BEGIN:VCALENDAR\n")
+    assert exported.endswith("END:VCALENDAR\n")
+    assert exported.count("BEGIN:VEVENT") == 1
+    assert "Warning:" not in exported
+    assert {path.name: path.read_bytes() for path in (course / "_meta").iterdir()} == before
 
 
 def test_where_and_open_are_local_and_redaction_safe(

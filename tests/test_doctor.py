@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from agent2learn import config as config_module
-from agent2learn import doctor
+from agent2learn import doctor, metadata_coverage
 from agent2learn.errors import SessionExpired
 from agent2learn.session import Session, SessionCookie
 from agent2learn.vault import Vault
@@ -47,6 +47,269 @@ def _row(index: int, availability: str) -> dict[str, object]:
         "course_code": "COURSE101",
         "course_name": "Intro",
     }
+
+
+def _ready_row(vault: Vault, course: Path, index: int) -> dict[str, object]:
+    content = course / "content"
+    content.mkdir(parents=True, exist_ok=True)
+    source = content / f"topic-{index}.html"
+    twin = content / f"topic-{index}.md"
+    source.write_text(f"<p>Synthetic topic {index}</p>\n", encoding="utf-8")
+    twin.write_text(f"Synthetic topic {index}\n", encoding="utf-8")
+    return {
+        **_row(index, "markdown_ready"),
+        "source_path": source.relative_to(vault.root).as_posix(),
+        "path": twin.relative_to(vault.root).as_posix(),
+    }
+
+
+def _coverage_vault(tmp_path: Path) -> tuple[Vault, Path]:
+    vault = _vault(tmp_path)
+    course = vault.root / "Term" / "COURSE101"
+    _content_map(
+        course,
+        [_ready_row(vault, course, i) for i in range(50)]
+        + [_row(i, "external_link") for i in range(50, 62)],
+    )
+    metadata_coverage.write_quiz_coverage(
+        course, metadata_coverage.QuizCoverage("unavailable", 403), root=vault.root
+    )
+    snapshots = vault.root / ".a2l" / "snapshots"
+    snapshots.mkdir()
+    (snapshots / "synthetic.json").write_text(
+        json.dumps({"created_at": "2026-09-13T00:00:00Z"}), encoding="utf-8"
+    )
+    return vault, course
+
+
+@pytest.mark.parametrize("status", ["complete", "unavailable"])
+def test_excluded_only_coverage_keeps_warning_without_futile_sync(
+    tmp_path: Path, status: metadata_coverage.CoverageStatus
+) -> None:
+    vault, course = _coverage_vault(tmp_path)
+    metadata_coverage.write_quiz_coverage(
+        course,
+        metadata_coverage.QuizCoverage(status, 403 if status == "unavailable" else None),
+        root=vault.root,
+    )
+    checks = doctor._vault(vault)
+    by_name = {check.name: check for check in checks}
+
+    for name in ("vault.terms", "vault.citable"):
+        assert by_name[name].status == "warn"
+        assert by_name[name].fix is None
+        assert "12 deliberately excluded external link(s)" in by_name[name].detail
+    assert "50 of 62 topic(s) citable" in by_name["vault.citable"].detail
+    assert by_name["vault.gaps"].detail == "0 coverage gap(s)"
+    if status == "unavailable":
+        assert by_name["metadata.quizzes.forbidden"].status == "warn"
+        assert "check quiz availability in LEARN" in by_name["metadata.quizzes.forbidden"].detail
+    else:
+        assert by_name["metadata.quizzes"].status == "ok"
+    assert doctor.exit_code(checks) == 1
+    assert doctor.next_command(checks) == "run: a2l today"
+    rendered = doctor.render(checks)
+    assert rendered.count("Next:") == 1
+    assert "Next: a2l today" in rendered
+    assert "all clear" not in rendered.lower()
+
+
+@pytest.mark.parametrize(
+    "availability",
+    [
+        "metadata_only",
+        "source_only",
+        "download_gap",
+        "conversion_gap",
+        "integrity_gap",
+        "unsupported_format",
+        "unknown",
+    ],
+)
+def test_source_recovery_still_wins_over_excluded_only_fallback(
+    tmp_path: Path, availability: str
+) -> None:
+    vault, course = _coverage_vault(tmp_path)
+    _content_map(course, [_row(1, "external_link"), _row(2, availability)])
+
+    assert doctor.next_command(doctor._vault(vault)) == "run: a2l sync"
+
+
+@pytest.mark.parametrize("status", ["unknown", "incomplete"])
+def test_quiz_metadata_recovery_wins_even_with_another_denied_course(
+    tmp_path: Path, status: metadata_coverage.CoverageStatus
+) -> None:
+    vault, _ = _coverage_vault(tmp_path)
+    other = vault.root / "Other term" / "COURSE202"
+    _content_map(other, [_ready_row(vault, other, 1)])
+    metadata_coverage.write_quiz_coverage(
+        other, metadata_coverage.QuizCoverage(status), root=vault.root
+    )
+
+    checks = doctor._vault(vault)
+    quiz_check = next(check for check in checks if check.name == "metadata.quizzes.forbidden")
+    assert quiz_check.fix == "run: a2l sync"
+    assert doctor.next_command(checks) == "run: a2l sync"
+
+
+@pytest.mark.parametrize("problem", ["empty_twin", "unreadable_map"])
+def test_local_source_defect_retains_sync_recovery(tmp_path: Path, problem: str) -> None:
+    vault, course = _coverage_vault(tmp_path)
+    if problem == "empty_twin":
+        (course / "empty.md").write_text("", encoding="utf-8")
+        row = _row(1, "markdown_ready")
+        row["path"] = "Term/COURSE101/empty.md"
+        _content_map(course, [row, _row(2, "external_link")])
+    else:
+        other = vault.root / "Other term" / "COURSE202"
+        _content_map(other, [])
+        (other / "_meta" / "content_map.json").write_text("{", encoding="utf-8")
+
+    assert doctor.next_command(doctor._vault(vault)) == "run: a2l sync"
+
+
+def test_coverage_fallback_does_not_hide_session_failure_or_actionable_skill_fix(
+    tmp_path: Path,
+) -> None:
+    vault, _ = _coverage_vault(tmp_path)
+    checks = doctor._vault(vault)
+    skills = doctor.Check("Skills", "skills.stale", "warn", "stale", "run: a2l skills install")
+    auth = doctor.Check("Session", "session.whoami", "fail", "expired", "run: a2l auth")
+
+    assert doctor.next_command([*checks, skills]) == "run: a2l skills install"
+    assert doctor.next_command([*checks, skills, auth]) == "run: a2l auth"
+
+
+def test_unreadable_course_still_needs_sync_when_every_readable_topic_is_ready(
+    tmp_path: Path,
+) -> None:
+    vault, course = _coverage_vault(tmp_path)
+    _content_map(course, [_ready_row(vault, course, 1)])
+    other = vault.root / "Other term" / "COURSE202"
+    _content_map(other, [])
+    (other / "_meta" / "content_map.json").write_text("{", encoding="utf-8")
+
+    assert doctor.next_command(doctor._vault(vault)) == "run: a2l sync"
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "missing",
+        "null_path",
+        "empty_path",
+        "nonstring_path",
+        "parent_path",
+        "absolute_path",
+        "windows_drive_relative",
+        "windows_absolute",
+        "directory",
+        "symlink_inside",
+        "symlink_outside",
+        "linked_parent",
+        "hardlink",
+        "fifo",
+        "stat_error",
+        "unreadable",
+    ],
+)
+def test_unusable_cached_ready_twin_requires_source_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, problem: str
+) -> None:
+    vault, course = _coverage_vault(tmp_path)
+    row = _ready_row(vault, course, 0)
+    twin = course / "content" / "topic-0.md"
+    source = course / "content" / "topic-0.html"
+    original_source = source.read_bytes()
+    sentinel = tmp_path / "outside.md"
+    sentinel.write_text("synthetic outside sentinel\n", encoding="utf-8")
+    inside = course / "content" / "other.md"
+    inside.write_text("synthetic inside sentinel\n", encoding="utf-8")
+    if problem == "missing":
+        twin.unlink()
+    elif problem == "null_path":
+        row["path"] = None
+    elif problem == "empty_path":
+        row["path"] = ""
+    elif problem == "nonstring_path":
+        row["path"] = 42
+    elif problem == "parent_path":
+        row["path"] = "../outside.md"
+    elif problem == "absolute_path":
+        row["path"] = str(sentinel)
+    elif problem == "windows_drive_relative":
+        row["path"] = "C:outside.md"
+    elif problem == "windows_absolute":
+        row["path"] = "C:\\outside.md"
+    elif problem == "directory":
+        twin.unlink()
+        twin.mkdir()
+    elif problem in {"symlink_inside", "symlink_outside"}:
+        twin.unlink()
+        try:
+            twin.symlink_to(inside if problem == "symlink_inside" else sentinel)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks unavailable")
+    elif problem == "linked_parent":
+        link = course / "linked"
+        try:
+            link.symlink_to(course / "content", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("directory symlinks unavailable")
+        row["path"] = "Term/COURSE101/linked/topic-0.md"
+    elif problem == "hardlink":
+        try:
+            os.link(twin, course / "content" / "alias.md")
+        except (OSError, NotImplementedError):
+            pytest.skip("hardlinks unavailable")
+    elif problem == "fifo":
+        if not hasattr(os, "mkfifo"):
+            pytest.skip("named pipes unavailable")
+        twin.unlink()
+        os.mkfifo(twin)
+    elif problem == "stat_error":
+        original_lstat = Path.lstat
+        original_read_map = doctor.read_content_map
+
+        def fail_twin_lstat(self: Path) -> os.stat_result:
+            if self == twin:
+                raise PermissionError("synthetic stat denial")
+            return original_lstat(self)
+
+        def read_then_deny_stat(course_dir: Path) -> dict[str, object]:
+            result = original_read_map(course_dir)
+            # Simulate losing access after the vault scan, at the per-row diagnostic boundary.
+            monkeypatch.setattr(Path, "lstat", fail_twin_lstat)
+            return result
+
+        monkeypatch.setattr(doctor, "read_content_map", read_then_deny_stat)
+    elif problem == "unreadable":
+        original_access = os.access
+
+        def deny_twin_read(path: str | Path, mode: int) -> bool:
+            return False if Path(path) == twin else original_access(path, mode)
+
+        monkeypatch.setattr(os, "access", deny_twin_read)
+    _content_map(course, [row, _row(50, "external_link")])
+    metadata_coverage.write_quiz_coverage(
+        course, metadata_coverage.QuizCoverage("complete"), root=vault.root
+    )
+    before_map = (course / "_meta" / "content_map.json").read_bytes()
+
+    checks = doctor._vault(vault)
+    by_name = {check.name: check for check in checks}
+
+    assert doctor.next_command(checks) == "run: a2l sync"
+    assert "0 of 2 topic(s) citable" in by_name["vault.citable"].detail
+    assert by_name["vault.gaps"].status == "warn"
+    assert "1 missing or unusable markdown twin(s)" in by_name["vault.gaps"].detail
+    assert by_name["vault.empty_twins"].detail == "0 empty markdown twin(s)"
+    assert by_name["vault.empty_twins"].status == "ok"
+    assert doctor.exit_code(checks) == 1
+    assert source.read_bytes() == original_source
+    assert sentinel.read_text(encoding="utf-8") == "synthetic outside sentinel\n"
+    assert inside.read_text(encoding="utf-8") == "synthetic inside sentinel\n"
+    assert (course / "_meta" / "content_map.json").read_bytes() == before_map
 
 
 def _session(*, hours_old: float) -> Session:
@@ -175,6 +438,7 @@ def test_every_next_command_names_a_registered_cli_command() -> None:
             )
         ],
         [doctor.Check("Skills", "skills", "warn", "stale", "run: a2l skills install")],
+        [doctor.Check("Vault", "vault.citable", "warn", "excluded links")],
         [doctor.Check("Filesystem", "unknown", "fail", "blocked", "run: a2l not-a-command")],
         [doctor.Check("Filesystem", "permissions", "fail", "blocked", "check permissions")],
     ]
@@ -341,9 +605,10 @@ def test_vault_coverage_counts_citable_topics_and_gaps(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     vault = _vault(tmp_path)
+    course = vault.root / "Fall 2026" / "COURSE101"
     _content_map(
-        vault.root / "Fall 2026" / "COURSE101",
-        [_row(1, "markdown_ready"), _row(2, "source_only"), _row(3, "unsupported_format")],
+        course,
+        [_ready_row(vault, course, 1), _row(2, "source_only"), _row(3, "unsupported_format")],
     )
     monkeypatch.setattr(doctor.session_module, "load", lambda: None)
 
@@ -403,7 +668,7 @@ def test_vault_scan_keeps_valid_terms_when_one_map_is_not_utf8(
     bad_map.mkdir(parents=True)
     (bad_map / "content_map.json").write_bytes(b"{\xff")
     valid_course = vault.root / "Winter 2027" / "COURSE202"
-    _content_map(valid_course, [_row(1, "markdown_ready")])
+    _content_map(valid_course, [_ready_row(vault, valid_course, 1)])
     monkeypatch.setattr(doctor.session_module, "load", lambda: None)
 
     checks = doctor.run_checks(_cfg(vault), vault)
@@ -423,7 +688,7 @@ def test_vault_scan_discloses_unreadable_content_maps(
     bad_map.mkdir(parents=True)
     (bad_map / "content_map.json").write_bytes(b"{\xff")
     valid_course = vault.root / "Winter 2027" / "COURSE202"
-    _content_map(valid_course, [_row(1, "markdown_ready")])
+    _content_map(valid_course, [_ready_row(vault, valid_course, 1)])
     monkeypatch.setattr(doctor.session_module, "load", lambda: None)
 
     checks = doctor.run_checks(_cfg(vault), vault)

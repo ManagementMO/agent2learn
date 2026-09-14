@@ -1375,6 +1375,23 @@ Design principle: **never leave the user without exactly one next action.**
 Grouped checklist with `✓ / ⚠ / ✗` (ASCII fallback per C8), a one-line summary, and a single
 suggested next command. Exit codes: `0` all clear, `1` warnings only, `2` at least one failure.
 
+**Coverage recovery reporting addendum (2026-09-13).** Deliberately excluded `external_link`
+topics remain non-citable and count in the total, with their excluded count shown explicitly.
+They do not alone justify another sync. Source/metadata gaps, unreadable maps, empty twins, and
+unknown or incomplete quiz coverage retain actionable sync advice. Unavailable (HTTP 403) quiz
+coverage stays a warning with manual LEARN guidance, not a claim of zero quizzes or a promise
+that sync repairs permission. Existing actionable commands and failure priority win; only when
+coverage warnings have no actionable repair does the single next command fall back to local
+`a2l today` for viewing cached information. This is not an all-clear or a repair claim. Public
+doctor reports keep their existing allowlisted, static diagnostic boundary.
+
+A cached `markdown_ready` label alone cannot suppress recovery. Doctor checks the recorded twin
+path lexically inside the vault, without following link components, and requires a regular,
+single-link file with readable permissions. Missing, malformed, inaccessible, linked, or
+nonregular paths are reported as missing/unusable twin gaps, not empty twins; they are excluded
+from the diagnostic's citable count and retain sync recovery. This bounded filesystem diagnostic
+does not rehash content, verify provenance, rewrite the map, or replace grounding's integrity gate.
+
 ### `--report`
 
 Emits a markdown block for a GitHub issue.
@@ -1414,6 +1431,18 @@ student recommends to a friend.
 | **Obsidian handshake** | Write a minimal `.obsidian/` config with no plugins or executable hooks so the vault opens cleanly. Skip the entire directory if one already exists. |
 | **Shell completions** | `a2l completions {bash,zsh,fish,powershell}`. |
 | **Vault-name collision** | If `~/agent2learn` exists and is not an Agent2Learn vault, offer `~/agent2learn-2`; never write into a directory the tool does not own. |
+
+**Calendar coverage reporting addendum (2026-09-13).** An export with any unknown, incomplete,
+or unavailable course quiz collection carries a static `X-A2L-COVERAGE-WARNING` calendar
+property, including when there are no cached quiz events. Each cached quiz event from an
+affected course has a static `DESCRIPTION` explaining that its date is not confirmed current;
+it omits `STATUS:CONFIRMED` without inventing a tentative/cancelled state. Other courses' complete
+quiz collections and non-quiz events are unaffected, including known-empty complete collections.
+No cached events are erased or dates changed. Coverage adds no persisted schema, verification
+timestamp, raw response text, or identity fields. UIDs, export-time `DTSTAMP`, timezone handling,
+text escaping, and RFC 5545 CRLF/line-folding rules remain unchanged. The export command also
+prints the static coverage warning to stderr, keeping stdout valid ICS and successful exports
+successful even when coverage is partial.
 
 ### Time to first value — split metadata from files
 

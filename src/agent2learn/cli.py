@@ -388,6 +388,8 @@ def calendar(
         else:
             written = calendar_module.write_ics(vault, school, output)
             typer.echo(f"calendar exported: {_display_path(written)}")
+        if metadata_coverage.vault_quiz_gaps(vault):
+            typer.echo(f"Warning: {calendar_module.QUIZ_COVERAGE_WARNING}", err=True)
     except A2LError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=exc.exit_code) from None

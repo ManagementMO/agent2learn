@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from agent2learn import calendar as calendar_module
+from agent2learn import metadata_coverage
 from agent2learn.schools import UWaterloo
 from agent2learn.vault import Vault
 
@@ -73,6 +74,135 @@ def _calendar_vault(root: Path) -> Vault:
         ],
     )
     return Vault(root)
+
+
+def _unfold(value: str) -> str:
+    return value.replace("\r\n ", "")
+
+
+def _event_blocks(value: str) -> list[str]:
+    return [block.split("END:VEVENT", 1)[0] for block in _unfold(value).split("BEGIN:VEVENT")[1:]]
+
+
+@pytest.mark.parametrize(
+    "coverage",
+    [
+        None,
+        metadata_coverage.QuizCoverage(),
+        metadata_coverage.QuizCoverage("incomplete"),
+        metadata_coverage.QuizCoverage("unavailable", 403),
+    ],
+)
+def test_calendar_discloses_uncertain_quiz_coverage_and_cached_dates(
+    tmp_path: Path, coverage: metadata_coverage.QuizCoverage | None
+) -> None:
+    vault = _calendar_vault(tmp_path)
+    course = tmp_path / "Spring 2026" / "COURSE101_1265"
+    if coverage is not None:
+        metadata_coverage.write_quiz_coverage(course, coverage, root=vault.root)
+    before = (course / "_meta" / "quizzes.json").read_bytes()
+    exported = calendar_module.render_ics(
+        vault, UWaterloo(), now=datetime(2026, 8, 28, 16, 0, tzinfo=UTC)
+    )
+
+    assert "X-A2L-COVERAGE-WARNING:" in _unfold(exported).split("BEGIN:VEVENT")[0]
+    events = _event_blocks(exported)
+    assert len(events) == 5
+    for event in events:
+        if "X-A2L-KIND:quiz\r\n" in event:
+            assert "DESCRIPTION:Cached quiz date" in event
+            assert "not confirmed current" in event
+            assert "STATUS:" not in event
+        else:
+            assert "DESCRIPTION:" not in event
+            assert "STATUS:CONFIRMED" in event
+    assert (course / "_meta" / "quizzes.json").read_bytes() == before
+    assert all(len(line.encode("utf-8")) <= 75 for line in exported.split("\r\n"))
+    assert "\n" not in exported.replace("\r\n", "")
+
+
+@pytest.mark.parametrize("status", ["complete", "unknown", "unavailable"])
+def test_calendar_zero_cached_quizzes_is_not_proof_of_complete_inventory(
+    tmp_path: Path, status: metadata_coverage.CoverageStatus
+) -> None:
+    vault = _calendar_vault(tmp_path)
+    course = tmp_path / "Spring 2026" / "COURSE101_1265"
+    _write_json(course / "_meta" / "quizzes.json", [])
+    metadata_coverage.write_quiz_coverage(
+        course,
+        metadata_coverage.QuizCoverage(status, 403 if status == "unavailable" else None),
+        root=vault.root,
+    )
+
+    exported = calendar_module.render_ics(vault, UWaterloo())
+
+    assert ("X-A2L-COVERAGE-WARNING:" in exported) == (status != "complete")
+    assert exported.count("BEGIN:VEVENT") == 4
+    assert "X-A2L-KIND:quiz" not in exported
+    assert "DESCRIPTION:" not in exported
+
+
+def test_calendar_quiz_warning_is_course_scoped_and_does_not_change_event_identity(
+    tmp_path: Path,
+) -> None:
+    vault = _calendar_vault(tmp_path)
+    first = tmp_path / "Spring 2026" / "COURSE101_1265"
+    second = tmp_path / "Other term" / "COURSE101_1265"
+    # Same course code and quiz id in different terms must not share a coverage decision.
+    _write_json(
+        second / "_meta" / "content_map.json",
+        {
+            "schema_version": 1,
+            "topics": [{"course_code": "COURSE101_1265", "term": "other", "title": "Other"}],
+        },
+    )
+    _write_json(
+        second / "_meta" / "quizzes.json",
+        [{"id": 3, "title": "Current quiz", "due_date": "2026-11-01T06:30:00Z"}],
+    )
+    metadata_coverage.write_quiz_coverage(
+        second, metadata_coverage.QuizCoverage("complete"), root=vault.root
+    )
+    stamp = datetime(2026, 8, 28, 16, 0, tzinfo=UTC)
+    before = calendar_module.render_ics(vault, UWaterloo(), now=stamp)
+    quizzes = [block for block in _event_blocks(before) if "X-A2L-KIND:quiz" in block]
+    assert len(quizzes) == 2
+    for event in quizzes:
+        assert ("DESCRIPTION:Cached quiz date" in event) == ("Current quiz" not in event)
+
+    metadata_coverage.write_quiz_coverage(
+        first, metadata_coverage.QuizCoverage("complete"), root=vault.root
+    )
+    after = calendar_module.render_ics(vault, UWaterloo(), now=stamp)
+    assert "X-A2L-COVERAGE-WARNING:" not in after
+    assert "DESCRIPTION:" not in after
+    stable_prefixes = ("UID:", "DTSTART", "DTEND", "DTSTAMP:", "SUMMARY:")
+    assert [line for line in before.splitlines() if line.startswith(stable_prefixes)] == [
+        line for line in after.splitlines() if line.startswith(stable_prefixes)
+    ]
+
+
+def test_calendar_malformed_coverage_warns_without_exporting_raw_diagnostics(
+    tmp_path: Path,
+) -> None:
+    vault = _calendar_vault(tmp_path)
+    meta = tmp_path / "Spring 2026" / "COURSE101_1265" / "_meta"
+    _write_json(
+        meta / "metadata_coverage.json",
+        {
+            "schema_version": 1,
+            "collections": {
+                "quizzes": {"status": "complete", "detail": "PRIVATE_SENTINEL\r\nURL:bad"}
+            },
+        },
+    )
+
+    exported = _unfold(calendar_module.render_ics(vault, UWaterloo()))
+
+    assert "X-A2L-COVERAGE-WARNING:" in exported
+    assert "DESCRIPTION:Cached quiz date" in exported
+    assert "PRIVATE_SENTINEL" not in exported
+    assert "URL:bad" not in exported
 
 
 def test_calendar_is_valid_deterministic_and_timezone_explicit(tmp_path: Path) -> None:
