@@ -22,6 +22,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Sequence
@@ -633,11 +634,14 @@ def _vault(vault: Vault | None) -> list[Check]:
     courses = 0
     topics = 0
     citable = 0
+    excluded = 0
     gaps = 0
     empty_twins = 0
+    unusable_twins = 0
     unreadable_maps = 0
     quiz_gaps: set[str] = set()
     quizzes_forbidden = False
+    quiz_sync_needed = False
     term_stats: dict[str, list[int]] = {}
     try:
         map_paths = sorted(
@@ -662,8 +666,9 @@ def _vault(vault: Vault | None) -> list[Check]:
         if coverage.gap is not None:
             quiz_gaps.add(coverage.gap)
         quizzes_forbidden = quizzes_forbidden or coverage.status == "unavailable"
+        quiz_sync_needed = quiz_sync_needed or coverage.status in {"unknown", "incomplete"}
         term = map_path.parent.parent.parent.name
-        stats = term_stats.setdefault(term, [0, 0, 0, 0, 0])
+        stats = term_stats.setdefault(term, [0, 0, 0, 0, 0, 0])
         stats[0] += 1
         for row in rows:
             if not isinstance(row, dict):
@@ -672,12 +677,20 @@ def _vault(vault: Vault | None) -> list[Check]:
             stats[2] += 1
             availability = str(row.get("availability", ""))
             if availability == "markdown_ready":
+                twin_size = _vault_file_size(vault, row.get("path"))
+                if twin_size is None:
+                    unusable_twins += 1
+                    gaps += 1
+                    stats[3] += 1
+                    continue
                 citable += 1
                 stats[1] += 1
-                path = row.get("path")
-                if isinstance(path, str) and _is_empty_vault_file(vault, path):
+                if twin_size == 0:
                     empty_twins += 1
                     stats[4] += 1
+            elif availability == "external_link":
+                excluded += 1
+                stats[5] += 1
             elif availability in {
                 "unsupported_format",
                 "conversion_gap",
@@ -708,9 +721,14 @@ def _vault(vault: Vault | None) -> list[Check]:
     term_detail = "; ".join(
         f"{term}: {course_count} course(s), {resolved}/{total} topic(s) resolved, "
         f"{term_gaps} coverage gap(s), {term_empty} empty twin(s)"
-        for term, (course_count, resolved, total, term_gaps, term_empty) in sorted(
+        + (f", {term_excluded} deliberately excluded external link(s)" if term_excluded else "")
+        for term, (course_count, resolved, total, term_gaps, term_empty, term_excluded) in sorted(
             term_stats.items()
         )
+    )
+    # Excluded links remain non-citable, but sync cannot turn them into archived sources.
+    source_sync_needed = (
+        not topics or unreadable_maps > 0 or empty_twins > 0 or citable + excluded < topics
     )
     checks = [
         Check(
@@ -719,37 +737,52 @@ def _vault(vault: Vault | None) -> list[Check]:
             "warn" if unreadable_maps else "ok",
             f"{courses} course(s), {topics} topic(s)"
             + (f", {unreadable_maps} unreadable content map(s)" if unreadable_maps else ""),
+            "run: a2l sync" if unreadable_maps else None,
         ),
         Check(
             "Vault",
             "vault.terms",
             "ok" if citable == topics else "warn",
             term_detail,
-            None if citable == topics else "run: a2l sync",
+            "run: a2l sync" if source_sync_needed else None,
         ),
         Check(
             "Vault",
             "vault.citable",
             "ok" if topics and citable == topics else "warn",
-            f"{citable} of {topics} topic(s) citable",
-            None if citable == topics else "run: a2l sync",
+            f"{citable} of {topics} topic(s) citable"
+            + (f"; {excluded} deliberately excluded external link(s)" if excluded else ""),
+            "run: a2l sync" if source_sync_needed else None,
         ),
         Check(
             "Vault",
             "vault.gaps",
             "ok" if gaps == 0 else "warn",
-            f"{gaps} coverage gap(s)",
+            f"{gaps} coverage gap(s)"
+            + (
+                f"; {unusable_twins} missing or unusable markdown twin(s)" if unusable_twins else ""
+            ),
             None if gaps == 0 else "see .a2l/AUDIT.md",
         ),
     ]
     quiz_check = "metadata.quizzes.forbidden" if quizzes_forbidden else "metadata.quizzes"
+    quiz_detail = (
+        "; ".join(sorted(quiz_gaps)) if quiz_gaps else "quiz collection coverage is complete"
+    )
+    if quizzes_forbidden:
+        quiz_detail += "; check quiz availability in LEARN (sync does not grant permission)"
+    quiz_fix = None
+    if quiz_sync_needed:
+        quiz_fix = "run: a2l sync"
+    elif quiz_gaps:
+        quiz_fix = "see .a2l/AUDIT.md; check quiz availability in LEARN"
     checks.append(
         Check(
             "Vault",
             quiz_check,
             "warn" if quiz_gaps else "ok",
-            "; ".join(sorted(quiz_gaps)) if quiz_gaps else "quiz collection coverage is complete",
-            "see .a2l/AUDIT.md; check quiz availability in LEARN" if quiz_gaps else None,
+            quiz_detail,
+            quiz_fix,
             public=_SAFE_PUBLIC_NOTES[quiz_check] if quiz_gaps else None,
         )
     )
@@ -766,24 +799,34 @@ def _vault(vault: Vault | None) -> list[Check]:
     return checks
 
 
-def _is_empty_vault_file(vault: Vault, value: str) -> bool:
+def _vault_file_size(vault: Vault, value: object) -> int | None:
+    """Return a bounded ordinary file's size, or unknown/unusable; never read its contents."""
+    if not isinstance(value, str):
+        return None
     try:
         parts = PurePosixPath(value).parts
         if (
             not parts
             or "\\" in value
-            or (len(value) >= 3 and value[1] == ":" and value[2] in "/\\")
+            or (len(value) >= 2 and value[1] == ":")
             or PurePosixPath(value).is_absolute()
-            or any(part in {"", ".", ".."} for part in parts)
+            or any(part in {"", ".", ".."} for part in value.split("/"))
         ):
-            return False
-        candidate = (vault.root / Path(*parts)).resolve()
-        candidate.relative_to(vault.root)
-        return (
-            paths.long_path(candidate).is_file() and paths.long_path(candidate).stat().st_size == 0
-        )
+            return None
+        candidate = vault.root / Path(*parts)
+        if paths.has_link_component(candidate, root=vault.root):
+            return None
+        bounded = paths.long_path(candidate)
+        file_stat = bounded.lstat()
+        if (
+            not stat.S_ISREG(file_stat.st_mode)
+            or file_stat.st_nlink != 1
+            or not os.access(os.fspath(bounded), os.R_OK)
+        ):
+            return None
+        return file_stat.st_size
     except (OSError, RuntimeError, ValueError):
-        return False
+        return None
 
 
 def _last_sync_check(vault: Vault) -> Check:
@@ -866,7 +909,7 @@ def render(checks: Sequence[Check]) -> str:
 
 
 def next_command(checks: Sequence[Check]) -> str | None:
-    """Return the single most urgent suggested command, or ``None`` when all is well.
+    """Return the single most urgent recovery command, or a useful fallback.
 
     Exactly one. A diagnostic that emits a list of six things to do is one the user closes
     without doing any of them, so failures outrank warnings and the first wins.
@@ -882,6 +925,14 @@ def next_command(checks: Sequence[Check]) -> str | None:
             words = candidate.split()
             if len(words) >= 2 and words[1] in _REGISTERED_CLI_COMMANDS:
                 return f"run: {candidate}"
+    if any(
+        check.status == "warn"
+        and check.name in {"vault.terms", "vault.citable", "metadata.quizzes.forbidden"}
+        for check in checks
+    ):
+        # All actionable fixes were considered above. Viewing cached information is useful;
+        # another sync is not a repair for deliberate exclusions or a denied collection.
+        return "run: a2l today"
     # Free-form repair prose belongs in the check detail, not in the command slot. Keep the output
     # contract literal even when all fixes are manual: the fallback is a real, reversible command.
     return "run: a2l sync"

@@ -153,6 +153,16 @@ def main() -> None:
         assert "Quizzing.SeeQuizzing" in today
         diagnostics = doctor.report(doctor._vault(restricted))
         assert "403" in diagnostics and "111111" not in diagnostics
+        exported = calendar.render_ics(restricted, school).replace("\r\n ", "")
+        assert "X-A2L-COVERAGE-WARNING:" in exported, (
+            "calendar lost unavailable quiz coverage despite zero cached quiz events"
+        )
+        assert "X-A2L-COVERAGE-WARNING:" not in calendar.render_ics(vault, school), (
+            "a successfully enumerated empty quiz collection was mislabeled unknown"
+        )
+        assert doctor.next_command(doctor._vault(restricted)) == "run: a2l today", (
+            "doctor suggested a futile repeat sync when only quiz permission is unavailable"
+        )
     print(
         "Installed base-wheel timezone, sync, permission-gap, preservation, grounding, "
         "and evidence checks passed."
