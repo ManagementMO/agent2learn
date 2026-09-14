@@ -864,6 +864,49 @@ quiz denial as a fatal metadata error skipped every file and conversion phase.
   failure behavior. It does not retry through an alternate quiz endpoint, broaden permissions,
   collect declined grades/discussions, or enable submissions.
 
+### HTML document download correction — 2026-09-13
+
+The reported installed-0.1.5 HTML asset-bundle defect invalidates a uniform download-route order;
+the aggregate evidence and normative exception are recorded in algorithm reference section 4.
+Bulk ingestion and explicit fetch must use only the vetted underlying first-party `Url` for
+HTML/HTM documents, identified by the parsed path or HTML topic type. Parse paths independently
+of query strings and case, and revalidate cached references before use. A missing, malformed,
+off-origin, denied, or expired HTML source stays an explicit gap or the existing session-expiry
+stop; no alternate downloadable-bundle route may conceal it. Embedded assets are not fetched.
+This is a source-topic archive: original HTML keeps referenced-resource links, but linked PDFs
+and media remain link-only/unverified without independent source IDs. An absence of PDF topics
+is not an absence of PDF resources and does not authorize an asset crawl.
+Non-HTML route fallback, metadata/quiz permission rules, bounded streaming, disk/session stops,
+archive validation, media opt-in, and source/twin revision preservation retain their contracts.
+Acceptance uses synthetic loopback data; live candidate validation remains a separate review gate.
+
+Same-vault upgrades must also repair manifest-verified legacy ZIP bundles stored as HTML sources,
+even when topic and manifest validators match. Bounded ZIP-signature inspection reads no archive
+members: this representation alone bypasses both the unchanged-source shortcut and old conditional
+request headers. Retain the real prior entry for verified source/twin revision preservation before
+replacement; failed repairs leave those bytes intact. Pending legacy installs cannot short-circuit
+repair. A ZIP returned by the underlying HTML URL is an explicit download gap, refused before
+installation without a bundle fallback. Healthy HTML and non-HTML cache behavior is unchanged.
+
+The representation requirement is derived from the metadata's HTML/HTM URL path or HTML topic
+type plus the manifest-verified ZIP signature, not a filename-only rule or a persisted repair
+flag. It remains `download_gap` with a null citation path regardless of matching/absent validators
+or prior availability, including after metadata merge, reconciliation, and reload. Conversion
+must leave that source and any intact or edited twin untouched, without accepting its old cache
+or opening archive members. Only successful installation of non-ZIP document bytes clears this
+derived condition; history preservation still precedes replacement. Ordinary archive File topics,
+including `.html.zip` URLs, remain supported. This does not make every download gap fatal and
+adds no source text or repair payload to privacy-bounded snapshots.
+The current source SHA identifies captured ZIP bytes even if the recorded byte count is wrong;
+a size mismatch cannot clear representation repair or restore citation eligibility.
+
+Explicit fetch persists this gap as soon as repair is detected, before attempting the document
+request, because it has no preceding metadata phase. Read-only grounding/evidence consumers apply
+the same eligibility check to legacy ready maps without rewriting them. An unsafe or unreadable
+header probe is unknown, not proof of a non-ZIP document: retain the gap, do not convert or overwrite
+that source/twin, and refuse the transfer until the local source can be safely inspected. A missing
+source still uses the existing integrity/re-fetch path; symlink containment is not relaxed.
+
 ### Source identity, content integrity, and revisions
 
 A path-only manifest cannot detect a Learn file that changes in place. The public manifest is a
@@ -1445,6 +1488,16 @@ coverage, and raw process output must not be copied into the vault or diagnostic
 OCR input uses an application-owned private temporary image with a resolved path, preserves the
 white alpha matte, and is removed on success or failure. It never changes global temporary-directory
 settings to accommodate an external executable's path restrictions.
+
+**PDF empty-OCR recovery correction — 2026-09-13:** a successful OCR call whose normalized
+output is empty (including whitespace-only output) is a typed empty-recognition outcome, not
+evidence that Tesseract is unavailable. Emit a static page warning and recommend inspecting the
+original PDF's unrecognized pages; do not infer that a page is blank or that its native text is
+complete. Missing or unusable OCR still receives setup advice, including when another page has
+empty recognition. Both outcomes remain `unresolved` page coverage with a document conversion
+gap: install no partial twin, keep the citation path null, and preserve the source and any previous
+twin bytes. The correction changes no threshold, backend, schema, or native/OCR replacement policy;
+native/OCR union remains future work. Never classify by or expose raw OCR exception text.
 
 Repeated conversion preserves an identical twin's bytes and filesystem timestamp. If its source,
 backend/version, OCR threshold, and page coverage are also identical, its recorded creation time

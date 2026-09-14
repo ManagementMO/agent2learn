@@ -11,8 +11,8 @@ a claim that `uv.lock` governs what a later `pip install agent2learn` resolves. 
 Agent2Learn's own code; dependencies are resolved and installed separately on the user's machine
 under their own licences.
 
-- **Baseline:** Agent2Learn 0.1.0
-- **Verified:** 2026-08-25, from installed distribution metadata under Python 3.11
+- **Baseline:** Agent2Learn 0.1.6 release candidate
+- **Verified:** 2026-09-13, from installed distribution metadata under Python 3.11
 - **Refresh procedure:** after any dependency change run `uv lock`, then `uv sync --all-extras
   --group dev`, then re-read `importlib.metadata` for the direct dependencies below and update this
   table. CI fails the release if the generated notices differ from this file.
@@ -22,7 +22,8 @@ under their own licences.
 | Package | Version | Licence |
 | --- | --- | --- |
 | `typer` | 0.27.1 | MIT |
-| `rich` | 14.3.4 | MIT |
+| `click` | 8.5.0 | BSD-3-Clause |
+| `rich` | 15.0.0 | MIT |
 | `requests` | 2.34.2 | Apache-2.0 |
 | `platformdirs` | 4.11.4 | MIT |
 | `keyring` | 25.7.0 | MIT |
@@ -31,6 +32,7 @@ under their own licences.
 | `pytesseract` | 0.3.13 | Apache-2.0 |
 | `pillow` | 12.3.0 | MIT-CMU |
 | `pypdfium2` | 5.13.0 | Apache-2.0 OR BSD-3-Clause, plus bundled PDFium dependency licences |
+| `tzdata` | 2026.3 | Apache-2.0 |
 
 ## Optional extras
 
@@ -39,7 +41,7 @@ under their own licences.
 | `office` | `markitdown[pptx,docx,xlsx]` | 0.1.7 | MIT |
 | `notebook` | `nbformat` | 5.11.1 | BSD-3-Clause |
 
-Each extra pulls its own transitive dependencies. The complete resolved set — 124 packages at this
+Each extra pulls its own transitive dependencies. The complete resolved set — 125 packages at this
 baseline — is recorded in [`uv.lock`](uv.lock), and a CycloneDX SBOM is produced during release.
 
 ## Notices requiring specific attention

@@ -15,12 +15,12 @@ license-files = ["LICENSE"]
 # bump requires a release that reruns the 262-PDF acceptance corpus, explains the output
 # diff, regenerates the golden vault, and verifies bytes on all three operating systems.
 dependencies = [
-    "typer>=0.15,<1",
-    # Typer's command objects are Click groups at runtime. Keep Click explicit rather than
-    # relying on an incidental transitive dependency (the strict doctor CLI-contract test
-    # imports ``click.Group`` directly).
+    # 0.16 adds Click 8.2+ help compatibility; 0.15 permits an install that crashes on --help.
+    "typer>=0.16,<1",
+    # Keep Click explicit for older supported Typer versions and CLI-contract typing.
+    # Current Typer vendors its Click implementation; its groups are not external Click groups.
     "click>=8.2,<9",
-    "rich>=13,<15",
+    "rich>=13,<16",
     "requests>=2.32,<3",
     "platformdirs>=4.2,<5",
     "keyring>=25,<27",
@@ -46,7 +46,7 @@ dev = [
     "pytest-cov>=6,<8",
     "pytest-httpserver>=1.1,<2",
     "ruff>=0.8,<1",
-    "mypy>=1.13,<2",
+    "mypy>=1.13,<3",
     "pip-audit>=2.7,<3",
     "cyclonedx-bom>=5,<8",
     "detect-secrets>=1.5,<2",
@@ -64,7 +64,7 @@ Repository = "https://github.com/ManagementMO/agent2learn"
 Issues = "https://github.com/ManagementMO/agent2learn/issues"
 
 [build-system]
-requires = ["uv_build>=0.11.32,<0.12.0"]
+requires = ["uv_build>=0.11.32,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.ruff]

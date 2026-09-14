@@ -11,12 +11,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from agent2learn import locations, paths
 from agent2learn.errors import A2LError
@@ -319,6 +321,80 @@ def write_content_map(
     _write_json(course_dir / "_meta" / "content_map.json", payload, root=root)
 
 
+def is_html_document(kind: object, url_path: object) -> bool:
+    """Classify metadata only; this never authorizes or resolves a download URL."""
+    if isinstance(kind, str) and kind.casefold() in {"html", "htmlfile"}:
+        return True
+    if not isinstance(url_path, str):
+        return False
+    try:
+        return urlsplit(url_path).path.casefold().endswith((".html", ".htm"))
+    except ValueError:
+        return False
+
+
+def has_zip_signature(path: Path) -> bool | None:
+    """Read a four-byte ZIP header; ``None`` means unsafe/unreadable, not confirmed non-ZIP."""
+    try:
+        file_stat = os.lstat(os.fspath(paths.long_path(path)))
+        if (
+            paths.is_link(path)
+            or not stat.S_ISREG(file_stat.st_mode)
+            or getattr(file_stat, "st_nlink", 1) != 1
+        ):
+            return None
+        with open(os.fspath(paths.long_path(path)), "rb") as handle:
+            return handle.read(4) in {b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"}
+    except OSError:
+        return None
+
+
+def html_source_requires_repair(
+    vault: Vault, entry: ManifestEntry, *, kind: object, url_path: object
+) -> bool:
+    """Reject verified bundles and unsafe/unknown representations of HTML documents."""
+    if not is_html_document(kind, url_path):
+        return False
+    source = vault.materialized(entry)
+    signature = has_zip_signature(source)
+    if signature is None:
+        try:
+            os.lstat(os.fspath(paths.long_path(source)))
+        except FileNotFoundError:
+            return False  # Preserve the existing missing-source integrity/re-fetch path.
+        except OSError:
+            return True
+        return True
+    try:
+        # An inconsistent size field cannot make hash-verified ZIP bytes a healthy document.
+        return signature and _entry_bytes_are_current(vault, entry)
+    except OSError:
+        # A concurrent removal/read failure belongs to the ordinary integrity path. Do not
+        # catch Vault's unsafe-path refusals or turn unverified bytes into repair evidence.
+        return False
+
+
+def html_repair_source_keys(vault: Vault, entries: Mapping[str, ManifestEntry]) -> frozenset[str]:
+    """Find conversion exclusions from current metadata and source bytes, not stale flags."""
+    if not entries:
+        return frozenset()
+    repair: set[str] = set()
+    for destination in _content_maps(vault):
+        try:
+            rows = read_content_map(destination.parent.parent)["topics"]
+        except (A2LError, UnicodeError):
+            continue
+        assert isinstance(rows, list)
+        for row in rows:
+            key = row["source_key"]
+            entry = entries.get(key)
+            if entry is not None and html_source_requires_repair(
+                vault, entry, kind=row.get("kind"), url_path=row.get("url_path")
+            ):
+                repair.add(key)
+    return frozenset(repair)
+
+
 def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str, object]]:
     """Resolve rows only from their stable keys and verified current manifest artifacts.
 
@@ -383,6 +459,20 @@ def reconcile_content_map(vault: Vault, rows: Sequence[object]) -> list[dict[str
                 "size": entry.size,
             }
         )
+        # Representation repair cannot be cleared by matching validators or an intact old twin.
+        # Re-derive it after every metadata rewrite/reload; no persistent flag can be lost.
+        if html_source_requires_repair(
+            vault, entry, kind=row.get("kind"), url_path=row.get("url_path")
+        ):
+            row.update(
+                {
+                    "availability": "download_gap",
+                    "path": None,
+                    "next_action": f"HTML document requires source repair; retry: a2l fetch {source_id}",
+                }
+            )
+            reconciled.append(row)
+            continue
         # A manifest entry for an older remote revision is not evidence that the current
         # revision was served. While the recorded validators disagree with the entry, the
         # download gap stands and the stale twin must not be promoted to citation evidence.
@@ -607,6 +697,10 @@ def _validate_topic_identity(row: Mapping[str, object]) -> None:
 __all__ = [
     "CONTENT_MAP_VERSION",
     "TopicMatch",
+    "has_zip_signature",
+    "html_repair_source_keys",
+    "html_source_requires_repair",
+    "is_html_document",
     "read_content_map",
     "reconcile_content_map",
     "resolve_course",

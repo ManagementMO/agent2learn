@@ -1764,11 +1764,12 @@ def _state_offering_ids(state: dict[str, object]) -> list[int]:
 
 
 def _print_sync_metadata(report: MetadataReport) -> None:
-    """Expose the complete cheap metadata value before browser or file work starts."""
+    """Expose available cheap metadata before browser or file work starts."""
 
+    deadline_label = "known deadlines" if report.gaps or report.errors else "deadlines"
     typer.echo(
         f"{console.GLYPH['ok']} metadata · {len(report.courses)} courses · "
-        f"{report.topic_count} topics · {report.deadline_count} deadlines"
+        f"{report.topic_count} topics · {report.deadline_count} {deadline_label}"
     )
 
 
@@ -1975,6 +1976,16 @@ def _print_file_estimates(topics: Iterable[object]) -> None:
         f"  priority set {priority} ({priority_duration}; "
         f"{PRIORITY_BUDGET_BYTES // 1_000_000} MB budget)"
     )
+    if document_unknown:
+        typer.echo(
+            "  documents with unknown sizes are excluded from priority; "
+            "full sync retains the normal per-file size limit"
+        )
+    if documents and not priority_topics:
+        typer.echo(
+            "  priority will download no documents; choose full here "
+            "or later run: a2l sync --all (the per-file size limit still applies)"
+        )
     typer.echo("  or download later")
     if media_count:
         media_label = _size_estimate(media_size, media_unknown, media_count)

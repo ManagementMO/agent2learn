@@ -11,8 +11,8 @@ network. Below is every request it can make, and who else is involved.
 
 ## What is stored, and where
 
-`<vault>` is the folder you approved during `a2l init`. `<config>` and `<state>` are the ordinary
-per-user directories for your operating system.
+`<vault>` is the folder you approved during `a2l init`. `<config>`, `<state>`, `<data>`, and
+`<logs>` are the ordinary per-user configuration, state, data, and log directories for your OS.
 
 | Data | Location | Default | Notes |
 | --- | --- | --- | --- |
@@ -23,9 +23,9 @@ per-user directories for your operating system.
 | Discussions | `<course>/_meta/` | **off** | Only if you enable them. Author names are pseudonymised. |
 | Grades | `<course>/_meta/` | **off** | Only if you enable them. |
 | LEARN API session | OS keyring, or a permission-restricted file if no keyring is available | required | The minimum cookies needed for the API, scoped to the LEARN origin. Nothing else from your browser. |
-| Dedicated browser profile | `<state>/browser-profile/` | created on first `a2l auth` | A separate Chrome/Edge profile holding your LEARN sign-in and any Duo "remember this device" state. It is not your normal browser profile. |
+| Dedicated browser profile | `<data>/browser-profile/` | created on first `a2l auth` | A separate Chrome/Edge profile holding your LEARN sign-in and any Duo "remember this device" state. It is not your normal browser profile. |
 | Configuration | `<config>/config.json` | created by `a2l init` | Vault path, school, and your collection choices. |
-| Local log | `<state>` log directory | on | Bounded and redacted; no cookies, tokens, or request bodies. |
+| Local log | `<logs>/a2l.log` and bounded rotations | on | Bounded and redacted; no cookies, tokens, or request bodies. |
 | Submission receipts | `<vault>/.a2l/submissions/` | only after an upload attempt | Course, folder id, filename, digest, size, timestamps, and outcome. Never absolute paths, identities, headers, bodies, or your confirmation phrase. |
 
 ## Every external network action
@@ -35,17 +35,24 @@ the command in the first column.
 
 | When | Who is contacted | Why |
 | --- | --- | --- |
-| `a2l auth` (interactive) | Your LEARN host, plus the identity hosts the school adapter declares for sign-in — for Waterloo that is **Duo** (`duosecurity.com`) and the Waterloo ADFS hand-off (`adfs.uwaterloo.ca`), over HTTPS on the default port | To let you sign in yourself, in a real browser. Requests to hosts the adapter has not declared are blocked; an undeclared page or iframe stops the sign-in, and an undeclared optional subresource is failed without leaving your machine. |
-| `a2l sync`, `a2l courses`, `a2l fetch`, `a2l today` after a sync | Your LEARN host only. The adapter may also declare first-party outline hosts, but Waterloo's list is currently empty, so nothing else is contacted | To read your own enrolment and material. Licensed and external targets are recorded as links and never fetched. |
+| `a2l auth` (interactive), or consented sign-in during `a2l init` | Your LEARN host, plus the identity hosts the school adapter declares for sign-in — for Waterloo that is **Duo** (`duosecurity.com`) and the Waterloo ADFS hand-off (`adfs.uwaterloo.ca`), over HTTPS on the default port | To let you sign in yourself, in a real browser. Requests to hosts the adapter has not declared are blocked; an undeclared page or iframe stops the sign-in, and an undeclared optional subresource is failed without leaving your machine. |
+| `a2l init`, `a2l sync`, `a2l fetch` | Your LEARN host only for course-data requests. Consented outline rendering may also use adapter-declared first-party outline hosts; Waterloo's list is currently empty | To read your own enrolment and selected material. Licensed and external targets are recorded as links and never fetched. HTML topic sources are fetched without crawling their referenced assets. |
+| `a2l auth --check`, `a2l doctor` (including `--report`) | Your LEARN host when a saved session is available | To verify API/session health. A redacted report does not mean the diagnostic command is offline. |
 | `a2l submit` | Your LEARN host | One upload, after your typed confirmation. Disabled in this build. |
 | `install.sh` / `install.ps1` | **Astral** (`astral.sh`) for uv; the host serving the installer script | To install a pinned uv and then Agent2Learn. |
 | Any install method | **PyPI** | To download Agent2Learn and its dependencies. |
 | `a2l upgrade` | **PyPI** (`pypi.org`) once, per invocation | To read the latest published version. This is the only command that contacts the network on its own behalf. |
-| `a2l doctor --open` | **GitHub** | Only when you pass `--open`; it opens a prefilled issue in your browser. |
+| `a2l doctor --open` | **GitHub**, after the ordinary diagnostic checks above | Only after an interactive preview and confirmation; opening the prefilled issue sends its displayed redacted body to GitHub. You still decide whether to submit the issue. |
 | `npx skills add ManagementMO/agent2learn` | **npm** and **GitHub**, plus whatever that CLI does | This is a third-party tool with its own network behaviour and its own telemetry disclosures. It is not Agent2Learn code, and choosing this route means accepting its terms. It installs skill documents only, not the engine. |
 
 Nothing here is a background task, a daemon, or a scheduled job. If you do not run a command,
 Agent2Learn makes no requests at all.
+
+`a2l courses`, `a2l today`, `a2l diff`, `a2l calendar`, `a2l where`, `a2l ground`, and `a2l check`
+read local captured state rather than refreshing LEARN. Their coverage is limited by the last
+successful capture and its recorded gaps. A source-topic archive is not a crawl of every linked
+PDF, media file, or other resource: links in captured HTML remain unverified unless the resource
+has its own separately captured source record.
 
 ### What those providers can see
 
