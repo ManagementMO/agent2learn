@@ -5,8 +5,8 @@
 The five open updates were re-reviewed against `25d6b3f`, not accepted from stale PR badges.
 The validation-fixes branch integrates their minimal changes together so the current full matrix
 tests the actual combination. The original Dependabot PRs are superseded only once those fixes
-merge. The version and installer bump are held separately for a fresh 0.1.6 release; source fixes
-do not alter the immutable production 0.1.5 artifact.
+merge. The version and installer bump are held separately for a fresh 0.1.7 release; source fixes
+do not alter the immutable production 0.1.6 artifact.
 
 | Proposal | Candidate decision | Exact change |
 | --- | --- | --- |
