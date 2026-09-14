@@ -253,7 +253,9 @@ def _keyring_call(operation: str, password: str | None = None) -> tuple[bool, ob
 def _keyring_requires_isolation() -> bool:
     """Return whether the selected OS keyring must be bounded in a child process."""
 
-    if sys.platform != "darwin" or keyring is None:
+    # Calling ``casefold`` prevents mypy from constant-folding this branch to unreachable on
+    # non-macOS hosts while preserving the runtime platform test.
+    if sys.platform.casefold() != "darwin" or keyring is None:
         return False
     try:
         backend = keyring.get_keyring()
