@@ -617,10 +617,16 @@ def _quiz_client(
     return client, school, quiz_handler
 
 
+@pytest.mark.parametrize("http_status", [403, 404])
 def test_missing_opt_in_discussion_collection_is_a_recorded_gap_without_blocking_files(
-    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    httpserver: HTTPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    http_status: int,
 ) -> None:
-    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, discussion_status=404)
+    client, school, quiz_response = _quiz_client(
+        httpserver, monkeypatch, discussion_status=http_status
+    )
     quiz_response.respond_with_json({"Next": None, "Objects": []})
     vault = Vault(Vault.claim(tmp_path / "vault"))
 
@@ -635,13 +641,13 @@ def test_missing_opt_in_discussion_collection_is_a_recorded_gap_without_blocking
     assert report.exit_code == 0
     assert report.files.downloaded == 1
     assert not report.files.errors
-    assert report.files.gaps == ("discussions unavailable (HTTP 404)",)
-    assert "discussions unavailable (HTTP 404)" in report.gaps
+    assert report.files.gaps == (f"discussions unavailable (HTTP {http_status})",)
+    assert f"discussions unavailable (HTTP {http_status})" in report.gaps
     coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
     coverage = json.loads(coverage_file.read_text(encoding="utf-8"))
     assert coverage["collections"]["discussions"] == {
         "status": "unavailable",
-        "http_status": 404,
+        "http_status": http_status,
     }
 
 
@@ -677,6 +683,27 @@ def test_missing_assignment_collection_is_a_recorded_gap_not_a_metadata_stop(
     assert doctor.next_command(checks) == "run: a2l today"
     public = doctor.report(checks)
     assert "metadata.collections" in public and "111111" not in public
+
+
+def test_forbidden_assignment_collection_is_a_recorded_gap_not_a_metadata_stop(
+    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, assignment_status=403)
+    quiz_response.respond_with_json({"Next": None, "Objects": []})
+    vault = Vault(Vault.claim(tmp_path / "vault"))
+
+    report = _pipeline().run_pipeline(client, vault, school, render_outlines=False)
+
+    assert report.exit_code == 0
+    assert not report.metadata.errors
+    assert report.files.downloaded == 1
+    assert "assignments unavailable (HTTP 403)" in report.gaps
+    coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
+    coverage = json.loads(coverage_file.read_text(encoding="utf-8"))
+    assert coverage["collections"]["assignments"] == {
+        "status": "unavailable",
+        "http_status": 403,
+    }
 
 
 def test_assignment_404_preserves_cache_until_a_confirmed_empty_response(
@@ -718,10 +745,14 @@ def test_assignment_404_preserves_cache_until_a_confirmed_empty_response(
     assert metadata_coverage.read_collection_coverage(directory, "assignments").status == "complete"
 
 
+@pytest.mark.parametrize("http_status", [403, 404])
 def test_missing_news_collection_is_a_recorded_gap_without_blocking_files(
-    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    httpserver: HTTPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    http_status: int,
 ) -> None:
-    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, news_status=404)
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, news_status=http_status)
     quiz_response.respond_with_json({"Next": None, "Objects": []})
     vault = Vault(Vault.claim(tmp_path / "vault"))
 
@@ -730,14 +761,18 @@ def test_missing_news_collection_is_a_recorded_gap_without_blocking_files(
     assert report.exit_code == 0
     assert not report.metadata.errors
     assert report.files.downloaded == 1
-    assert any("news" in gap and "404" in gap for gap in report.gaps)
-    assert "news unavailable (HTTP 404)" in report.metadata.gaps
+    assert any("news" in gap and str(http_status) in gap for gap in report.gaps)
+    assert f"news unavailable (HTTP {http_status})" in report.metadata.gaps
 
 
+@pytest.mark.parametrize("http_status", [403, 404])
 def test_missing_opt_in_grade_collection_is_a_recorded_gap_without_blocking_files(
-    httpserver: HTTPServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    httpserver: HTTPServer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    http_status: int,
 ) -> None:
-    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, grades_status=404)
+    client, school, quiz_response = _quiz_client(httpserver, monkeypatch, grades_status=http_status)
     quiz_response.respond_with_json({"Next": None, "Objects": []})
     vault = Vault(Vault.claim(tmp_path / "vault"))
 
@@ -748,12 +783,12 @@ def test_missing_opt_in_grade_collection_is_a_recorded_gap_without_blocking_file
     assert report.exit_code == 0
     assert not report.metadata.errors
     assert report.files.downloaded == 1
-    assert "grades unavailable (HTTP 404)" in report.metadata.gaps
+    assert f"grades unavailable (HTTP {http_status})" in report.metadata.gaps
     coverage_file = report.metadata.courses[0].directory / "_meta" / "metadata_coverage.json"
     coverage = json.loads(coverage_file.read_text(encoding="utf-8"))
     assert coverage["collections"]["grades"] == {
         "status": "unavailable",
-        "http_status": 404,
+        "http_status": http_status,
     }
 
 

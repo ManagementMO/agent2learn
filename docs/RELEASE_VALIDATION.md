@@ -1,14 +1,14 @@
-# Agent2Learn 0.1.7 validation scope
+# Agent2Learn 0.1.8 validation scope
 
-This patch release repairs defects reproduced while using the production 0.1.5 and 0.1.6 wheels. Source, local
+This patch release repairs defects reproduced while using the production 0.1.5, 0.1.6, and 0.1.7 wheels. Source, local
 candidate, CI, and registry publication are separate evidence: a passing source checkout does
 not prove that a released package contains the fixes. Publication must still pass the protected
 one-build TestPyPI-to-PyPI workflow and exact-artifact verification.
 
 ## Release decision
 
-On 2026-09-14, the owner approved proceeding with the current frozen private PDF baseline and
-an explicitly limited, macOS-validated 0.1.7 release scope after the remaining executable checks.
+On 2026-09-15, the owner approved proceeding with the current frozen private PDF baseline and
+an explicitly limited, macOS-validated 0.1.8 release scope after the remaining executable checks.
 This records a replacement-baseline decision, **not reproduction of the lost historical
 benchmark**. Windows/Linux graphical login and the outstanding human visual/semantic comparison
 remain unverified; they are not converted into passing results by this decision.
@@ -39,8 +39,14 @@ submission, artifact-source, or branch-protection safeguard is relaxed for publi
   actionable recovery. Redacted support reports retain their allowlisted category/status format.
 - Optional D2L collections can be absent on a course or installation. HTTP 404 for assignments,
   news, quizzes, opt-in grades, or opt-in discussions is now recorded as unavailable coverage;
-  independent course content still downloads, converts, indexes, and audits. Unexpected response
-  shapes, authentication failures, server failures, and local integrity failures remain fatal.
+  HTTP 403 is treated the same way for optional non-quiz collections when a valid session is denied
+  access. Independent course content still downloads, converts, indexes, and audits. Unexpected
+  response shapes, authentication failures, server failures, and local integrity failures remain
+  fatal.
+- External-link stub reservations are scoped to their materialized module directory, and the
+  shared path allocator now owns collision suffix budgeting. Identical titles in different modules
+  no longer receive unnecessary suffixes, and long titles cannot make metadata sync exhaust its
+  allocation loop.
 
 These fixes do not modify the immutable 0.1.5 package or authorize access to denied resources.
 
@@ -48,12 +54,12 @@ These fixes do not modify the immutable 0.1.5 package or authorize access to den
 
 | Area | Evidence | Limit |
 | --- | --- | --- |
-| Same-machine macOS student workflow | One selected course; real quiz denial retained; accessible HTML topics and assignment prompts captured; repeated sync preserves originals/twins and stable topic IDs | One account/course, not all courses or an unaided fresh-OS install |
+| Same-machine macOS student workflow | Fresh disposable vaults; one selected course completed metadata and full sync with 50 documents downloaded and 50 converted; real quiz denial retained; exact two-course selection reached the file-choice stage with assignment and quiz gaps and exited successfully | One account/course set, not an unaided fresh-OS install |
 | Permissions and exclusions | Quiz access remains unavailable rather than a successful empty collection; external resources remain links | Does not grant quiz permission or crawl external/licensed resources |
 | Navigation and evidence | Assignment title/ID lookup succeeds; cited excerpts match their local lines; private draft/report/answer canaries are not course sources | Lexical evidence is not correctness, semantic verification, or a predicted grade |
 | Calendar and diagnostics | Live exports disclose quiz uncertainty; doctor retains coverage warnings and one useful next command; synthetic tests cover cached/known-empty/restored states | External calendar-client import and naturally restored live permissions are untested |
 | Installed base package | Isolated macOS and persistent Docker Linux installs, installed CLI/core/skills checks, container restart, and default-disabled sensitive capabilities | Docker is not graphical Linux authentication or a full desktop reboot |
-| Source regression suite | Stdout-corrected source: 1,312 passed, six explicit skips, 80.99% branch-aware coverage; independent review found an additional missing-twin case before finalization | Local tests do not replace required exact-head CI or published-wheel checks |
+| Source regression suite | 1,332 passed, six explicit skips, 80.95% branch-aware coverage; new 403 collection and external-stub collision regressions are covered | Local tests do not replace required exact-head CI or published-wheel checks |
 
 Windows CI has also exposed timing failures: one PowerShell fixture subprocess exceeded its
 20-second bound and a separate Python 3.14 job exceeded the 30-minute job limit on a post-merge
