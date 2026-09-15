@@ -92,10 +92,11 @@ def quiz_coverage(complete: bool, error: Exception | None) -> QuizCoverage:
 class CollectionCoverage:
     """Coverage state for an optional non-quiz metadata collection.
 
-    A missing collection route is different from a successfully fetched empty collection.  D2L
-    installations can omit optional tools entirely, so HTTP 404 is recorded as unavailable and
-    does not prevent independently accessible course content from being archived.  Other failed
-    requests remain incomplete and are still fatal to the metadata phase.
+    An unavailable collection is different from a successfully fetched empty collection. D2L
+    installations can omit optional tools entirely or deny an otherwise valid session access to
+    one collection, so HTTP 403 and 404 are recorded as unavailable and do not prevent
+    independently accessible course content from being archived. Other failed requests remain
+    incomplete and are still fatal to the metadata phase.
     """
 
     status: CoverageStatus = "unknown"
@@ -110,8 +111,8 @@ class CollectionCoverage:
             raise ValueError("invalid collection coverage HTTP status")
         if self.status in {"complete", "unknown"} and self.http_status is not None:
             raise ValueError("unexpected collection coverage diagnostic")
-        if self.status == "unavailable" and self.http_status != 404:
-            raise ValueError("unavailable collection coverage requires HTTP 404")
+        if self.status == "unavailable" and self.http_status not in {403, 404}:
+            raise ValueError("unavailable collection coverage requires HTTP 403 or 404")
 
     def gap(self, collection: str) -> str | None:
         if collection not in _OPTIONAL_COLLECTIONS:
@@ -138,8 +139,8 @@ def collection_coverage(
         return CollectionCoverage("complete")
     response = getattr(error, "response", None)
     status = getattr(response, "status_code", None)
-    if type(status) is int and status == 404:
-        return CollectionCoverage("unavailable", 404)
+    if type(status) is int and status in {403, 404}:
+        return CollectionCoverage("unavailable", status)
     return CollectionCoverage(
         "incomplete",
         status if type(status) is int and 400 <= status <= 599 else None,

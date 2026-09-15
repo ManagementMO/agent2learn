@@ -117,6 +117,77 @@ def test_external_stub_keeps_plain_paths_at_long_path_boundaries(
     assert calls == [stub]
 
 
+def test_external_stub_collisions_are_scoped_to_their_module_directory(tmp_path: Path) -> None:
+    """Identical external titles in different modules may keep the same local filename."""
+    vault = Vault(tmp_path)
+    course_dir = vault.root / "Term 1261" / "COURSE101_1261"
+    rows: list[dict[str, object]] = []
+    for topic_id, module in ((1, "Week 1"), (2, "Week 2")):
+        rows.append(
+            {
+                "source_key": f"uwaterloo:111111:topic:{topic_id}",
+                "source_id": str(topic_id),
+                "topic_id": topic_id,
+                "course_code": "COURSE101",
+                "course_name": "Synthetic Course",
+                "title": "Shared resource",
+                "kind": "Link",
+                "module_path": [module],
+                "availability": "external_link",
+                "view_url": f"https://example.test/topic/{topic_id}",
+            }
+        )
+
+    result = ingest_module._materialize_external_stubs(
+        rows,
+        course_dir=course_dir,
+        vault=vault,
+        school=FakeClient([]).school,
+        course=course(),
+    )
+
+    stub_paths = [row["stub_path"] for row in result]
+    assert stub_paths == [
+        "Term 1261/COURSE101_1261/content/Week 1/Shared resource.url.txt",
+        "Term 1261/COURSE101_1261/content/Week 2/Shared resource.url.txt",
+    ]
+    assert all((vault.root / str(path)).is_file() for path in stub_paths)
+
+
+def test_external_stub_long_duplicate_titles_get_a_bounded_suffix(tmp_path: Path) -> None:
+    """A truncated title must still leave room for a deterministic collision suffix."""
+    vault = Vault(tmp_path)
+    course_dir = vault.root / "Term 1261" / "COURSE101_1261"
+    title = "X" * 55
+    rows: list[dict[str, object]] = [
+        {
+            "source_key": f"uwaterloo:111111:topic:{topic_id}",
+            "source_id": str(topic_id),
+            "topic_id": topic_id,
+            "course_code": "COURSE101",
+            "course_name": "Synthetic Course",
+            "title": title,
+            "kind": "Link",
+            "module_path": [f"Week {topic_id}"],
+            "availability": "external_link",
+            "view_url": f"https://example.test/topic/{topic_id}",
+        }
+        for topic_id in (1, 2)
+    ]
+
+    result = ingest_module._materialize_external_stubs(
+        rows,
+        course_dir=course_dir,
+        vault=vault,
+        school=FakeClient([]).school,
+        course=course(),
+    )
+
+    stub_paths = [row["stub_path"] for row in result]
+    assert len(set(stub_paths)) == 2
+    assert all((vault.root / str(path)).is_file() for path in stub_paths)
+
+
 @pytest.mark.skipif(os.name == "nt", reason="symlink creation may require elevation")
 def test_metadata_refuses_a_linked_course_directory_without_writing_outside_vault(
     tmp_path: Path,

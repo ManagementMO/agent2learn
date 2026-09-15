@@ -9,7 +9,7 @@ quoting it.
 
 ## Install
 
-For the measured macOS workflow, repaired defects, PDF coverage gaps, and still-unverified
+This documentation describes Agent2Learn 0.1.8. For the measured macOS workflow, repaired defects, PDF coverage gaps, and still-unverified
 human/platform checks, see the [release validation scope](https://github.com/ManagementMO/agent2learn/blob/main/docs/RELEASE_VALIDATION.md).
 Automated cross-platform tests are not a claim that every live login or course conversion works.
 

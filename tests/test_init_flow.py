@@ -351,8 +351,9 @@ def test_init_runs_consent_and_sync_stages_in_order_and_persists_defaults(
     assert result.stdout.index("reading 2 courses") < result.stdout.index("Files:")
 
 
+@pytest.mark.parametrize("http_status", [403, 404])
 def test_init_reaches_file_choice_after_recorded_optional_metadata_gap(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, http_status: int
 ) -> None:
     world = _prepare_world(monkeypatch, tmp_path)
 
@@ -363,10 +364,10 @@ def test_init_reaches_file_choice_after_recorded_optional_metadata_gap(
             metadata_coverage.write_collection_coverage(
                 course_report.directory,
                 "assignments",
-                metadata_coverage.CollectionCoverage("unavailable", 404),
+                metadata_coverage.CollectionCoverage("unavailable", http_status),
                 root=world.root,
             )
-        return replace(report, gaps=("assignments unavailable (HTTP 404)",))
+        return replace(report, gaps=(f"assignments unavailable (HTTP {http_status})",))
 
     monkeypatch.setattr(cli, "ingest_metadata", partial_metadata)
 
@@ -374,7 +375,7 @@ def test_init_reaches_file_choice_after_recorded_optional_metadata_gap(
 
     assert result.exit_code == 0, result.output
     assert "assignment inventory unconfirmed" in result.stdout
-    assert "assignments unavailable (HTTP 404)" in result.stderr
+    assert f"assignments unavailable (HTTP {http_status})" in result.stderr
     assert world.file_calls
     assert world.file_calls[0]["scope"] == "priority"
     assert _state(world.root)["metadata_complete"] is True

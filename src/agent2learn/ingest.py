@@ -236,9 +236,10 @@ def _record_optional_collection(
 ) -> metadata_coverage.CollectionCoverage:
     """Persist safe coverage for an optional collection and classify its failure.
 
-    A 404 means that the optional D2L tool or collection is not available for this course. It is
-    not evidence of an empty list, but it also must not prevent independent content from syncing.
-    All other failures remain metadata errors. A successful retry clears a prior recorded gap.
+    A 403 or 404 means that the optional D2L tool or collection is not available for this course.
+    It is not evidence of an empty list, but it also must not prevent independent content from
+    syncing. All other failures remain metadata errors. A successful retry clears a prior
+    recorded gap.
     """
 
     coverage = metadata_coverage.collection_coverage(collection, complete, error)
@@ -1675,7 +1676,9 @@ def _materialize_external_stubs(
     school: School,
     course: CourseRef,
 ) -> list[dict[str, object]]:
-    reserved: set[str] = set()
+    # A filename only collides with a sibling. Keep reservations per materialized module
+    # directory so two modules may legitimately contain identically titled external links.
+    reserved_by_folder: dict[str, set[str]] = defaultdict(set)
     for row in sorted(rows, key=lambda value: str(value.get("source_key", ""))):
         if row.get("availability") != "external_link":
             continue
@@ -1687,7 +1690,8 @@ def _materialize_external_stubs(
             destination = _content_directory(course_dir, record.module_path) / (
                 f"{paths.safe_name(record.title)}.url.txt"
             )
-            stub = _unique_reserved(destination, reserved)
+            folder_key = destination.parent.as_posix()
+            stub = _unique_reserved(destination, reserved_by_folder[folder_key])
             row["stub_path"] = paths.rel_posix(stub, vault.root)
         paths.ensure_dir(stub.parent, root=vault.root)
         if paths.is_link(stub):
@@ -2752,15 +2756,18 @@ def _topic_filename(topic: TopicRecord) -> str:
 
 
 def _unique_reserved(destination: Path, reserved: set[str]) -> Path:
-    candidate = paths.unique_path(destination)
-    for number in range(1, 100_000):
-        if _canonical_name(candidate) not in reserved and not paths.collides(candidate):
-            reserved.add(_canonical_name(candidate))
-            return candidate
-        stem, extension = _split_name(candidate.name)
-        suffix = "" if number == 1 else f"_{number}"
-        candidate = candidate.with_name(paths.safe_name(f"{stem}{suffix}{extension}"))
-    raise A2LError("could not allocate a unique content path")
+    # Delegate truncation and suffix budgeting to the shared path allocator. The previous
+    # hand-rolled loop applied ``safe_name`` after adding a suffix, so a long title could be
+    # truncated back to the same candidate forever. Convert the local reservation names into
+    # sibling paths; ``unique_path`` then applies the same case-folded, filesystem-aware rules
+    # to both in-memory and on-disk collisions.
+    reserved_paths = tuple(destination.with_name(name) for name in reserved)
+    try:
+        candidate = paths.unique_path(destination, reserved=reserved_paths)
+    except (RuntimeError, ValueError) as exc:
+        raise A2LError("could not allocate a unique content path") from exc
+    reserved.add(_canonical_name(candidate))
+    return candidate
 
 
 def _canonical_name(path: Path) -> str:
