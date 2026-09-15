@@ -1,6 +1,6 @@
-# Agent2Learn 0.1.8 validation scope
+# Agent2Learn 0.1.9 validation scope
 
-This patch release repairs defects reproduced while using the production 0.1.5, 0.1.6, and 0.1.7 wheels. Source, local
+This patch release repairs defects reproduced while using the production 0.1.5, 0.1.6, 0.1.7, and 0.1.8 wheels. Source, local
 candidate, CI, and registry publication are separate evidence: a passing source checkout does
 not prove that a released package contains the fixes. Publication must still pass the protected
 one-build TestPyPI-to-PyPI workflow and exact-artifact verification.
@@ -8,7 +8,7 @@ one-build TestPyPI-to-PyPI workflow and exact-artifact verification.
 ## Release decision
 
 On 2026-09-15, the owner approved proceeding with the current frozen private PDF baseline and
-an explicitly limited, macOS-validated 0.1.8 release scope after the remaining executable checks.
+an explicitly limited, macOS-validated 0.1.9 release scope after the remaining executable checks.
 This records a replacement-baseline decision, **not reproduction of the lost historical
 benchmark**. Windows/Linux graphical login and the outstanding human visual/semantic comparison
 remain unverified; they are not converted into passing results by this decision.
@@ -47,6 +47,11 @@ submission, artifact-source, or branch-protection safeguard is relaxed for publi
   shared path allocator now owns collision suffix budgeting. Identical titles in different modules
   no longer receive unnecessary suffixes, and long titles cannot make metadata sync exhaust its
   allocation loop.
+- Standalone `a2l skills install` now targets detected global user-level agent directories by
+  default; `--project PATH` remains the explicit project-local choice and `--global` remains an
+  explicit spelling of the default. Non-interactive invocation still refuses to write without a
+  controlling terminal, and the onboarding prompt's project-local path remains separately
+  consented.
 
 These fixes do not modify the immutable 0.1.5 package or authorize access to denied resources.
 

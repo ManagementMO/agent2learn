@@ -30,13 +30,15 @@ You approve the vault and skill destinations and complete WatIAM and Duo in the 
 | `a2l-study`      | Navigate course sources and cite paths and line numbers.                         |
 | `a2l-coursework` | Read assignment and AI-policy instructions, gather sources, and review evidence. |
 
-Onboarding can install the skills into detected project directories for **Claude Code, Codex, Cursor, and Agent Skills-compatible tools**. To install or refresh them later:
+Onboarding can install the skills into the vault's detected project directories for **Claude Code, Codex, Cursor, and Agent Skills-compatible tools**. To install or refresh global user-level skills later, run the standalone command:
 
 ```bash
 a2l skills install
 ```
 
-You see the destinations and approve the changes. Local edits and unrelated files are preserved; conflicts are reported.
+It targets detected global destinations by default, shows the destinations, and asks before writing. Use
+`a2l skills install --project PATH` when you explicitly want project-local destinations. Local edits and
+unrelated files are preserved; conflicts are reported.
 
 ## Already use the skills ecosystem?
 

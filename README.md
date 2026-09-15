@@ -9,7 +9,7 @@ quoting it.
 
 ## Install
 
-This documentation describes Agent2Learn 0.1.8. For the measured macOS workflow, repaired defects, PDF coverage gaps, and still-unverified
+This documentation describes Agent2Learn 0.1.9. For the measured macOS workflow, repaired defects, PDF coverage gaps, and still-unverified
 human/platform checks, see the [release validation scope](https://github.com/ManagementMO/agent2learn/blob/main/docs/RELEASE_VALIDATION.md).
 Automated cross-platform tests are not a claim that every live login or course conversion works.
 
@@ -64,7 +64,11 @@ to pick up the new executable path, but you do not need to repeat completed setu
 
 `a2l init` offers to run `a2l skills install`, which writes the four Agent2Learn skills into the
 agent directories it finds, after previewing exactly what it will touch. You can rerun
-`a2l skills install` at any time.
+`a2l skills install` at any time. When run without `--project`, the standalone command targets
+detected global user-level agent directories by default; use `a2l skills install --project PATH`
+for an explicit project-local install. `--global` remains available as an explicit spelling of the
+default global scope. `a2l init` continues to offer a separate, explicitly consented project-local
+installation for the vault being set up.
 
 Separately, `npx skills add ManagementMO/agent2learn` is an optional skills-only route through the
 skills ecosystem. It **does not install** the `a2l` engine — only the skill documents — so the
@@ -96,7 +100,8 @@ a2l courses                      the offline view of your enrolment
 a2l fetch SOURCE_ID              repair one missing file
 a2l auth                         sign in, or --paste a session, or --clear-profile
 a2l doctor                       diagnose one problem and get one next step
-a2l skills install               install the agent skills
+a2l skills install               install/refresh global agent skills by default
+a2l skills install --project PATH install/refresh project-local agent skills
 a2l privacy status               collection flags and redacted storage locations
 a2l privacy purge CATEGORY       preview an exact grades/discussions/logs purge
 a2l upgrade [--check]            the only command that contacts the network on its own

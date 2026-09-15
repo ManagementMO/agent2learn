@@ -11,7 +11,7 @@ import pytest
 from conftest import strip_ansi
 from typer.testing import CliRunner
 
-from agent2learn import __version__, config, skills
+from agent2learn import __version__, cli, config, skills
 from agent2learn.cli import app
 from agent2learn.doctor import Check, report, run_checks
 from agent2learn.vault import Vault
@@ -841,6 +841,64 @@ def test_cli_installs_under_skills_install_subcommand_with_explicit_project(
     assert "Install Agent2Learn skills?" in result.output
     assert "created" in result.output
     assert project.joinpath(".agents", "skills", "a2l-coursework", "SKILL.md").is_file()
+
+
+def test_cli_defaults_to_global_skill_install_without_project_or_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    home = tmp_path / "home"
+    home.joinpath(".codex").mkdir(parents=True)
+    monkeypatch.setattr(skills, "source_root", lambda: source)
+    monkeypatch.setattr(skills.Path, "home", classmethod(lambda _cls: home))
+    monkeypatch.setattr(cli, "_interactive_terminal", lambda: True)
+
+    result = CliRunner().invoke(app, ["skills", "install"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Install Agent2Learn skills?" in result.output
+    assert home.joinpath(".codex", "skills", "a2l-coursework", "SKILL.md").is_file()
+
+
+def test_cli_global_flag_remains_compatible_with_global_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    home = tmp_path / "home"
+    home.joinpath(".codex").mkdir(parents=True)
+    monkeypatch.setattr(skills, "source_root", lambda: source)
+    monkeypatch.setattr(skills.Path, "home", classmethod(lambda _cls: home))
+    monkeypatch.setattr(cli, "_interactive_terminal", lambda: True)
+
+    result = CliRunner().invoke(app, ["skills", "install", "--global"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert home.joinpath(".codex", "skills", "a2l-setup", "SKILL.md").is_file()
+
+
+def test_cli_default_global_skill_install_still_refuses_noninteractive_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _synthetic_source(tmp_path / "source")
+    home = tmp_path / "home"
+    home.joinpath(".codex").mkdir(parents=True)
+    monkeypatch.setattr(skills, "source_root", lambda: source)
+    monkeypatch.setattr(skills.Path, "home", classmethod(lambda _cls: home))
+
+    result = CliRunner().invoke(app, ["skills", "install"], input="y\n")
+
+    assert result.exit_code == 1
+    assert "non-interactive skills install needs explicit --project or --global" in result.output
+    assert not home.joinpath(".codex", "skills").exists()
+
+
+def test_cli_skills_help_identifies_global_default() -> None:
+    result = CliRunner().invoke(app, ["skills", "install", "--help"])
+    output = strip_ansi(result.output)
+
+    assert result.exit_code == 0, output
+    assert "global by default" in output
+    assert "--project" in output
 
 
 def test_public_skill_artifacts_validate_frontmatter_manifest_and_contracts() -> None:

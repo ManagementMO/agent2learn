@@ -76,13 +76,13 @@ Every result is retrieval evidence. It is not a correctness, grading, or academi
 
 ## Agent skills
 
-| Command                             | Purpose                                                         |
-| ----------------------------------- | --------------------------------------------------------------- |
-| `a2l skills install`                | Preview and install the four skills for the configured project. |
-| `a2l skills install --project PATH` | Target detected agent directories under a specific project.     |
-| `a2l skills install --global`       | Target detected user-level skill directories.                   |
-| `a2l skills install --link`         | Opt into links instead of the default copies.                   |
-| `a2l skills install --force`        | Explicitly refresh managed skill directories after preview.     |
+| Command                             | Purpose                                                     |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `a2l skills install`                | Preview and install the four skills globally by default.    |
+| `a2l skills install --project PATH` | Target detected agent directories under a specific project. |
+| `a2l skills install --global`       | Explicitly target detected user-level skill directories.    |
+| `a2l skills install --link`         | Opt into links instead of the default copies.               |
+| `a2l skills install --force`        | Explicitly refresh managed skill directories after preview. |
 
 `--project` and `--global` are mutually exclusive. Use the preview to see exactly which files will change.
 

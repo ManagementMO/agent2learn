@@ -550,10 +550,12 @@ opening a browser.
 
 **The CLI owns onboarding; the repository remains standards-installable.** `a2l skills install`
 keeps the critical path on a single runtime, asks before writing, writes only to approved agent
-directories, and can refresh stale copies on upgrade. Project-local installation into the
-configured vault root is the onboarding default; it never treats the installer's arbitrary current
-working directory as the project. Global installation is an explicit choice. The same canonical
-`skills/` directories may also be installed directly with an Agent Skills-compatible installer.
+directories, and can refresh stale copies on upgrade. The standalone command targets detected
+global user-level destinations by default; `--project PATH` is the explicit project-local choice,
+and `--global` remains an explicit spelling of the default. `a2l init` may separately offer a
+consented project-local installation while setting up a vault; it never treats the installer's
+arbitrary current working directory as the project. The same canonical `skills/` directories may
+also be installed directly with an Agent Skills-compatible installer.
 Detected CLI targets, reviewed against the upstream `skills` registry for each release:
 
 | Agent | Project | Global |
@@ -564,9 +566,9 @@ Detected CLI targets, reviewed against the upstream `skills` registry for each r
 | Universal Agent Skills target | `.agents/skills/` | `~/.config/agents/skills/` |
 
 Shared project paths are written once even when several detected agents consume them. Standalone
-`a2l skills install --project PATH` defaults `PATH` to the configured vault and requires an explicit
-path if no vault is configured. It never creates marker directories merely to make agent detection
-succeed.
+`a2l skills install --project PATH` requires an explicit project path; the internal project resolver
+may still use the configured vault for onboarding callers. The standalone command never creates
+marker directories merely to make agent detection succeed.
 
 `skills.sh.json` groups the four canonical skills for discovery. It does not contain skill text,
 run code, install the Python engine, or introduce a second release version. The README presents

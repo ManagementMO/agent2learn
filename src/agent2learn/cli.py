@@ -69,7 +69,10 @@ app = typer.Typer(
 
 skills_app = typer.Typer(
     name="skills",
-    help="Install or refresh Agent2Learn's canonical agent skills.",
+    help=(
+        "Install or refresh Agent2Learn's canonical agent skills "
+        "(global by default; use --project for project-local skills)."
+    ),
     no_args_is_help=True,
 )
 app.add_typer(skills_app, name="skills")
@@ -905,7 +908,10 @@ def skills_install(
         bool,
         typer.Option(
             "--global",
-            help="Install into detected user-level agent skill directories.",
+            help=(
+                "Install into detected user-level agent skill directories "
+                "(global by default when --project is omitted)."
+            ),
         ),
     ] = False,
     project: Annotated[
@@ -930,7 +936,7 @@ def skills_install(
         ),
     ] = False,
 ) -> None:
-    """Install or refresh the four canonical Agent2Learn skills."""
+    """Install or refresh the four canonical skills, globally unless --project is supplied."""
 
     if global_install and project is not None:
         raise typer.BadParameter("--global and --project are mutually exclusive")
@@ -938,10 +944,13 @@ def skills_install(
         skills_module.ensure_interactive_scope(
             explicit_project=project is not None,
             global_install=global_install,
-            stdin_is_tty=sys.stdin.isatty(),
+            stdin_is_tty=_interactive_terminal(),
         )
-        resolved_project = Path.cwd() if global_install else skills_module.resolve_project(project)
-        scope: skills_module.Scope = "global" if global_install else "project"
+        # A missing --project is the global default.  Keep --global as a readable, backwards-
+        # compatible spelling, while --project remains the only way to opt into project-local
+        # writes.  The interactive guard above still prevents the default from writing in a pipe.
+        resolved_project = Path.cwd() if project is None else skills_module.resolve_project(project)
+        scope: skills_module.Scope = "global" if project is None else "project"
 
         def confirm(preview: str) -> bool:
             typer.echo(preview, nl=False)
