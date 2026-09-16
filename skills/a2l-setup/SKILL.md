@@ -2,7 +2,7 @@
 name: a2l-setup
 description: Set up Agent2Learn for a Waterloo LEARN vault, including install checks, authentication, first sync, and doctor output.
 metadata:
-  version: 0.1.8
+  version: 0.1.9
 ---
 
 # Agent2Learn Setup
@@ -13,7 +13,7 @@ Use this skill when the user asks to set up Agent2Learn, connect LEARN, create t
 
 1. Confirm `a2l --version` runs before assuming the package is installed.
 2. Run `a2l doctor` and read the single `Next:` command. Treat warnings as setup work, not as fatal proof.
-3. Run `a2l skills install` for the configured vault, or `a2l skills install --project PATH` when no vault is configured yet. The command previews every destination and asks once before writing.
+3. Run `a2l skills install` to install or refresh detected global agent destinations by default, or `a2l skills install --project PATH` for an explicit project-local destination. The command previews every destination and asks once before writing.
 4. Run `a2l auth` for the same-device browser flow. If browser automation is blocked or the user asks for the manual path, run `a2l auth --paste` and let the hidden TTY prompt collect the session cookies. Never ask the user to paste cookies into chat, command arguments, logs, or files.
 5. Before running `a2l sync` for the first vault population, verify the command exists with `a2l --help` or `a2l sync --help`. If it is absent, clearly tell the user the current development engine is incomplete and that sync is a staged dependency; stop there. Do not invent a substitute or run a different command.
 6. Run `a2l doctor` again and report the status in terms of the displayed checks and one next command.

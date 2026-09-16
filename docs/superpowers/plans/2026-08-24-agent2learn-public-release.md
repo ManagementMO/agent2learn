@@ -167,7 +167,7 @@ agent2learn/
     ├── test_excluded_hosts.py        ★ licensed content is never fetched
     ├── test_check.py                 ★ evidence-status classification and caveats
     ├── test_doctor_redaction.py      ★ no identifiers leak
-    ├── test_skills_install.py        consent, project-local default, pack compatibility
+    ├── test_skills_install.py        consent, global default, pack compatibility
     ├── test_submit_gate.py           no unattended supported-CLI bypass to a mutating POST
     └── test_no_forbidden_calls.py    lint: chmod / raw exists / string paths
 ```
@@ -2036,14 +2036,15 @@ behavior has a focused regression test, including red-then-green proofs for the 
 Steps:
 
 - [x] **Step 1:** Write `tests/test_skills_install.py`: detection finds only directories that exist;
-      no directory is written before consent; project-local installation is the default; install
+      no directory is written before consent; standalone installation is global by default and
+      project-local installation is explicit; install
       **copies** by default (not symlink — Windows needs elevation); `--force` overwrites only the
       four recognized Agent2Learn skill directories after previewing the diff; frontmatter `name`
       matches the directory name and validates against the Agent Skills spec (name ≤ 64 chars,
-      `[a-z0-9-]`, no leading/trailing/double hyphen; description ≤ 1024 chars). Global installation
-      requires an explicit `--global`; the project root defaults to the configured vault rather
-      than process CWD; no configured vault requires an explicit `--project PATH`; an absent TTY
-      requires explicit paths and otherwise refuses. Assert the current target registry exactly:
+      `[a-z0-9-]`, no leading/trailing/double hyphen; description ≤ 1024 chars). `--global` remains
+      an explicit spelling; omitting `--project` selects global scope, while an explicit project
+      path is never inferred from process CWD. An absent TTY requires explicit paths and otherwise
+      refuses. Assert the current target registry exactly:
       Claude `.claude/skills`/`~/.claude/skills`, Codex
       `.agents/skills`/`~/.codex/skills`, Cursor `.agents/skills`/`~/.cursor/skills`, and universal
       `.agents/skills`/`~/.config/agents/skills`. Shared project destinations are written once.
