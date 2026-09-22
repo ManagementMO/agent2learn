@@ -1,6 +1,8 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
+import { satteri } from '@astrojs/markdown-satteri';
+import { accessibleTables } from './src/lib/accessibleTables.mjs';
 import { socialHead } from './src/lib/social.ts';
 
 // Set SITE_URL only when the owner chooses a real deployment origin.
@@ -8,6 +10,7 @@ import { socialHead } from './src/lib/social.ts';
 export default defineConfig({
   site: process.env.SITE_URL || undefined,
   trailingSlash: 'always',
+  markdown: { processor: satteri({ hastPlugins: [accessibleTables] }) },
   vite: { plugins: [tailwindcss()] },
   integrations: [
     starlight({

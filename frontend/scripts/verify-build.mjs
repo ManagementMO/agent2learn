@@ -53,6 +53,16 @@ for (const [file, document] of documents) {
   if (document.querySelectorAll('h1').length !== 1)
     failures.push(`${path}: expected one main heading`);
   const codeLabels = new Set();
+  for (const table of document.querySelectorAll('.sl-markdown-content table')) {
+    if (table.getAttribute('tabindex') !== '0')
+      failures.push(`${path}: documentation tables must support keyboard scrolling`);
+    if (
+      !table.getAttribute('aria-label') &&
+      !table.getAttribute('aria-labelledby') &&
+      !table.querySelector('caption')
+    )
+      failures.push(`${path}: focusable tables need an accessible name`);
+  }
   // A wide wordmark in the old square slot is visibly compressed. Check the
   // emitted component on every route, not just its source or the home page.
   const marks = document.querySelectorAll('svg.brand-mark');
