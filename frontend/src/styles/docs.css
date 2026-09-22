@@ -149,6 +149,10 @@ h1#_top {
   font-size: 14px;
   line-height: 1.7;
 }
+.sl-markdown-content table:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
 .sl-markdown-content :not(pre) > code {
   font-size: 0.85em;
   /* Keep short commands together, but let a long path fit a narrow column.

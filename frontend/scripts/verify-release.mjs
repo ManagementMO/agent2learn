@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { constants } from 'node:fs';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -86,6 +86,53 @@ try {
     home.querySelector('link[rel="canonical"]').getAttribute('href'),
     'https://release-preview.invalid/',
   );
+
+  // Exercise the rendered command, not a separately maintained test command.
+  // Stub only the download: no package installation or onboarding can run here.
+  if (process.platform !== 'win32') {
+    const posixCommand = [...install.querySelectorAll('[role="tabpanel"] pre')]
+      .map((pre) => pre.textContent.trim())
+      .find((command) => command.includes('/install.sh'));
+    assert.ok(posixCommand, 'Expected the rendered macOS/Linux installation command.');
+    const stubBin = join(candidate, 'installer-check-bin');
+    await mkdir(stubBin);
+    await writeFile(
+      join(stubBin, 'curl'),
+      `#!/bin/sh
+if [ "$A2L_TEST_FETCH_FAIL" = "1" ]; then
+  printf '%s\\n' 'echo partial-installer-executed'
+  exit 22
+fi
+printf '%s\\n' 'IFS= read -r reply' 'printf "%s\\n" "$reply"'
+`,
+      { mode: 0o700 },
+    );
+    const commandEnv = { ...process.env, PATH: `${stubBin}:${process.env.PATH}` };
+    const handoff = spawnSync('bash', ['-c', posixCommand], {
+      cwd: candidate,
+      env: { ...commandEnv, A2L_TEST_FETCH_FAIL: '0' },
+      input: 'a2l-stdin-check\n',
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    assert.equal(handoff.status, 0, handoff.stderr);
+    assert.equal(
+      handoff.stdout.trim(),
+      'a2l-stdin-check',
+      'The installation command must preserve stdin for interactive setup.',
+    );
+    const refused = spawnSync('bash', ['-c', posixCommand], {
+      cwd: candidate,
+      env: { ...commandEnv, A2L_TEST_FETCH_FAIL: '1' },
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    assert.equal(refused.status, 22, 'A failed download must stop the installation command.');
+    assert.doesNotMatch(refused.stdout, /partial-installer-executed/);
+    console.log(
+      'POSIX install command verified: stdin preserved; failed download is not executed.',
+    );
+  }
   console.log(
     'Published-state build verified: install copy, agent handoff, docs notice, llms index, social images, canonical URL, and sitemap. Actual release setting unchanged.',
   );

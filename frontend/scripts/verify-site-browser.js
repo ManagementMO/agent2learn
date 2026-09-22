@@ -14,8 +14,26 @@ async function verifySiteBrowser(page) {
       await document.fonts.ready;
       await Promise.all([...document.images].map((image) => image.decode()));
     });
+    // Starlight initializes search in an idle callback. Wait for that real UI
+    // before another navigation can cancel its module import in WebKit.
+    if (await page.locator('site-search').count())
+      await page.locator('.pagefind-ui__search-input').waitFor({ state: 'attached' });
   };
   const audit = async (label) => {
+    for (const table of await page.locator('.sl-markdown-content table').all()) {
+      if (await table.evaluate((el) => el.scrollWidth > el.clientWidth + 1)) {
+        await table.evaluate((el) => {
+          el.scrollLeft = 0;
+          el.focus();
+        });
+        await page.keyboard.press('ArrowRight');
+        await page.waitForFunction(
+          () =>
+            document.activeElement?.tagName === 'TABLE' && document.activeElement.scrollLeft > 0,
+        );
+        await table.evaluate((el) => (el.scrollLeft = 0));
+      }
+    }
     // Expressive Code installs keyboard scrolling during idle time.
     await page.waitForFunction(() =>
       [...document.querySelectorAll('.expressive-code pre')].every(
@@ -25,7 +43,7 @@ async function verifySiteBrowser(page) {
     await page.addScriptTag({ path: 'node_modules/axe-core/axe.min.js' });
     const violations = await page.evaluate(async () => {
       const result = await window.axe.run(document, {
-        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] },
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },
       });
       return result.violations.map(({ id, nodes }) => ({
         id,
@@ -203,7 +221,19 @@ async function verifySiteBrowser(page) {
     for (const theme of ['light', 'dark']) {
       await page.setViewportSize({ width, height: 960 });
       await setTheme(theme);
-      for (const slug of ['introduction', 'installation', 'for-agents', 'commands', 'study']) {
+      for (const slug of [
+        'introduction',
+        'installation',
+        'for-agents',
+        'sync',
+        'study',
+        'evidence-scan',
+        'vault',
+        'commands',
+        'authentication',
+        'privacy',
+        'troubleshooting',
+      ]) {
         const label = `docs/${slug} ${width}px ${theme}`;
         await page.goto(`${origin}/docs/${slug}/`);
         await ready();
@@ -278,19 +308,26 @@ async function verifySiteBrowser(page) {
 
   await page.goto(origin);
   await page.locator('.footer-links').getByRole('link', { name: 'Docs', exact: true }).click();
+  await ready();
   assert(
     (await page.locator('h1').textContent()).trim() === 'A course vault your agent can read.',
     'Footer Docs did not open the actual guide',
   );
   await page.goto(origin);
-  const llmsResponse = page.waitForResponse((response) => response.url() === `${origin}/llms.txt`);
+  const llmsResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${origin}/llms.txt` && response.request().isNavigationRequest(),
+  );
   await page.locator('.footer-links').getByRole('link', { name: 'llms.txt', exact: true }).click();
   const response = await llmsResponse;
   assert(
-    response.status() === 200 && response.headers()['content-type'].includes('text/plain'),
+    [200, 304].includes(response.status()) &&
+      (await page.evaluate(() => document.contentType)) === 'text/plain',
     'Footer llms.txt is not a text resource',
   );
-  const index = await response.text();
+  // WebKit exposes a 304 when the browser revalidates its cached text document.
+  // Check what the reader actually opened, including the cached response body.
+  const index = await page.locator('body').innerText();
   assert(
     index.startsWith('# Agent2Learn') && (index.match(/\]\(\/docs\//g) ?? []).length === 11,
     'Footer llms.txt is missing its project or guides',

@@ -19,6 +19,8 @@ async function verifyBrandBrowser(page) {
           await document.fonts.ready;
           await Promise.all([...document.images].map((image) => image.decode()));
         });
+        if (await page.locator('site-search').count())
+          await page.locator('.pagefind-ui__search-input').waitFor({ state: 'attached' });
         const result = await page.evaluate(() => {
           const marks = [...document.querySelectorAll('svg.brand-mark')];
           const brand = document.querySelector('.site-header .brand, .docs-brand');

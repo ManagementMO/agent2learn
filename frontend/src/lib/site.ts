@@ -8,14 +8,14 @@ export const repository = 'https://github.com/ManagementMO/agent2learn';
  */
 export const release = {
   published: true,
-  version: '0.1.2',
+  version: '0.1.9',
 };
 
 const releaseRef = `v${release.version}`;
 
 export const installCommands = {
   uv: 'uv tool install agent2learn',
-  posix: `curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/${releaseRef}/install.sh | bash`,
+  posix: `(installer="$(curl -fsSL https://raw.githubusercontent.com/ManagementMO/agent2learn/${releaseRef}/install.sh)" && bash -c "$installer")`,
   windows: `irm https://raw.githubusercontent.com/ManagementMO/agent2learn/${releaseRef}/install.ps1 | iex`,
 };
 
